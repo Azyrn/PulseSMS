@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.skeler.pulse.observability.PulseObservabilityProviderTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:38.423Z" hostname="skeler" time="0.167">
+  <properties/>
+  <testcase name="logger emits sanitized log event" classname="com.skeler.pulse.observability.PulseObservabilityProviderTest" time="0.157"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

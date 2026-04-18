@@ -1,0 +1,8 @@
+com.skeler.pulse.core.contracts-pngs-0 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/generated/res/pngs/debug
+com.skeler.pulse.core.contracts-updated_navigation_xml-1 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/generated/updated_navigation_xml/debug
+com.skeler.pulse.core.contracts-mergeDebugResources-2 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+com.skeler.pulse.core.contracts-mergeDebugResources-3 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+com.skeler.pulse.core.contracts-debug-4 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/intermediates/merged_res/debug/mergeDebugResources
+com.skeler.pulse.core.contracts-debug-5 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/build/intermediates/packaged_res/debug/packageDebugResources
+com.skeler.pulse.core.contracts-debug-6 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/src/debug/res
+com.skeler.pulse.core.contracts-main-7 /home/skeler/AndroidStudioProjects/Pulse/core/contracts/src/main/res

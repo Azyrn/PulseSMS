@@ -1,0 +1,82 @@
+package com.skeler.pulse.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.skeler.pulse.sms.SmsThread
+import com.skeler.pulse.sms.SystemSms
+import com.skeler.pulse.sms.SystemSmsReader
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+/**
+ * State for the real SMS inbox, reading from [SystemSmsReader].
+ */
+data class RealInboxState(
+    val threads: List<SmsThread> = emptyList(),
+    val loading: Boolean = true,
+)
+
+/**
+ * State for a single conversation's messages.
+ */
+data class RealConversationState(
+    val address: String = "",
+    val messages: List<SystemSms> = emptyList(),
+    val loading: Boolean = true,
+)
+
+/**
+ * ViewModel that reads real SMS from the system content provider.
+ *
+ * Replaces the fake [PulseHomeViewModel] with actual phone messages.
+ * Requires [android.permission.READ_SMS].
+ */
+class RealSmsViewModel(
+    private val smsReader: SystemSmsReader,
+) : ViewModel() {
+
+    private val _inboxState = MutableStateFlow(RealInboxState())
+    val inboxState: StateFlow<RealInboxState> = _inboxState.asStateFlow()
+
+    private val _conversationState = MutableStateFlow(RealConversationState())
+    val conversationState: StateFlow<RealConversationState> = _conversationState.asStateFlow()
+
+    init {
+        observeInbox()
+    }
+
+    private fun observeInbox() {
+        viewModelScope.launch {
+            smsReader.observeThreads().collectLatest { threads ->
+                _inboxState.value = RealInboxState(threads = threads, loading = false)
+            }
+        }
+    }
+
+    fun openConversation(address: String) {
+        _conversationState.value = RealConversationState(address = address, loading = true)
+        viewModelScope.launch {
+            smsReader.observeMessages(address).collectLatest { messages ->
+                _conversationState.value = RealConversationState(
+                    address = address,
+                    messages = messages,
+                    loading = false,
+                )
+            }
+        }
+    }
+
+    fun sendMessage(address: String, body: String) {
+        if (body.isBlank()) return
+        viewModelScope.launch {
+            try {
+                smsReader.sendSms(address, body)
+            } catch (_: Exception) {
+                // Send failed — will be visible as message not appearing
+            }
+        }
+    }
+}

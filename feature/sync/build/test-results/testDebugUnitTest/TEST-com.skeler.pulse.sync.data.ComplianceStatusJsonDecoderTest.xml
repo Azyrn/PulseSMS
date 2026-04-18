@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.skeler.pulse.sync.data.ComplianceStatusJsonDecoderTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:47.704Z" hostname="skeler" time="0.047">
+  <properties/>
+  <testcase name="decodes business compliance booleans" classname="com.skeler.pulse.sync.data.ComplianceStatusJsonDecoderTest" time="0.039"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

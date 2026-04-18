@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.skeler.pulse.messaging.model.MessagingReducerTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:46.471Z" hostname="skeler" time="0.005">
+  <properties/>
+  <testcase name="sending completed clears draft and marks success transition" classname="com.skeler.pulse.messaging.model.MessagingReducerTest" time="0.002"/>
+  <testcase name="history loaded blocks composer when rate limited backoff is active" classname="com.skeler.pulse.messaging.model.MessagingReducerTest" time="0.001"/>
+  <testcase name="history loaded blocks composer when business verification is pending" classname="com.skeler.pulse.messaging.model.MessagingReducerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

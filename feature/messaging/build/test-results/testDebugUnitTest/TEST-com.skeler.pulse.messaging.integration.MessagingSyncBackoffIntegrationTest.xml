@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.skeler.pulse.messaging.integration.MessagingSyncBackoffIntegrationTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:46.376Z" hostname="skeler" time="0.091">
+  <properties/>
+  <testcase name="retry scheduled by sync updates messaging ui backoff state" classname="com.skeler.pulse.messaging.integration.MessagingSyncBackoffIntegrationTest" time="0.09"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:45.943Z" hostname="skeler" time="0.424">
+  <properties/>
+  <testcase name="maps verification pending conversation into unverified message item" classname="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" time="0.378"/>
+  <testcase name="maps auth sync failure into explicit row and delivery diagnostics" classname="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" time="0.009"/>
+  <testcase name="maps rate limit sync failure into rate limited delivery error" classname="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" time="0.01"/>
+  <testcase name="observed snapshot exposes compliance freshness timestamp" classname="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" time="0.006"/>
+  <testcase name="maps retry schedule into conversation backoff state" classname="com.skeler.pulse.messaging.data.DefaultConversationRepositoryTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

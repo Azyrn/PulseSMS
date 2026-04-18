@@ -1,0 +1,8 @@
+com.skeler.pulse.feature.sync-pngs-0 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/generated/res/pngs/debug
+com.skeler.pulse.feature.sync-updated_navigation_xml-1 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/generated/updated_navigation_xml/debug
+com.skeler.pulse.feature.sync-mergeDebugResources-2 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+com.skeler.pulse.feature.sync-mergeDebugResources-3 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+com.skeler.pulse.feature.sync-debug-4 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/intermediates/merged_res/debug/mergeDebugResources
+com.skeler.pulse.feature.sync-debug-5 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/build/intermediates/packaged_res/debug/packageDebugResources
+com.skeler.pulse.feature.sync-debug-6 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/src/debug/res
+com.skeler.pulse.feature.sync-main-7 /home/skeler/AndroidStudioProjects/Pulse/feature/sync/src/main/res
