@@ -17,7 +17,6 @@ import com.skeler.pulse.design.theme.SerafinaAppTheme
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.ui.PulseAppShell
 import com.skeler.pulse.ui.RealSmsViewModel
-import com.skeler.pulse.ui.settings.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -31,10 +30,6 @@ class MainActivity : ComponentActivity() {
 
         val appContainer = (application as PulseApplication).appContainer
         val themeViewModel = ViewModelProvider(this)[SerafinaThemeViewModel::class.java]
-        val settingsViewModel = ViewModelProvider(
-            this,
-            appContainer.settingsViewModelFactory(),
-        )[SettingsViewModel::class.java]
         val realSmsViewModel = ViewModelProvider(
             this,
             appContainer.realSmsViewModelFactory(),
@@ -56,7 +51,6 @@ class MainActivity : ComponentActivity() {
                     onOpenConversation = realSmsViewModel::openConversation,
                     onSendMessage = realSmsViewModel::sendMessage,
                     themeViewModel = themeViewModel,
-                    settingsViewModel = settingsViewModel,
                     onRequestDefaultSms = { requestDefaultSmsApp() },
                 )
             }
@@ -102,5 +96,3 @@ class MainActivity : ComponentActivity() {
         const val DEFAULT_CONVERSATION_ID: String = "business-primary"
     }
 }
-
-

@@ -1,8 +1,0 @@
-com.skeler.pulse.core.database-pngs-0 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/generated/res/pngs/debug
-com.skeler.pulse.core.database-updated_navigation_xml-1 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/generated/updated_navigation_xml/debug
-com.skeler.pulse.core.database-mergeDebugResources-2 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
-com.skeler.pulse.core.database-mergeDebugResources-3 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
-com.skeler.pulse.core.database-debug-4 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/intermediates/merged_res/debug/mergeDebugResources
-com.skeler.pulse.core.database-debug-5 /home/skeler/AndroidStudioProjects/Pulse/core/database/build/intermediates/packaged_res/debug/packageDebugResources
-com.skeler.pulse.core.database-debug-6 /home/skeler/AndroidStudioProjects/Pulse/core/database/src/debug/res
-com.skeler.pulse.core.database-main-7 /home/skeler/AndroidStudioProjects/Pulse/core/database/src/main/res

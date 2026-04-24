@@ -9,15 +9,21 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Telephony
 import android.telephony.SmsManager
+import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
  * Data class representing a single SMS message from the system content provider.
  */
+@Immutable
 data class SystemSms(
     val id: Long,
     val address: String,
@@ -35,6 +41,7 @@ data class SystemSms(
 /**
  * Data class representing a conversation thread (grouped by address).
  */
+@Immutable
 data class SmsThread(
     val threadId: Long,
     val address: String,
@@ -52,7 +59,10 @@ data class SmsThread(
  * This replaces the fake in-memory data with actual phone messages.
  * Requires [android.permission.READ_SMS] permission.
  */
-class SystemSmsReader(private val context: Context) {
+class SystemSmsReader(
+    private val context: Context,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
 
     private val contentResolver: ContentResolver get() = context.contentResolver
 
@@ -61,33 +71,55 @@ class SystemSmsReader(private val context: Context) {
      * Emits a new list whenever the SMS content provider changes.
      */
     fun observeThreads(): Flow<List<SmsThread>> = callbackFlow {
+        var readJob: Job? = null
+        fun scheduleRead() {
+            readJob?.cancel()
+            readJob = launch(ioDispatcher) {
+                trySend(readThreads())
+            }
+        }
+
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                trySend(readThreads())
+                scheduleRead()
             }
         }
         contentResolver.registerContentObserver(
             Telephony.Sms.CONTENT_URI, true, observer
         )
         // Initial emission
-        trySend(readThreads())
-        awaitClose { contentResolver.unregisterContentObserver(observer) }
+        scheduleRead()
+        awaitClose {
+            readJob?.cancel()
+            contentResolver.unregisterContentObserver(observer)
+        }
     }.distinctUntilChanged()
 
     /**
      * Observes messages for a specific address/thread as a reactive [Flow].
      */
     fun observeMessages(address: String): Flow<List<SystemSms>> = callbackFlow {
+        var readJob: Job? = null
+        fun scheduleRead() {
+            readJob?.cancel()
+            readJob = launch(ioDispatcher) {
+                trySend(readMessages(address))
+            }
+        }
+
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                trySend(readMessages(address))
+                scheduleRead()
             }
         }
         contentResolver.registerContentObserver(
             Telephony.Sms.CONTENT_URI, true, observer
         )
-        trySend(readMessages(address))
-        awaitClose { contentResolver.unregisterContentObserver(observer) }
+        scheduleRead()
+        awaitClose {
+            readJob?.cancel()
+            contentResolver.unregisterContentObserver(observer)
+        }
     }.distinctUntilChanged()
 
     /**

@@ -19,7 +19,6 @@ import com.skeler.pulse.sync.di.SyncComponent
 import com.skeler.pulse.sync.di.SyncComponentFactory
 import com.skeler.pulse.ui.PulseHomeViewModel
 import com.skeler.pulse.ui.RealSmsViewModel
-import com.skeler.pulse.ui.settings.SettingsViewModel
 import com.skeler.pulse.sms.SystemSmsReader
 
 class AppContainer(
@@ -79,19 +78,6 @@ class AppContainer(
             PulseHomeViewModel(
                 observeInbox = ObserveInboxUseCase(conversationRepository),
                 requestConversationRefresh = RequestConversationRefreshUseCase(conversationRepository),
-            ) as T
-    }
-
-    fun settingsViewModelFactory(): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            SettingsViewModel(
-                keyMaterialStore = securityComponent.keyMaterialStore,
-                protocols = securityComponent.protocols,
-                businessComplianceProvider = securityComponent.businessComplianceProvider,
-                syncEnvironment = syncRuntimeConfig.environmentName,
-                versionName = BuildConfig.VERSION_NAME,
-                defaultConversationId = MainActivity.DEFAULT_CONVERSATION_ID,
             ) as T
     }
 

@@ -1,5 +1,6 @@
 package com.skeler.pulse.contracts.messaging
 
+import androidx.compose.runtime.Immutable
 import com.skeler.pulse.contracts.ConversationId
 import com.skeler.pulse.contracts.DedupeKey
 import com.skeler.pulse.contracts.MessageId
@@ -147,6 +148,7 @@ enum class SendBlockReason {
     Offline,
 }
 
+@Immutable
 data class MessageRenderItem(
     val id: MessageId,
     val conversationId: ConversationId,

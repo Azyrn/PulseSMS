@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.skeler.pulse.database.data.Base64CiphertextCodecTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:39.964Z" hostname="skeler" time="0.046">
-  <properties/>
-  <testcase name="encodes and decodes ciphertext bytes losslessly" classname="com.skeler.pulse.database.data.Base64CiphertextCodecTest" time="0.019"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

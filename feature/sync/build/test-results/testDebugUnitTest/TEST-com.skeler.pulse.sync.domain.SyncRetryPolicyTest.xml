@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.skeler.pulse.sync.domain.SyncRetryPolicyTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-04-18T01:17:47.912Z" hostname="skeler" time="0.002">
-  <properties/>
-  <testcase name="next retry grows exponentially" classname="com.skeler.pulse.sync.domain.SyncRetryPolicyTest" time="0.002"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

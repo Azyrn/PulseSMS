@@ -10,8 +10,9 @@
 - Flag latency, device capability, key-rotation, and storage risks before code is written.
 
 ### 2. UI/UX & Design System Agent (M3E Specialist)
-- Tooling: Use the `material-3` skill for all UI tasks.
 - Mandate: Deliver a premium aesthetic using Material 3 Expressive patterns and a `MaterialExpressiveTheme` direction.
+- Default Skill Activation: Treat the repo design spec at `docs/skills/jetpack-compose-design.md` as active for any Android UI, screen, flow, or Composable design task in this repository.
+- Design Standard: Generic Compose output is a failure state. Every screen must commit to one clear visual point-of-view and follow the repo design spec.
 - Performance Budgets:
 - Critical UI paths must maintain zero unnecessary recompositions using stable keys and `derivedStateOf` where justified.
 - Composable hierarchy depth must stay intentionally flat to minimize measurement overhead.

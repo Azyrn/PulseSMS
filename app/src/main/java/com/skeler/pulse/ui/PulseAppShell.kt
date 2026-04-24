@@ -3,6 +3,10 @@
 package com.skeler.pulse.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +16,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,29 +27,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.outlined.Accessibility
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Sms
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Settings
@@ -52,6 +54,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -62,11 +65,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,22 +82,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.skeler.pulse.BuildConfig
-import com.skeler.pulse.contracts.protocol.ProtocolMode
-import com.skeler.pulse.contracts.security.KeyStoreCapability
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
+import com.skeler.pulse.design.util.elasticOverscroll
+import com.skeler.pulse.design.util.isNearListEnd
+import com.skeler.pulse.design.util.motionAnimateItemModifier
+import com.skeler.pulse.design.util.rememberEntranceModifier
+import com.skeler.pulse.design.util.rememberMomentumFlingBehavior
+import com.skeler.pulse.design.util.rememberReducedMotionEnabled
+import com.skeler.pulse.design.util.rememberSmoothFlingBehavior
+import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
-import com.skeler.pulse.ui.settings.SettingsViewModel
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -108,17 +121,23 @@ fun PulseAppShell(
     onOpenConversation: (String) -> Unit,
     onSendMessage: (String, String) -> Unit,
     themeViewModel: SerafinaThemeViewModel,
-    settingsViewModel: SettingsViewModel,
     onRequestDefaultSms: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var currentScreen by rememberSaveable { mutableStateOf(PulseScreen.Inbox) }
     var activeAddress by rememberSaveable { mutableStateOf("") }
+    val reducedMotion = rememberReducedMotionEnabled()
+    val inboxListState = rememberLazyListState()
+    val inboxFilterState = rememberLazyListState()
+    val settingsListState = rememberLazyListState()
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         AnimatedContent(
             targetState = currentScreen,
             transitionSpec = {
+                if (reducedMotion) {
+                    fadeIn(tween(durationMillis = 0)) togetherWith fadeOut(tween(durationMillis = 0))
+                } else {
                 val dur = 250
                 when {
                     targetState == PulseScreen.Conversation && initialState == PulseScreen.Inbox ->
@@ -129,6 +148,7 @@ fun PulseAppShell(
                             .togetherWith(slideOutHorizontally(tween(dur)) { it / 4 } + fadeOut(tween(dur)))
                     else -> fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 }
+                }
             },
             label = "screen_transition",
         ) { screen ->
@@ -136,6 +156,8 @@ fun PulseAppShell(
                 PulseScreen.Inbox -> RealInboxScreen(
                     threads = inboxState.threads,
                     loading = inboxState.loading,
+                    listState = inboxListState,
+                    filterState = inboxFilterState,
                     onOpenConversation = { address ->
                         activeAddress = address
                         onOpenConversation(address)
@@ -145,13 +167,17 @@ fun PulseAppShell(
                 )
                 PulseScreen.Conversation -> RealConversationScreen(
                     address = activeAddress,
-                    messages = conversationState.messages,
+                    messages = if (conversationState.address == activeAddress) {
+                        conversationState.messages
+                    } else {
+                        emptyList()
+                    },
                     onBack = { currentScreen = PulseScreen.Inbox },
                     onSend = { body -> onSendMessage(activeAddress, body) },
                 )
                 PulseScreen.Settings -> SettingsScreen(
                     themeViewModel = themeViewModel,
-                    settingsViewModel = settingsViewModel,
+                    listState = settingsListState,
                     onBack = { currentScreen = PulseScreen.Inbox },
                     onRequestDefaultSms = onRequestDefaultSms,
                 )
@@ -168,10 +194,15 @@ fun PulseAppShell(
 private fun RealInboxScreen(
     threads: List<SmsThread>,
     loading: Boolean,
+    listState: LazyListState,
+    filterState: LazyListState,
     onOpenConversation: (String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     var selectedFilter by remember { mutableIntStateOf(0) }
+    val reducedMotion = rememberReducedMotionEnabled()
+    val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
+    val filterFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
 
     val filteredThreads = remember(threads, selectedFilter) {
         when (InboxFilter.entries[selectedFilter]) {
@@ -189,7 +220,10 @@ private fun RealInboxScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Messages", style = MaterialTheme.typography.headlineMedium) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
                 actions = {
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
@@ -199,7 +233,14 @@ private fun RealInboxScreen(
         },
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            flingBehavior = listFlingBehavior,
+            modifier = Modifier
+                .fillMaxSize()
+                .elasticOverscroll(
+                    enabled = !reducedMotion,
+                    state = listState,
+                ),
             contentPadding = PaddingValues(
                 top = innerPadding.calculateTopPadding() + 4.dp,
                 bottom = innerPadding.calculateBottomPadding() + 16.dp,
@@ -208,10 +249,28 @@ private fun RealInboxScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             item(key = "filter_chips") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    items(InboxFilter.entries.size) { index ->
+                LazyRow(
+                    state = filterState,
+                    flingBehavior = filterFlingBehavior,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .elasticOverscroll(
+                            enabled = !reducedMotion,
+                            state = filterState,
+                            orientation = Orientation.Horizontal,
+                        ),
+                ) {
+                    items(
+                        count = InboxFilter.entries.size,
+                        key = { index -> "inbox_filter_${InboxFilter.entries[index].name}" },
+                        contentType = { "inbox_filter_chip" },
+                    ) { index ->
                         val filter = InboxFilter.entries[index]
+                        val animatedModifier = motionAnimateItemModifier(reducedMotion)
+                            .then(rememberEntranceModifier(filter.name, reducedMotion))
                         FilterChip(
+                            modifier = animatedModifier,
                             selected = selectedFilter == index, onClick = { selectedFilter = index },
                             label = { Text(filter.label) }, shape = RoundedCornerShape(20.dp),
                             colors = FilterChipDefaults.filterChipColors(
@@ -227,8 +286,18 @@ private fun RealInboxScreen(
             } else if (filteredThreads.isEmpty()) {
                 item { Text("No messages", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } else {
-                items(items = filteredThreads, key = { it.address }) { thread ->
-                    SmsThreadCard(thread = thread, onClick = { onOpenConversation(thread.address) })
+                items(
+                    items = filteredThreads,
+                    key = { it.address },
+                    contentType = { "inbox_thread" },
+                ) { thread ->
+                    val itemModifier = motionAnimateItemModifier(reducedMotion)
+                        .then(rememberEntranceModifier(thread.address, reducedMotion))
+                    SmsThreadCard(
+                        thread = thread,
+                        onClick = { onOpenConversation(thread.address) },
+                        modifier = itemModifier,
+                    )
                 }
             }
         }
@@ -236,10 +305,16 @@ private fun RealInboxScreen(
 }
 
 @Composable
-private fun SmsThreadCard(thread: SmsThread, onClick: () -> Unit) {
+private fun SmsThreadCard(
+    thread: SmsThread,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val initials = thread.address.take(2).uppercase()
     Card(
-        onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
@@ -272,108 +347,434 @@ private fun SmsThreadCard(thread: SmsThread, onClick: () -> Unit) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// REAL SMS CONVERSATION
-// ═══════════════════════════════════════════════════════════
-
 @Composable
 private fun RealConversationScreen(
     address: String,
     messages: List<SystemSms>,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val reducedMotion = rememberReducedMotionEnabled()
+    val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
+    var draft by rememberSaveable(address) { mutableStateOf("") }
+    var previousMessageCount by remember(address) { mutableIntStateOf(0) }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    val timelineItems = remember(messages) { messages.toConversationTimeline() }
+    val isNearEnd by remember(listState) {
+        derivedStateOf { listState.isNearListEnd() }
+    }
+
+    LaunchedEffect(address) {
+        previousMessageCount = messages.size
+        if (timelineItems.isNotEmpty()) {
+            listState.scrollToItem(timelineItems.lastIndex)
+        }
+    }
+
+    LaunchedEffect(messages.size, timelineItems.size) {
+        if (timelineItems.isEmpty()) {
+            previousMessageCount = 0
+            return@LaunchedEffect
+        }
+
+        val listGrew = messages.size > previousMessageCount
+        if (listGrew && isNearEnd) {
+            listState.scrollToItemSmoothly(timelineItems.lastIndex)
+        }
+        previousMessageCount = messages.size
     }
 
     Scaffold(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SerafinaAvatar(imageUrl = null, initials = address.take(2).uppercase(), size = 36.dp)
-                        Text(address, style = MaterialTheme.typography.titleMedium)
+                navigationIcon = {
+                    FilledTonalIconButton(
+                        onClick = onBack,
+                        modifier = Modifier.padding(start = 12.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ArrowBackIosNew,
+                            contentDescription = "Back",
+                        )
                     }
                 },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBackIosNew, contentDescription = "Back") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                title = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SerafinaAvatar(
+                            imageUrl = null,
+                            initials = address.toAvatarInitials(),
+                            hasUnread = messages.lastOrNull()?.let { it.isInbound && !it.read } == true,
+                            size = 40.dp,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = address,
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${address.toConversationCategoryLabel()} · ${messages.size} messages",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
         bottomBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(horizontal = 12.dp, vertical = 8.dp).imePadding(),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    if (draft.isEmpty()) {
-                        Text("Type a message…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                    }
-                    BasicTextField(
-                        value = draft, onValueChange = { draft = it },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                IconButton(
-                    onClick = { if (draft.isNotBlank()) { onSend(draft); draft = "" } },
-                    enabled = draft.isNotBlank(),
-                ) {
-                    Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Send", tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            ConversationComposer(
+                draft = draft,
+                onDraftChange = { draft = it },
+                onSend = {
+                    val message = draft.trim()
+                    if (message.isEmpty()) return@ConversationComposer
+                    onSend(message)
+                    draft = ""
+                },
+            )
         },
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.surfaceContainerLowest,
+                            MaterialTheme.colorScheme.surface,
+                        ),
+                    ),
+                ),
         ) {
-            items(items = messages, key = { it.id }) { sms ->
-                MessageBubble(sms = sms)
+            LazyColumn(
+                state = listState,
+                flingBehavior = listFlingBehavior,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .elasticOverscroll(
+                        enabled = !reducedMotion,
+                        state = listState,
+                    ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "conversation_header") {
+                    ConversationOverviewCard(
+                        address = address,
+                        messageCount = messages.size,
+                        latestTimestamp = messages.lastOrNull()?.timestamp,
+                        modifier = rememberEntranceModifier("conversation_header_$address", reducedMotion),
+                    )
+                }
+
+                if (timelineItems.isEmpty()) {
+                    item(key = "conversation_empty") {
+                        EmptyConversationState(
+                            address = address,
+                            modifier = rememberEntranceModifier("conversation_empty_$address", reducedMotion),
+                        )
+                    }
+                } else {
+                    items(
+                        items = timelineItems,
+                        key = ConversationTimelineItem::key,
+                        contentType = ConversationTimelineItem::contentType,
+                    ) { item ->
+                        when (item) {
+                            is ConversationTimelineItem.DayDivider -> {
+                                Box(
+                                    modifier = motionAnimateItemModifier(reducedMotion)
+                                        .then(rememberEntranceModifier(item.key, reducedMotion))
+                                        .fillMaxWidth(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ) {
+                                        Text(
+                                            text = item.label,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+
+                            is ConversationTimelineItem.Message -> {
+                                ConversationMessageBubble(
+                                    message = item.message,
+                                    modifier = motionAnimateItemModifier(reducedMotion)
+                                        .then(rememberEntranceModifier(item.key, reducedMotion)),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(sms: SystemSms) {
-    val isOutbound = sms.isOutbound
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
+private fun ConversationOverviewCard(
+    address: String,
+    messageCount: Int,
+    latestTimestamp: Instant?,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(0.8f)
-                .clip(RoundedCornerShape(
-                    topStart = 16.dp, topEnd = 16.dp,
-                    bottomStart = if (isOutbound) 16.dp else 4.dp,
-                    bottomEnd = if (isOutbound) 4.dp else 16.dp,
-                ))
-                .background(if (isOutbound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
+            SerafinaAvatar(
+                imageUrl = null,
+                initials = address.toAvatarInitials(),
+                size = 52.dp,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 Text(
-                    text = sms.body, style = MaterialTheme.typography.bodyMedium,
-                    color = if (isOutbound) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    text = address,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = sms.timestamp.toInboxTimestamp(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isOutbound) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.End).padding(top = 4.dp),
+                    text = "${address.toConversationCategoryLabel()} · ${messageCount.coerceAtLeast(0)} total",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            latestTimestamp?.let { timestamp ->
+                Text(
+                    text = timestamp.toInboxTimestamp(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationMessageBubble(
+    message: SystemSms,
+    modifier: Modifier = Modifier,
+) {
+    val isOutbound = message.isOutbound
+    val bubbleShape = RoundedCornerShape(
+        topStart = 24.dp,
+        topEnd = 24.dp,
+        bottomStart = if (isOutbound) 24.dp else 10.dp,
+        bottomEnd = if (isOutbound) 10.dp else 24.dp,
+    )
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
+    ) {
+        Column(
+            modifier = Modifier.widthIn(max = 320.dp),
+            horizontalAlignment = if (isOutbound) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Surface(
+                shape = bubbleShape,
+                color = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = if (isOutbound) 0.dp else 1.dp,
+            ) {
+                Text(
+                    text = message.body.ifBlank { " " },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Text(
+                text = message.timestamp.toConversationTime(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationComposer(
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canSend by remember(draft) {
+        derivedStateOf { draft.isNotBlank() }
+    }
+    val sendWidth by animateDpAsState(
+        targetValue = if (canSend) 104.dp else 56.dp,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+        ),
+        label = "conversation_send_width",
+    )
+    val sendScale by animateFloatAsState(
+        targetValue = if (canSend) 1f else 0.94f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "conversation_send_scale",
+    )
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(30.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 4.dp),
+                textStyle = MaterialTheme.typography.bodyLarge,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Send,
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (canSend) {
+                            onSend()
+                        }
+                    },
+                ),
+                placeholder = {
+                    Text(
+                        text = "Write a message",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                maxLines = 5,
+                shape = RoundedCornerShape(24.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    disabledIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            )
+
+            Box(
+                modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = sendScale
+                        scaleY = sendScale
+                    }
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(
+                        color = if (canSend) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    )
+                    .clickable(enabled = canSend, onClick = onSend)
+                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                    .width(sendWidth),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "Send message",
+                        tint = if (canSend) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (canSend) {
+                        Text(
+                            text = "Send",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyConversationState(
+    address: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "No messages yet",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "Start a cleaner thread with $address using the composer below.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -385,24 +786,38 @@ private fun MessageBubble(sms: SystemSms) {
 @Composable
 private fun SettingsScreen(
     themeViewModel: SerafinaThemeViewModel,
-    settingsViewModel: SettingsViewModel,
+    listState: LazyListState,
     onBack: () -> Unit,
     onRequestDefaultSms: () -> Unit,
 ) {
     val themeState by themeViewModel.state.collectAsState()
-    val settingsState by settingsViewModel.state.collectAsState()
+    val reducedMotion = rememberReducedMotionEnabled()
+    val settingsFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
+    val paletteListState = rememberLazyListState()
+    val paletteFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.headlineMedium) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.Close, contentDescription = "Close") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            state = listState,
+            flingBehavior = settingsFlingBehavior,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .elasticOverscroll(
+                    enabled = !reducedMotion,
+                    state = listState,
+                ),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -410,8 +825,6 @@ private fun SettingsScreen(
             item(key = "general_card") {
                 SettingsGroupCard {
                     SettingsRow(icon = Icons.Outlined.Sms, title = "Default SMS app", subtitle = "Tap to set Pulse as default", onClick = onRequestDefaultSms)
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.Notifications, title = "Notifications", subtitle = "Coming soon")
                 }
             }
             item(key = "appearance_header") { SettingsSectionHeader("Appearance") }
@@ -422,11 +835,29 @@ private fun SettingsScreen(
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text("Color palette", style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(10.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(SerafinaPalette.entries.size) { index ->
+                        LazyRow(
+                            state = paletteListState,
+                            flingBehavior = paletteFlingBehavior,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.elasticOverscroll(
+                                enabled = !reducedMotion,
+                                state = paletteListState,
+                                orientation = Orientation.Horizontal,
+                            ),
+                        ) {
+                            items(
+                                count = SerafinaPalette.entries.size,
+                                key = { index -> "palette_${SerafinaPalette.entries[index].name}" },
+                                contentType = { "palette_chip" },
+                            ) { index ->
                                 val palette = SerafinaPalette.entries[index]
                                 val isSelected = themeState.selectedPalette == palette
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(
+                                    modifier = motionAnimateItemModifier(reducedMotion)
+                                        .then(rememberEntranceModifier(palette.name, reducedMotion)),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
                                     Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(palette.seedColor)
                                         .then(if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
                                         .clickable { themeViewModel.selectPalette(palette) })
@@ -435,56 +866,6 @@ private fun SettingsScreen(
                             }
                         }
                     }
-                    SettingsGroupDivider()
-                    SettingsToggleRow(icon = Icons.Outlined.Accessibility, label = "Reduce motion", checked = themeState.reduceMotion, onCheckedChange = { themeViewModel.toggleReduceMotion() })
-                }
-            }
-            item(key = "sync_header") { SettingsSectionHeader("Sync & Data") }
-            item(key = "sync_card") {
-                SettingsGroupCard {
-                    SettingsRow(icon = Icons.Outlined.Cloud, title = "Sync environment", subtitle = settingsState.syncEnvironment.replaceFirstChar { it.uppercase() })
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.Sync, title = "Background sync", subtitle = "WorkManager with exponential backoff")
-                }
-            }
-            item(key = "privacy_header") { SettingsSectionHeader("Privacy & Security") }
-            item(key = "privacy_card") {
-                val protocolLabel = when (settingsState.protocolMode) {
-                    ProtocolMode.PQXDH -> "Post-quantum (PQXDH)"
-                    ProtocolMode.X3DH -> "Extended Triple DH (X3DH)"
-                }
-                val keyStorageLabel = when (settingsState.keyStoreCapability) {
-                    is KeyStoreCapability.Available -> if (settingsState.isHardwareBacked) "Hardware-backed Keystore" else "Software Keystore"
-                    KeyStoreCapability.SoftwareOnly -> "Software-only Keystore"
-                    KeyStoreCapability.Unavailable -> "Unavailable"
-                }
-                val complianceLabel = if (settingsState.complianceLoaded) {
-                    val s = settingsState.complianceStatus
-                    when {
-                        s.senderVerified && s.recipientVerified && s.identityVerified && s.tenDlcRegistered -> "Fully verified"
-                        !s.tenDlcRegistered -> "10DLC registration pending"
-                        !s.senderVerified -> "Sender verification pending"
-                        !s.recipientVerified -> "Recipient verification pending"
-                        !s.identityVerified -> "Identity verification pending"
-                        else -> "Partially verified"
-                    }
-                } else "Loading…"
-                SettingsGroupCard {
-                    SettingsRow(icon = Icons.Outlined.Security, title = "Encryption protocol", subtitle = protocolLabel)
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.Key, title = "Key storage", subtitle = keyStorageLabel)
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.VerifiedUser, title = "Business verification", subtitle = complianceLabel)
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.Lock, title = "End-to-end encryption", subtitle = "Messages encrypted before sync")
-                }
-            }
-            item(key = "about_header") { SettingsSectionHeader("About") }
-            item(key = "about_card") {
-                SettingsGroupCard {
-                    SettingsRow(icon = Icons.Outlined.Info, title = "Version", subtitle = settingsState.versionName)
-                    SettingsGroupDivider()
-                    SettingsRow(icon = Icons.Outlined.Cloud, title = "Environment", subtitle = settingsState.syncEnvironment)
                 }
             }
             item(key = "bottom_spacer") { Spacer(Modifier.height(32.dp)) }
@@ -549,5 +930,67 @@ private fun Instant.toInboxTimestamp(): String = when {
     else -> INBOX_DATE_FORMATTER.format(atZone(ZoneId.systemDefault()))
 }
 
+private sealed interface ConversationTimelineItem {
+    val key: String
+    val contentType: String
+
+    data class DayDivider(
+        override val key: String,
+        val label: String,
+    ) : ConversationTimelineItem {
+        override val contentType: String = "conversation_day_divider"
+    }
+
+    data class Message(
+        val message: SystemSms,
+    ) : ConversationTimelineItem {
+        override val key: String = "conversation_message_${message.id}"
+        override val contentType: String = "conversation_message"
+    }
+}
+
+private fun List<SystemSms>.toConversationTimeline(): List<ConversationTimelineItem> {
+    if (isEmpty()) return emptyList()
+
+    val items = ArrayList<ConversationTimelineItem>(size + 4)
+    var lastDate: LocalDate? = null
+
+    for (message in this) {
+        val localDate = message.timestamp.atZone(ZoneId.systemDefault()).toLocalDate()
+        if (localDate != lastDate) {
+            items += ConversationTimelineItem.DayDivider(
+                key = "conversation_day_${localDate}",
+                label = localDate.toConversationDayLabel(),
+            )
+            lastDate = localDate
+        }
+        items += ConversationTimelineItem.Message(message)
+    }
+
+    return items
+}
+
+private fun LocalDate.toConversationDayLabel(today: LocalDate = LocalDate.now()): String = when (this) {
+    today -> "Today"
+    today.minusDays(1) -> "Yesterday"
+    else -> CONVERSATION_DAY_FORMATTER.format(this)
+}
+
+private fun Instant.toConversationTime(): String =
+    BUBBLE_TIME_FORMATTER.format(atZone(ZoneId.systemDefault()))
+
+private fun String.toAvatarInitials(): String =
+    trim()
+        .split(" ")
+        .filter(String::isNotBlank)
+        .take(2)
+        .joinToString("") { it.take(1).uppercase() }
+        .ifBlank { take(2).uppercase().ifBlank { "#" } }
+
+private fun String.toConversationCategoryLabel(): String =
+    if (any(Char::isLetter)) "Business SMS" else "Personal SMS"
+
 private val INBOX_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val INBOX_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")
+private val CONVERSATION_DAY_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
+private val BUBBLE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")

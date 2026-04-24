@@ -22,6 +22,8 @@ android {
 }
 
 dependencies {
+    implementation(platform(libs.androidx.compose.bom))
+    compileOnly("androidx.compose.runtime:runtime")
     api(libs.kotlinx.coroutines.core)
     api(libs.kotlinx.collections.immutable)
     testImplementation(libs.junit)

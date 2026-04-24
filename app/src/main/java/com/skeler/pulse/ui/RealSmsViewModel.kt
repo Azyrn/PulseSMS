@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -43,6 +44,8 @@ class RealSmsViewModel(
 
     private val _conversationState = MutableStateFlow(RealConversationState())
     val conversationState: StateFlow<RealConversationState> = _conversationState.asStateFlow()
+    private var conversationJob: Job? = null
+    private var activeConversationAddress: String? = null
 
     init {
         observeInbox()
@@ -57,8 +60,11 @@ class RealSmsViewModel(
     }
 
     fun openConversation(address: String) {
+        if (activeConversationAddress == address && conversationJob?.isActive == true) return
+        activeConversationAddress = address
+        conversationJob?.cancel()
         _conversationState.value = RealConversationState(address = address, loading = true)
-        viewModelScope.launch {
+        conversationJob = viewModelScope.launch {
             smsReader.observeMessages(address).collectLatest { messages ->
                 _conversationState.value = RealConversationState(
                     address = address,
@@ -78,5 +84,10 @@ class RealSmsViewModel(
                 // Send failed — will be visible as message not appearing
             }
         }
+    }
+
+    override fun onCleared() {
+        conversationJob?.cancel()
+        super.onCleared()
     }
 }
