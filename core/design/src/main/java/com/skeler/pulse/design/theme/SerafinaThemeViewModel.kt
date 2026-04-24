@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 data class SerafinaThemeState(
     val dynamicColorEnabled: Boolean = true,
     val selectedPalette: SerafinaPalette = SerafinaPalette.LavenderVolt,
+    val themeMode: SerafinaThemeMode = SerafinaThemeMode.System,
+    val blackThemeEnabled: Boolean = false,
     val reduceMotion: Boolean = false,
 )
 
@@ -29,11 +31,15 @@ class SerafinaThemeViewModel(application: Application) : AndroidViewModel(applic
     val state: StateFlow<SerafinaThemeState> = combine(
         prefs.dynamicColorEnabled,
         prefs.selectedPalette,
+        prefs.themeMode,
+        prefs.blackThemeEnabled,
         prefs.reduceMotion,
-    ) { dynamicColor, palette, reduceMotion ->
+    ) { dynamicColor, palette, themeMode, blackThemeEnabled, reduceMotion ->
         SerafinaThemeState(
             dynamicColorEnabled = dynamicColor,
             selectedPalette = palette,
+            themeMode = themeMode,
+            blackThemeEnabled = blackThemeEnabled,
             reduceMotion = reduceMotion,
         )
     }.stateIn(
@@ -51,6 +57,18 @@ class SerafinaThemeViewModel(application: Application) : AndroidViewModel(applic
     fun selectPalette(palette: SerafinaPalette) {
         viewModelScope.launch {
             prefs.setSelectedPalette(palette)
+        }
+    }
+
+    fun selectThemeMode(themeMode: SerafinaThemeMode) {
+        viewModelScope.launch {
+            prefs.setThemeMode(themeMode)
+        }
+    }
+
+    fun setBlackThemeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            prefs.setBlackThemeEnabled(enabled)
         }
     }
 

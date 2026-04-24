@@ -23,6 +23,12 @@ val PulseSandDark = Color(0xFF17130E)
 val PulseCopperDark = Color(0xFFFFB780)
 val PulseCopperContainerDark = Color(0xFF6F3F13)
 
+val PureBlackBackground = Color(0xFF000000)
+val PureBlackContainerLow = Color(0xFF101013)
+val PureBlackContainer = Color(0xFF17171B)
+val PureBlackContainerHigh = Color(0xFF1E1E23)
+val PureBlackContainerHighest = Color(0xFF28282E)
+
 // ═══════════════════════════════════════════════════════════
 // Serafina Design System — Color Tokens
 // ═══════════════════════════════════════════════════════════

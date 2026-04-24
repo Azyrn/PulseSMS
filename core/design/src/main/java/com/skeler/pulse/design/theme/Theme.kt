@@ -16,6 +16,12 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import com.materialkolor.rememberDynamicColorScheme
 
+enum class SerafinaThemeMode(val label: String) {
+    System("System default"),
+    Light("Light"),
+    Dark("Dark"),
+}
+
 // ═══════════════════════════════════════════════════════════
 // Accessibility — Reduced Motion
 // ═══════════════════════════════════════════════════════════
@@ -50,10 +56,17 @@ fun SerafinaAppTheme(
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val resolvedDarkTheme = when (themeState.themeMode) {
+        SerafinaThemeMode.System -> darkTheme
+        SerafinaThemeMode.Light -> false
+        SerafinaThemeMode.Dark -> true
+    }
+
     val colorScheme = resolveColorScheme(
-        darkTheme = darkTheme,
+        darkTheme = resolvedDarkTheme,
         dynamicColorEnabled = themeState.dynamicColorEnabled,
         palette = themeState.selectedPalette,
+        pureBlackEnabled = themeState.blackThemeEnabled,
     )
 
     val motionScheme = if (reduceMotion) {
@@ -80,24 +93,36 @@ private fun resolveColorScheme(
     darkTheme: Boolean,
     dynamicColorEnabled: Boolean,
     palette: SerafinaPalette,
+    pureBlackEnabled: Boolean,
 ): ColorScheme {
     val context = LocalContext.current
-
-    // Tier 1: wallpaper-derived dynamic color on API 31+
-    if (dynamicColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        return if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val baseScheme = when {
+        dynamicColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        !dynamicColorEnabled ->
+            rememberDynamicColorScheme(
+                seedColor = palette.seedColor,
+                isDark = darkTheme,
+            )
+        else ->
+            if (darkTheme) SerafinaDarkColorScheme else SerafinaLightColorScheme
     }
 
-    // Tier 2: seed-based dynamic palette via MaterialKolor
-    if (!dynamicColorEnabled) {
-        return rememberDynamicColorScheme(
-            seedColor = palette.seedColor,
-            isDark = darkTheme,
-        )
+    if (!darkTheme || !pureBlackEnabled) {
+        return baseScheme
     }
 
-    // Tier 3: static brand fallback (API < 31 with dynamicColor requested)
-    return if (darkTheme) SerafinaDarkColorScheme else SerafinaLightColorScheme
+    return baseScheme.copy(
+        background = PureBlackBackground,
+        surface = PureBlackBackground,
+        surfaceDim = PureBlackBackground,
+        surfaceBright = PureBlackContainerHigh,
+        surfaceContainerLowest = PureBlackBackground,
+        surfaceContainerLow = PureBlackContainerLow,
+        surfaceContainer = PureBlackContainer,
+        surfaceContainerHigh = PureBlackContainerHigh,
+        surfaceContainerHighest = PureBlackContainerHighest,
+    )
 }
 
 // ── Legacy alias ──

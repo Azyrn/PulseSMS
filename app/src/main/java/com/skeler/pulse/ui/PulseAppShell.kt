@@ -3,6 +3,8 @@
 package com.skeler.pulse.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,8 +19,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,12 +32,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -45,6 +53,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.Contrast
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
@@ -65,8 +75,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -83,6 +91,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -92,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.theme.SerafinaPalette
+import com.skeler.pulse.design.theme.SerafinaThemeMode
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.design.util.elasticOverscroll
 import com.skeler.pulse.design.util.isNearListEnd
@@ -113,6 +124,12 @@ private enum class PulseScreen { Inbox, Conversation, Settings }
 private enum class InboxFilter(val label: String) {
     All("All"), Personal("Personal"), Business("Business"), OTP("OTP"),
 }
+
+private data class SettingsChoiceOption(
+    val id: String,
+    val label: String,
+    val accentColor: Color? = null,
+)
 
 @Composable
 fun PulseAppShell(
@@ -636,112 +653,257 @@ private fun ConversationComposer(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reducedMotion = rememberReducedMotionEnabled()
     val canSend by remember(draft) {
         derivedStateOf { draft.isNotBlank() }
     }
+    val fieldInteractionSource = remember { MutableInteractionSource() }
+    val isFocused by fieldInteractionSource.collectIsFocusedAsState()
+    val sendInteractionSource = remember { MutableInteractionSource() }
+    val isSendPressed by sendInteractionSource.collectIsPressedAsState()
+    val isActivated by remember(draft, isFocused) {
+        derivedStateOf { draft.isNotBlank() || isFocused }
+    }
+    val quickDuration = if (reducedMotion) 0 else 180
+    val exitDuration = if (reducedMotion) 0 else 120
+    val containerOffsetY by animateFloatAsState(
+        targetValue = if (isFocused) -3f else 0f,
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_composer_offset",
+    )
+    val accentHeight by animateDpAsState(
+        targetValue = if (isFocused) 30.dp else 18.dp,
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_composer_accent_height",
+    )
+    val outerBorderColor by animateColorAsState(
+        targetValue = if (isFocused) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+        },
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_composer_border",
+    )
+    val fieldBorderColor by animateColorAsState(
+        targetValue = if (isFocused) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
+        },
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_field_border",
+    )
+    val placeholderAlpha by animateFloatAsState(
+        targetValue = if (draft.isEmpty()) 1f else 0f,
+        animationSpec = tween(durationMillis = exitDuration),
+        label = "conversation_placeholder_alpha",
+    )
+    val labelAlpha by animateFloatAsState(
+        targetValue = if (isActivated) 1f else 0f,
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_label_alpha",
+    )
+    val labelTranslationY by animateFloatAsState(
+        targetValue = if (isActivated) 0f else 8f,
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_label_translation",
+    )
     val sendWidth by animateDpAsState(
-        targetValue = if (canSend) 104.dp else 56.dp,
+        targetValue = if (canSend) 112.dp else 58.dp,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = if (reducedMotion) Spring.StiffnessHigh else Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
         ),
         label = "conversation_send_width",
     )
     val sendScale by animateFloatAsState(
-        targetValue = if (canSend) 1f else 0.94f,
-        animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
-            dampingRatio = Spring.DampingRatioNoBouncy,
-        ),
+        targetValue = when {
+            isSendPressed && canSend -> 0.96f
+            canSend -> 1f
+            else -> 0.94f
+        },
+        animationSpec = tween(durationMillis = quickDuration),
         label = "conversation_send_scale",
     )
+    val sendContainerColor by animateColorAsState(
+        targetValue = if (canSend) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_send_container",
+    )
+    val sendContentColor by animateColorAsState(
+        targetValue = if (canSend) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_send_content",
+    )
+    val sendIconOffsetX by animateFloatAsState(
+        targetValue = if (canSend) 0f else 6f,
+        animationSpec = tween(durationMillis = quickDuration),
+        label = "conversation_send_icon_offset",
+    )
+    val composerShape = RoundedCornerShape(30.dp)
+    val fieldShape = RoundedCornerShape(26.dp)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .imePadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(30.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .graphicsLayer { translationY = containerOffsetY }
+            .border(width = 1.dp, color = outerBorderColor, shape = composerShape),
+        shape = composerShape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 2.dp,
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 4.dp),
-                textStyle = MaterialTheme.typography.bodyLarge,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Send,
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = if (canSend) 0.10f else 0.04f),
+                        ),
+                    ),
                 ),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (canSend) {
-                            onSend()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 2.dp)
+                        .size(width = 4.dp, height = accentHeight)
+                        .clip(CircleShape)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.90f),
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.72f),
+                                ),
+                            ),
+                        ),
+                )
+
+                BasicTextField(
+                    value = draft,
+                    onValueChange = onDraftChange,
+                    modifier = Modifier.weight(1f),
+                    interactionSource = fieldInteractionSource,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Send,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (canSend) {
+                                onSend()
+                            }
+                        },
+                    ),
+                    maxLines = 5,
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(fieldShape)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.22f))
+                                .border(width = 1.dp, color = fieldBorderColor, shape = fieldShape)
+                                .heightIn(min = 58.dp)
+                                .padding(horizontal = 18.dp, vertical = 14.dp),
+                        ) {
+                            Text(
+                                text = "Message",
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = labelAlpha
+                                    translationY = labelTranslationY
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = if (isActivated) 16.dp else 0.dp),
+                            ) {
+                                if (draft.isEmpty()) {
+                                    Text(
+                                        text = "Write a message",
+                                        modifier = Modifier.graphicsLayer { alpha = placeholderAlpha },
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                }
+                                innerTextField()
+                            }
                         }
                     },
-                ),
-                placeholder = {
-                    Text(
-                        text = "Write a message",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                maxLines = 5,
-                shape = RoundedCornerShape(24.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    focusedIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    disabledIndicatorColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            )
+                )
 
-            Box(
-                modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = sendScale
-                        scaleY = sendScale
-                    }
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(
-                        color = if (canSend) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    )
-                    .clickable(enabled = canSend, onClick = onSend)
-                    .padding(horizontal = 14.dp, vertical = 14.dp)
-                    .width(sendWidth),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "Send message",
-                        tint = if (canSend) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (canSend) {
-                        Text(
-                            text = "Send",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = sendScale
+                            scaleY = sendScale
+                        }
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(sendContainerColor)
+                        .clickable(
+                            interactionSource = sendInteractionSource,
+                            enabled = canSend,
+                            onClick = onSend,
                         )
+                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .width(sendWidth),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnimatedContent(
+                        targetState = canSend,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(durationMillis = quickDuration)) togetherWith
+                                fadeOut(animationSpec = tween(durationMillis = exitDuration))
+                        },
+                        label = "conversation_send_content",
+                    ) { isEnabled ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = "Send message",
+                                modifier = Modifier.graphicsLayer { translationX = sendIconOffsetX },
+                                tint = sendContentColor,
+                            )
+                            if (isEnabled) {
+                                Text(
+                                    text = "Send",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = sendContentColor,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -793,8 +955,37 @@ private fun SettingsScreen(
     val themeState by themeViewModel.state.collectAsState()
     val reducedMotion = rememberReducedMotionEnabled()
     val settingsFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
-    val paletteListState = rememberLazyListState()
-    val paletteFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
+    val appearanceOptionState = rememberLazyListState()
+    val appearanceOptionFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
+    val colorSchemeOptions = remember {
+        buildList {
+            add(SettingsChoiceOption(id = "dynamic", label = "Dynamic"))
+            addAll(
+                SerafinaPalette.entries.map { palette ->
+                    SettingsChoiceOption(
+                        id = palette.name,
+                        label = palette.label,
+                        accentColor = palette.seedColor,
+                    )
+                },
+            )
+        }
+    }
+    val themeOptions = remember {
+        SerafinaThemeMode.entries.map { mode ->
+            SettingsChoiceOption(id = mode.name, label = mode.label)
+        }
+    }
+    val selectedColorSchemeId = if (themeState.dynamicColorEnabled) {
+        "dynamic"
+    } else {
+        themeState.selectedPalette.name
+    }
+    val colorSchemeLabel = if (themeState.dynamicColorEnabled) {
+        "Dynamic"
+    } else {
+        themeState.selectedPalette.label
+    }
 
     Scaffold(
         topBar = {
@@ -829,44 +1020,33 @@ private fun SettingsScreen(
             }
             item(key = "appearance_header") { SettingsSectionHeader("Appearance") }
             item(key = "appearance_card") {
-                SettingsGroupCard {
-                    SettingsToggleRow(icon = Icons.Outlined.Palette, label = "Dynamic color", checked = themeState.dynamicColorEnabled, onCheckedChange = { themeViewModel.toggleDynamicColor() })
-                    SettingsGroupDivider()
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text("Color palette", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.height(10.dp))
-                        LazyRow(
-                            state = paletteListState,
-                            flingBehavior = paletteFlingBehavior,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.elasticOverscroll(
-                                enabled = !reducedMotion,
-                                state = paletteListState,
-                                orientation = Orientation.Horizontal,
-                            ),
-                        ) {
-                            items(
-                                count = SerafinaPalette.entries.size,
-                                key = { index -> "palette_${SerafinaPalette.entries[index].name}" },
-                                contentType = { "palette_chip" },
-                            ) { index ->
-                                val palette = SerafinaPalette.entries[index]
-                                val isSelected = themeState.selectedPalette == palette
-                                Column(
-                                    modifier = motionAnimateItemModifier(reducedMotion)
-                                        .then(rememberEntranceModifier(palette.name, reducedMotion)),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(palette.seedColor)
-                                        .then(if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
-                                        .clickable { themeViewModel.selectPalette(palette) })
-                                    Text(palette.label, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                SettingsAppearanceCard(
+                    colorSchemeLabel = colorSchemeLabel,
+                    selectedColorSchemeId = selectedColorSchemeId,
+                    colorSchemeOptions = colorSchemeOptions,
+                    appearanceOptionState = appearanceOptionState,
+                    appearanceOptionFlingBehavior = appearanceOptionFlingBehavior,
+                    reducedMotion = reducedMotion,
+                    themeMode = themeState.themeMode,
+                    themeOptions = themeOptions,
+                    blackThemeEnabled = themeState.blackThemeEnabled,
+                    onSelectColorScheme = { optionId ->
+                        if (optionId == "dynamic") {
+                            if (!themeState.dynamicColorEnabled) {
+                                themeViewModel.toggleDynamicColor()
                             }
+                        } else {
+                            if (themeState.dynamicColorEnabled) {
+                                themeViewModel.toggleDynamicColor()
+                            }
+                            SerafinaPalette.entries.firstOrNull { it.name == optionId }?.let(themeViewModel::selectPalette)
                         }
-                    }
-                }
+                    },
+                    onSelectThemeMode = { optionId ->
+                        SerafinaThemeMode.entries.firstOrNull { it.name == optionId }?.let(themeViewModel::selectThemeMode)
+                    },
+                    onToggleBlackTheme = { themeViewModel.setBlackThemeEnabled(!themeState.blackThemeEnabled) },
+                )
             }
             item(key = "bottom_spacer") { Spacer(Modifier.height(32.dp)) }
         }
@@ -907,16 +1087,295 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String? = nu
 }
 
 @Composable
-private fun SettingsToggleRow(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
+private fun SettingsAppearanceCard(
+    colorSchemeLabel: String,
+    selectedColorSchemeId: String,
+    colorSchemeOptions: List<SettingsChoiceOption>,
+    appearanceOptionState: LazyListState,
+    appearanceOptionFlingBehavior: androidx.compose.foundation.gestures.FlingBehavior,
+    reducedMotion: Boolean,
+    themeMode: SerafinaThemeMode,
+    themeOptions: List<SettingsChoiceOption>,
+    blackThemeEnabled: Boolean,
+    onSelectColorScheme: (String) -> Unit,
+    onSelectThemeMode: (String) -> Unit,
+    onToggleBlackTheme: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(30.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(
+            modifier = Modifier.background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        MaterialTheme.colorScheme.surfaceContainerLow,
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.06f),
+                    ),
+                ),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SettingsExpressiveRow(
+                    icon = Icons.Outlined.Palette,
+                    title = "Color scheme",
+                    subtitle = colorSchemeLabel,
+                ) {
+                    SettingsChoiceRail(
+                        options = colorSchemeOptions,
+                        selectedId = selectedColorSchemeId,
+                        listState = appearanceOptionState,
+                        flingBehavior = appearanceOptionFlingBehavior,
+                        reducedMotion = reducedMotion,
+                        onSelect = onSelectColorScheme,
+                    )
+                }
+                SettingsExpressiveRow(
+                    icon = Icons.Outlined.Contrast,
+                    title = "Theme",
+                    subtitle = themeMode.label,
+                ) {
+                    SettingsChoiceRail(
+                        options = themeOptions,
+                        selectedId = themeMode.name,
+                        reducedMotion = reducedMotion,
+                        onSelect = onSelectThemeMode,
+                    )
+                }
+                SettingsExpressiveToggleRow(
+                    icon = Icons.Outlined.DarkMode,
+                    title = "Black theme only",
+                    subtitle = "Use pure black surfaces whenever the app is in dark mode.",
+                    checked = blackThemeEnabled,
+                    onToggle = onToggleBlackTheme,
+                )
+            }
         }
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SettingsExpressiveRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    controls: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+                shape = RoundedCornerShape(24.dp),
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsExpressiveIcon(icon = icon)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        controls()
+    }
+}
+
+@Composable
+private fun SettingsExpressiveToggleRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.24f)
+        },
+        label = "settings_toggle_track",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+                shape = RoundedCornerShape(24.dp),
+            )
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SettingsExpressiveIcon(icon = icon)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                checkedTrackColor = trackColor,
+                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                uncheckedTrackColor = trackColor,
+                uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun SettingsExpressiveIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SettingsChoiceRail(
+    options: List<SettingsChoiceOption>,
+    selectedId: String,
+    reducedMotion: Boolean,
+    onSelect: (String) -> Unit,
+    listState: LazyListState? = null,
+    flingBehavior: androidx.compose.foundation.gestures.FlingBehavior? = null,
+) {
+    val resolvedListState = listState ?: rememberLazyListState()
+    val resolvedFlingBehavior = flingBehavior ?: rememberSnapFlingBehavior(
+        lazyListState = resolvedListState,
+        snapPosition = SnapPosition.Start,
+    )
+
+    LazyRow(
+        state = resolvedListState,
+        flingBehavior = resolvedFlingBehavior,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.elasticOverscroll(
+            enabled = !reducedMotion,
+            state = resolvedListState,
+            orientation = Orientation.Horizontal,
+        ),
+    ) {
+        items(
+            items = options,
+            key = { option -> option.id },
+            contentType = { "settings_choice" },
+        ) { option ->
+            SettingsChoicePill(
+                option = option,
+                selected = option.id == selectedId,
+                reducedMotion = reducedMotion,
+                onClick = { onSelect(option.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsChoicePill(
+    option: SettingsChoiceOption,
+    selected: Boolean,
+    reducedMotion: Boolean,
+    onClick: () -> Unit,
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f)
+        },
+        label = "settings_choice_background",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.68f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+        },
+        label = "settings_choice_border",
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "settings_choice_text",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.985f,
+        animationSpec = if (reducedMotion) tween(0) else spring(stiffness = Spring.StiffnessMediumLow),
+        label = "settings_choice_scale",
+    )
+
+    Row(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(20.dp))
+            .background(backgroundColor)
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        option.accentColor?.let { accentColor ->
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(accentColor),
+            )
+        }
+        Text(
+            text = option.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = textColor,
+        )
     }
 }
 
