@@ -57,6 +57,8 @@ import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Settings
@@ -101,6 +103,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.design.component.SerafinaAvatar
+import com.skeler.pulse.design.component.StatusPill
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
@@ -137,6 +140,7 @@ fun PulseAppShell(
     conversationState: RealConversationState,
     onOpenConversation: (String) -> Unit,
     onSendMessage: (String, String) -> Unit,
+    onToggleImportantMessage: (Long) -> Unit,
     themeViewModel: SerafinaThemeViewModel,
     onRequestDefaultSms: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -189,8 +193,14 @@ fun PulseAppShell(
                     } else {
                         emptyList()
                     },
+                    importantMessageIds = if (conversationState.address == activeAddress) {
+                        conversationState.importantMessageIds
+                    } else {
+                        emptySet()
+                    },
                     onBack = { currentScreen = PulseScreen.Inbox },
                     onSend = { body -> onSendMessage(activeAddress, body) },
+                    onToggleImportantMessage = onToggleImportantMessage,
                 )
                 PulseScreen.Settings -> SettingsScreen(
                     themeViewModel = themeViewModel,
@@ -328,30 +338,55 @@ private fun SmsThreadCard(
     modifier: Modifier = Modifier,
 ) {
     val initials = thread.address.take(2).uppercase()
+    val hasUnread = thread.unreadCount > 0
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(
+            containerColor = if (hasUnread) {
+                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
-            SerafinaAvatar(imageUrl = null, initials = initials, hasUnread = thread.unreadCount > 0, size = 48.dp)
+            SerafinaAvatar(imageUrl = null, initials = initials, hasUnread = hasUnread, size = 48.dp)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = thread.address,
-                    style = if (thread.unreadCount > 0) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    style = if (hasUnread) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     else MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Text(thread.snippet, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    thread.snippet,
+                    style = if (hasUnread) {
+                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                    } else {
+                        MaterialTheme.typography.bodyMedium
+                    },
+                    color = if (hasUnread) MaterialTheme.colorScheme.onSecondaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(thread.timestamp.toInboxTimestamp(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (thread.unreadCount > 0) {
+                Text(
+                    thread.timestamp.toInboxTimestamp(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (hasUnread) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (hasUnread) {
                     Box(
                         modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center,
@@ -368,8 +403,10 @@ private fun SmsThreadCard(
 private fun RealConversationScreen(
     address: String,
     messages: List<SystemSms>,
+    importantMessageIds: Set<Long>,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
+    onToggleImportantMessage: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -379,6 +416,10 @@ private fun RealConversationScreen(
     var previousMessageCount by remember(address) { mutableIntStateOf(0) }
 
     val timelineItems = remember(messages) { messages.toConversationTimeline() }
+    val unreadCount = remember(messages) { messages.count { it.isInbound && !it.read } }
+    val importantCount = remember(messages, importantMessageIds) {
+        messages.count { it.id in importantMessageIds }
+    }
     val isNearEnd by remember(listState) {
         derivedStateOf { listState.isNearListEnd() }
     }
@@ -438,7 +479,11 @@ private fun RealConversationScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = "${address.toConversationCategoryLabel()} · ${messages.size} messages",
+                                text = address.toConversationMetaLabel(
+                                    totalMessages = messages.size,
+                                    unreadCount = unreadCount,
+                                    importantCount = importantCount,
+                                ),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -494,6 +539,8 @@ private fun RealConversationScreen(
                     ConversationOverviewCard(
                         address = address,
                         messageCount = messages.size,
+                        unreadCount = unreadCount,
+                        importantCount = importantCount,
                         latestTimestamp = messages.lastOrNull()?.timestamp,
                         modifier = rememberEntranceModifier("conversation_header_$address", reducedMotion),
                     )
@@ -534,9 +581,26 @@ private fun RealConversationScreen(
                                 }
                             }
 
+                            is ConversationTimelineItem.UnreadDivider -> {
+                                Box(
+                                    modifier = motionAnimateItemModifier(reducedMotion)
+                                        .then(rememberEntranceModifier(item.key, reducedMotion))
+                                        .fillMaxWidth(),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    StatusPill(
+                                        label = item.label,
+                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                }
+                            }
+
                             is ConversationTimelineItem.Message -> {
                                 ConversationMessageBubble(
                                     message = item.message,
+                                    isImportant = item.message.id in importantMessageIds,
+                                    onToggleImportant = { onToggleImportantMessage(item.message.id) },
                                     modifier = motionAnimateItemModifier(reducedMotion)
                                         .then(rememberEntranceModifier(item.key, reducedMotion)),
                                 )
@@ -553,6 +617,8 @@ private fun RealConversationScreen(
 private fun ConversationOverviewCard(
     address: String,
     messageCount: Int,
+    unreadCount: Int,
+    importantCount: Int,
     latestTimestamp: Instant?,
     modifier: Modifier = Modifier,
 ) {
@@ -585,7 +651,11 @@ private fun ConversationOverviewCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${address.toConversationCategoryLabel()} · ${messageCount.coerceAtLeast(0)} total",
+                    text = address.toConversationMetaLabel(
+                        totalMessages = messageCount.coerceAtLeast(0),
+                        unreadCount = unreadCount,
+                        importantCount = importantCount,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -604,9 +674,12 @@ private fun ConversationOverviewCard(
 @Composable
 private fun ConversationMessageBubble(
     message: SystemSms,
+    isImportant: Boolean,
+    onToggleImportant: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isOutbound = message.isOutbound
+    val isUnread = message.isInbound && !message.read
     val bubbleShape = RoundedCornerShape(
         topStart = 24.dp,
         topEnd = 24.dp,
@@ -624,24 +697,67 @@ private fun ConversationMessageBubble(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Surface(
+                modifier = Modifier.then(
+                    if (isUnread && !isOutbound) {
+                        Modifier.border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.42f),
+                            shape = bubbleShape,
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
                 shape = bubbleShape,
                 color = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
+                else if (isUnread) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
                 else MaterialTheme.colorScheme.surfaceContainerLow,
                 tonalElevation = if (isOutbound) 0.dp else 1.dp,
             ) {
                 Text(
                     text = message.body.ifBlank { " " },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                    ),
                     color = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,
                 )
             }
-            Text(
-                text = message.timestamp.toConversationTime(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isUnread) {
+                    StatusPill(
+                        label = "Unread",
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+                if (isImportant) {
+                    StatusPill(
+                        label = "Kept",
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                Text(
+                    text = message.timestamp.toConversationTime(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isUnread) MaterialTheme.colorScheme.tertiary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FilledTonalIconButton(
+                    onClick = onToggleImportant,
+                    modifier = Modifier.size(30.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isImportant) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        contentDescription = if (isImportant) "Remove important marker" else "Keep message marked",
+                    )
+                }
+            }
         }
     }
 }
@@ -1400,6 +1516,13 @@ private sealed interface ConversationTimelineItem {
         override val contentType: String = "conversation_day_divider"
     }
 
+    data class UnreadDivider(
+        val label: String,
+        override val key: String,
+    ) : ConversationTimelineItem {
+        override val contentType: String = "conversation_unread_divider"
+    }
+
     data class Message(
         val message: SystemSms,
     ) : ConversationTimelineItem {
@@ -1413,6 +1536,8 @@ private fun List<SystemSms>.toConversationTimeline(): List<ConversationTimelineI
 
     val items = ArrayList<ConversationTimelineItem>(size + 4)
     var lastDate: LocalDate? = null
+    val unreadMessages = count { it.isInbound && !it.read }
+    val firstUnreadMessageId = firstOrNull { it.isInbound && !it.read }?.id
 
     for (message in this) {
         val localDate = message.timestamp.atZone(ZoneId.systemDefault()).toLocalDate()
@@ -1422,6 +1547,13 @@ private fun List<SystemSms>.toConversationTimeline(): List<ConversationTimelineI
                 label = localDate.toConversationDayLabel(),
             )
             lastDate = localDate
+        }
+        if (message.id == firstUnreadMessageId) {
+            items += ConversationTimelineItem.UnreadDivider(
+                key = "conversation_unread_${message.id}",
+                label = if (unreadMessages == 1) "1 unread message"
+                else "$unreadMessages unread messages",
+            )
         }
         items += ConversationTimelineItem.Message(message)
     }
@@ -1448,6 +1580,20 @@ private fun String.toAvatarInitials(): String =
 
 private fun String.toConversationCategoryLabel(): String =
     if (any(Char::isLetter)) "Business SMS" else "Personal SMS"
+
+private fun String.toConversationMetaLabel(
+    totalMessages: Int,
+    unreadCount: Int,
+    importantCount: Int,
+): String {
+    val parts = buildList {
+        add(toConversationCategoryLabel())
+        add("$totalMessages messages")
+        if (unreadCount > 0) add("$unreadCount unread")
+        if (importantCount > 0) add("$importantCount kept")
+    }
+    return parts.joinToString(" · ")
+}
 
 private val INBOX_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val INBOX_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")

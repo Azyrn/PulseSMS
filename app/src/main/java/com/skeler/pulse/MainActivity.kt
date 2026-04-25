@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     conversationState = conversationState,
                     onOpenConversation = realSmsViewModel::openConversation,
                     onSendMessage = realSmsViewModel::sendMessage,
+                    onToggleImportantMessage = realSmsViewModel::toggleImportantMessage,
                     themeViewModel = themeViewModel,
                     onRequestDefaultSms = { requestDefaultSmsApp() },
                 )

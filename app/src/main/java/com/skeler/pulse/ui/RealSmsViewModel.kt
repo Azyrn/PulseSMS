@@ -3,11 +3,13 @@ package com.skeler.pulse.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skeler.pulse.sms.SmsThread
+import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.SystemSms
 import com.skeler.pulse.sms.SystemSmsReader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -27,6 +29,7 @@ data class RealConversationState(
     val address: String = "",
     val messages: List<SystemSms> = emptyList(),
     val loading: Boolean = true,
+    val importantMessageIds: Set<Long> = emptySet(),
 )
 
 /**
@@ -37,6 +40,7 @@ data class RealConversationState(
  */
 class RealSmsViewModel(
     private val smsReader: SystemSmsReader,
+    private val importantMessagePreferences: ImportantMessagePreferences,
 ) : ViewModel() {
 
     private val _inboxState = MutableStateFlow(RealInboxState())
@@ -65,13 +69,29 @@ class RealSmsViewModel(
         conversationJob?.cancel()
         _conversationState.value = RealConversationState(address = address, loading = true)
         conversationJob = viewModelScope.launch {
-            smsReader.observeMessages(address).collectLatest { messages ->
-                _conversationState.value = RealConversationState(
+            combine(
+                smsReader.observeMessages(address),
+                importantMessagePreferences.importantMessageIds,
+            ) { messages, importantIds ->
+                val visibleImportantIds = messages.asSequence()
+                    .map(SystemSms::id)
+                    .filter(importantIds::contains)
+                    .toSet()
+                RealConversationState(
                     address = address,
                     messages = messages,
                     loading = false,
+                    importantMessageIds = visibleImportantIds,
                 )
+            }.collectLatest { conversationState ->
+                _conversationState.value = conversationState
             }
+        }
+    }
+
+    fun toggleImportantMessage(messageId: Long) {
+        viewModelScope.launch {
+            importantMessagePreferences.toggleImportant(messageId)
         }
     }
 
