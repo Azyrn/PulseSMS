@@ -4,12 +4,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.skeler.pulse.MainActivity
 import com.skeler.pulse.R
+import com.skeler.pulse.contact.displayNameFor
 
 /**
  * Notification helper for incoming SMS messages.
@@ -55,9 +55,10 @@ object SmsNotificationHelper {
         body: String,
         notificationId: Int = sender.hashCode(),
     ) {
-        val launchIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
+        val launchIntent = MainActivity.createLaunchIntent(
+            context = context,
+            conversationAddress = sender,
+        )
         val pendingIntent = PendingIntent.getActivity(
             context, notificationId, launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -65,7 +66,7 @@ object SmsNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(sender)
+            .setContentTitle(displayNameFor(context, sender))
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)

@@ -1,8 +1,16 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 
 package com.skeler.pulse.ui
 
+import com.skeler.pulse.InboxAccessState
+import com.skeler.pulse.PulseLaunchRequest
+import com.skeler.pulse.contact.displayNameFor
+import com.skeler.pulse.shouldHandleLaunchRequest
+import com.skeler.pulse.shouldHandleOpenNewChatRequest
+
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -18,22 +26,27 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,20 +65,35 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.rounded.AddComment
+import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
-import androidx.compose.material.icons.rounded.ArrowBackIosNew
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.MarkunreadMailbox
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -86,6 +114,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -97,12 +126,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.design.component.SerafinaAvatar
+import com.skeler.pulse.design.component.SerafinaProgressIndicator
 import com.skeler.pulse.design.component.StatusPill
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
@@ -121,8 +156,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-private enum class PulseScreen { Inbox, Conversation, Settings }
+private const val DESTINATION_INBOX = "inbox"
+private const val DESTINATION_NEW_CHAT = "new_chat"
+private const val DESTINATION_CONVERSATION = "conversation"
+private const val DESTINATION_SETTINGS = "settings"
 
 private enum class InboxFilter(val label: String) {
     All("All"), Personal("Personal"), Business("Business"), OTP("OTP"),
@@ -136,21 +177,61 @@ private data class SettingsChoiceOption(
 
 @Composable
 fun PulseAppShell(
-    inboxState: RealInboxState,
-    conversationState: RealConversationState,
-    onOpenConversation: (String) -> Unit,
-    onSendMessage: (String, String) -> Unit,
+    smsViewModel: RealSmsViewModel,
+    launchRequest: PulseLaunchRequest? = null,
+    openNewChatRequestKey: Int = 0,
+    accessState: InboxAccessState = InboxAccessState(),
+    onLaunchRequestConsumed: () -> Unit = {},
+    onRequestNewChat: () -> Unit = {},
+    onRequestSmsPermissions: () -> Unit = {},
+    onOpenConversation: (String, Long?) -> Unit,
+    onSendMessage: (String, String, Int?) -> Unit,
     onToggleImportantMessage: (Long) -> Unit,
     themeViewModel: SerafinaThemeViewModel,
     onRequestDefaultSms: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var currentScreen by rememberSaveable { mutableStateOf(PulseScreen.Inbox) }
+    var backStack by rememberSaveable { mutableStateOf(listOf(DESTINATION_INBOX)) }
     var activeAddress by rememberSaveable { mutableStateOf("") }
+    var activeConversationTitle by rememberSaveable { mutableStateOf("") }
+    var activeSubscriptionId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var conversationDraftSeed by rememberSaveable { mutableStateOf("") }
+    var newChatQuery by rememberSaveable { mutableStateOf("") }
+    var lastHandledNewChatRequestKey by rememberSaveable { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val currentScreen = backStack.lastOrNull() ?: DESTINATION_INBOX
     val reducedMotion = rememberReducedMotionEnabled()
     val inboxListState = rememberLazyListState()
     val inboxFilterState = rememberLazyListState()
     val settingsListState = rememberLazyListState()
+    val newChatListState = rememberLazyListState()
+
+    LaunchedEffect(launchRequest, accessState) {
+        if (!shouldHandleLaunchRequest(launchRequest, accessState)) return@LaunchedEffect
+        val request = launchRequest ?: return@LaunchedEffect
+        val requestedAddress = request.conversationAddress
+        if (requestedAddress.isNotBlank()) {
+            activeAddress = requestedAddress
+            activeConversationTitle = request.conversationTitle.ifBlank { displayNameFor(context, requestedAddress) }
+            activeSubscriptionId = null
+            conversationDraftSeed = request.draftBody
+            onOpenConversation(requestedAddress, null)
+            backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
+        }
+        onLaunchRequestConsumed()
+    }
+
+    LaunchedEffect(openNewChatRequestKey, lastHandledNewChatRequestKey, accessState) {
+        if (!shouldHandleOpenNewChatRequest(openNewChatRequestKey, lastHandledNewChatRequestKey, accessState)) {
+            return@LaunchedEffect
+        }
+        backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT)
+        lastHandledNewChatRequestKey = openNewChatRequestKey
+    }
+
+    BackHandler(enabled = currentScreen != DESTINATION_INBOX) {
+        backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         AnimatedContent(
@@ -161,12 +242,24 @@ fun PulseAppShell(
                 } else {
                 val dur = 250
                 when {
-                    targetState == PulseScreen.Conversation && initialState == PulseScreen.Inbox ->
-                        (slideInHorizontally(tween(dur)) { it / 4 } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { -it / 4 } + fadeOut(tween(dur)))
-                    targetState == PulseScreen.Inbox && initialState == PulseScreen.Conversation ->
-                        (slideInHorizontally(tween(dur)) { -it / 4 } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { it / 4 } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_CONVERSATION && initialState == DESTINATION_INBOX ->
+                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_INBOX && initialState == DESTINATION_CONVERSATION ->
+                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_NEW_CHAT && initialState == DESTINATION_INBOX ->
+                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_INBOX && initialState == DESTINATION_NEW_CHAT ->
+                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_CONVERSATION && initialState == DESTINATION_NEW_CHAT ->
+                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
+                    targetState == DESTINATION_NEW_CHAT && initialState == DESTINATION_CONVERSATION ->
+                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
+                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
                     else -> fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 }
                 }
@@ -174,38 +267,96 @@ fun PulseAppShell(
             label = "screen_transition",
         ) { screen ->
             when (screen) {
-                PulseScreen.Inbox -> RealInboxScreen(
-                    threads = inboxState.threads,
-                    loading = inboxState.loading,
-                    listState = inboxListState,
-                    filterState = inboxFilterState,
-                    onOpenConversation = { address ->
-                        activeAddress = address
-                        onOpenConversation(address)
-                        currentScreen = PulseScreen.Conversation
-                    },
-                    onOpenSettings = { currentScreen = PulseScreen.Settings },
-                )
-                PulseScreen.Conversation -> RealConversationScreen(
-                    address = activeAddress,
-                    messages = if (conversationState.address == activeAddress) {
-                        conversationState.messages
+                DESTINATION_INBOX -> {
+                    val inboxState by smsViewModel.inboxState.collectAsState()
+                    if (!accessState.isReady) {
+                        InboxOnboardingScreen(
+                            accessState = accessState,
+                            hasPendingLaunchRequest = launchRequest != null,
+                            onRequestSmsPermissions = onRequestSmsPermissions,
+                            onRequestDefaultSms = onRequestDefaultSms,
+                        )
                     } else {
-                        emptyList()
-                    },
-                    importantMessageIds = if (conversationState.address == activeAddress) {
-                        conversationState.importantMessageIds
-                    } else {
-                        emptySet()
-                    },
-                    onBack = { currentScreen = PulseScreen.Inbox },
-                    onSend = { body -> onSendMessage(activeAddress, body) },
-                    onToggleImportantMessage = onToggleImportantMessage,
-                )
-                PulseScreen.Settings -> SettingsScreen(
+                        RealInboxScreen(
+                            state = inboxState,
+                            listState = inboxListState,
+                            filterState = inboxFilterState,
+                            onOpenConversation = { address, threadId ->
+                                activeAddress = address
+                                activeConversationTitle = displayNameFor(context, address)
+                                activeSubscriptionId = null
+                                conversationDraftSeed = ""
+                                onOpenConversation(address, threadId)
+                                backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
+                            },
+                            onOpenSettings = {
+                                backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS)
+                            },
+                            onOpenNewChat = onRequestNewChat,
+                            onRefreshInbox = smsViewModel::refreshInbox,
+                        )
+                    }
+                }
+
+                DESTINATION_NEW_CHAT -> {
+                    val inboxState by smsViewModel.inboxState.collectAsState()
+                    NewChatScreen(
+                        threads = inboxState.threads,
+                        listState = newChatListState,
+                        query = newChatQuery,
+                        onQueryChange = { newChatQuery = it },
+                        onBack = {
+                            backStack = listOf(DESTINATION_INBOX)
+                        },
+                        onStartConversation = { recipient, subscriptionId ->
+                            activeAddress = recipient.address
+                            activeConversationTitle = displayNameFor(context, recipient.address)
+                            activeSubscriptionId = subscriptionId
+                            conversationDraftSeed = ""
+                            onOpenConversation(recipient.address, null)
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT, DESTINATION_CONVERSATION)
+                        },
+                    )
+                }
+
+                DESTINATION_CONVERSATION -> {
+                    val conversationState by smsViewModel.conversationState.collectAsState()
+                    val sendState by smsViewModel.sendState.collectAsState()
+                    RealConversationScreen(
+                        title = activeConversationTitle.ifBlank { displayNameFor(context, activeAddress) },
+                        address = activeAddress,
+                        initialDraft = conversationDraftSeed,
+                        messages = if (conversationState.address == activeAddress) {
+                            conversationState.messages
+                        } else {
+                            emptyList()
+                        },
+                        loading = conversationState.address == activeAddress && conversationState.loading,
+                        importantMessageIds = if (conversationState.address == activeAddress) {
+                            conversationState.importantMessageIds
+                        } else {
+                            emptySet()
+                        },
+                        sendState = sendState,
+                        onBack = {
+                            backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                        },
+                        onSend = { body ->
+                            onSendMessage(activeAddress, body, activeSubscriptionId)
+                        },
+                        onRetrySend = smsViewModel::retrySend,
+                        onClearSendState = smsViewModel::clearSendState,
+                        onDraftConsumed = { conversationDraftSeed = "" },
+                        onToggleImportantMessage = onToggleImportantMessage,
+                    )
+                }
+
+                DESTINATION_SETTINGS -> SettingsScreen(
                     themeViewModel = themeViewModel,
                     listState = settingsListState,
-                    onBack = { currentScreen = PulseScreen.Inbox },
+                    onBack = {
+                        backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                    },
                     onRequestDefaultSms = onRequestDefaultSms,
                 )
             }
@@ -219,27 +370,28 @@ fun PulseAppShell(
 
 @Composable
 private fun RealInboxScreen(
-    threads: List<SmsThread>,
-    loading: Boolean,
+    state: RealInboxState,
     listState: LazyListState,
     filterState: LazyListState,
-    onOpenConversation: (String) -> Unit,
+    onOpenConversation: (String, Long?) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNewChat: () -> Unit,
+    onRefreshInbox: () -> Unit,
 ) {
     var selectedFilter by remember { mutableIntStateOf(0) }
     val reducedMotion = rememberReducedMotionEnabled()
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     val filterFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
 
-    val filteredThreads = remember(threads, selectedFilter) {
+    val filteredThreads = remember(state.threads, selectedFilter) {
         when (InboxFilter.entries[selectedFilter]) {
-            InboxFilter.All -> threads
-            InboxFilter.OTP -> threads.filter { t ->
+            InboxFilter.All -> state.threads
+            InboxFilter.OTP -> state.threads.filter { t ->
                 t.snippet.contains("code", true) || t.snippet.contains("OTP", true) ||
                     t.snippet.contains("verification", true) || t.snippet.contains("verify", true)
             }
-            InboxFilter.Business -> threads.filter { t -> t.address.any { it.isLetter() } }
-            InboxFilter.Personal -> threads.filter { t -> t.address.all { it.isDigit() || it == '+' || it == ' ' } }
+            InboxFilter.Business -> state.threads.filter { t -> t.address.any { it.isLetter() } }
+            InboxFilter.Personal -> state.threads.filter { t -> t.address.all { it.isDigit() || it == '+' || it == ' ' } }
         }
     }
 
@@ -255,6 +407,30 @@ private fun RealInboxScreen(
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
                     }
+                },
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                modifier = Modifier.semantics {
+                    role = Role.Button
+                    contentDescription = "New chat"
+                },
+                onClick = onOpenNewChat,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = RoundedCornerShape(24.dp),
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.AddComment,
+                        contentDescription = null,
+                    )
+                },
+                text = {
+                    Text(
+                        text = "New chat",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 },
             )
         },
@@ -308,23 +484,349 @@ private fun RealInboxScreen(
                     }
                 }
             }
-            if (loading) {
-                item { Text("Loading messages…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            } else if (filteredThreads.isEmpty()) {
-                item { Text("No messages", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            } else {
-                items(
-                    items = filteredThreads,
-                    key = { it.address },
-                    contentType = { "inbox_thread" },
-                ) { thread ->
-                    val itemModifier = motionAnimateItemModifier(reducedMotion)
-                        .then(rememberEntranceModifier(thread.address, reducedMotion))
-                    SmsThreadCard(
-                        thread = thread,
-                        onClick = { onOpenConversation(thread.address) },
-                        modifier = itemModifier,
+            when {
+                state.loading -> {
+                    item(key = "inbox_loading") {
+                        InboxLoadingStateCard(onRefreshInbox = onRefreshInbox)
+                    }
+                }
+                state.errorMessage != null -> {
+                    item(key = "inbox_error") {
+                        InboxErrorStateCard(
+                            message = state.errorMessage,
+                            onRetry = onRefreshInbox,
+                        )
+                    }
+                }
+                state.threads.isEmpty() -> {
+                    item(key = "inbox_empty") {
+                        InboxEmptyStateCard(onOpenNewChat = onOpenNewChat)
+                    }
+                }
+                filteredThreads.isEmpty() -> {
+                    item(key = "inbox_filtered_empty") {
+                        InboxFilteredEmptyStateCard(
+                            activeFilter = InboxFilter.entries[selectedFilter].label,
+                            onShowAll = { selectedFilter = InboxFilter.All.ordinal },
+                        )
+                    }
+                }
+                else -> {
+                    items(
+                        items = filteredThreads,
+                        key = { it.address },
+                        contentType = { "inbox_thread" },
+                    ) { thread ->
+                        val itemModifier = motionAnimateItemModifier(reducedMotion)
+                            .then(rememberEntranceModifier(thread.address, reducedMotion))
+                        SmsThreadCard(
+                            thread = thread,
+                            onClick = { onOpenConversation(thread.address, thread.threadId) },
+                            modifier = itemModifier,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxOnboardingScreen(
+    accessState: InboxAccessState,
+    hasPendingLaunchRequest: Boolean,
+    onRequestSmsPermissions: () -> Unit,
+    onRequestDefaultSms: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val title: String
+    val body: String
+    val ctaLabel: String
+    val ctaIcon: ImageVector
+    val onCtaClick: () -> Unit
+    val statusLabel: String
+
+    if (accessState.permissionDenied) {
+        title = "Unlock your inbox"
+        body = "Pulse needs SMS access before it can read threads, open drafts, and route you into the right conversation."
+        ctaLabel = "Grant permissions"
+        ctaIcon = Icons.Rounded.Key
+        onCtaClick = onRequestSmsPermissions
+        statusLabel = "SMS permission required"
+    } else {
+        title = "Make Pulse your default"
+        body = "Set Pulse as your default SMS app so Android can hand off compose requests, send reliably, and keep your inbox in one place."
+        ctaLabel = "Set as default"
+        ctaIcon = Icons.Rounded.MarkunreadMailbox
+        onCtaClick = onRequestDefaultSms
+        statusLabel = "Default SMS app required"
+    }
+
+    Scaffold(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { innerPadding ->
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                        ),
+                    ),
+                ),
+        ) {
+            val cardWidth = if (maxWidth > 720.dp) 520.dp else maxWidth - 32.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Surface(
+                    modifier = Modifier.widthIn(max = cardWidth),
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    tonalElevation = 0.dp,
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        StatusPill(
+                            label = statusLabel,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            tonalElevation = 0.dp,
+                            modifier = Modifier.size(72.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = ctaIcon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                            Text(
+                                text = body,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (hasPendingLaunchRequest) {
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.68f),
+                                tonalElevation = 0.dp,
+                            ) {
+                                Text(
+                                    text = "A requested conversation is waiting. Pulse will open it as soon as setup is complete.",
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = onCtaClick,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = ctaIcon,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(ctaLabel)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxLoadingStateCard(
+    onRefreshInbox: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InboxStateCard(
+        title = "Loading your threads",
+        body = "Pulse is syncing with Android so your latest messages appear in one place.",
+        statusLabel = "Inbox refresh",
+        icon = Icons.Rounded.HourglassTop,
+        actionLabel = "Refresh",
+        onAction = onRefreshInbox,
+        modifier = modifier,
+    ) {
+        SerafinaProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun InboxEmptyStateCard(
+    onOpenNewChat: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InboxStateCard(
+        title = "Your inbox is ready",
+        body = "There are no SMS threads here yet. Start a new conversation and Pulse will keep the lane warm for you.",
+        statusLabel = "Zero threads",
+        icon = Icons.Rounded.AddComment,
+        actionLabel = "New chat",
+        onAction = onOpenNewChat,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun InboxFilteredEmptyStateCard(
+    activeFilter: String,
+    onShowAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InboxStateCard(
+        title = "Nothing in $activeFilter",
+        body = "This filter is clear right now. Switch back to the full inbox to see every thread again.",
+        statusLabel = "$activeFilter filter",
+        icon = Icons.Rounded.Search,
+        actionLabel = "Show all",
+        onAction = onShowAll,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun InboxErrorStateCard(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InboxStateCard(
+        title = "Inbox unavailable",
+        body = message,
+        statusLabel = "Read problem",
+        icon = Icons.Rounded.ErrorOutline,
+        actionLabel = "Try again",
+        onAction = onRetry,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun InboxStateCard(
+    title: String,
+    body: String,
+    statusLabel: String,
+    icon: ImageVector,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    supportingContent: @Composable (() -> Unit)? = null,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Box(
+            modifier = Modifier.background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        accentColor.copy(alpha = 0.10f),
+                        MaterialTheme.colorScheme.surfaceContainerLow,
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
+                    ),
+                ),
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                        tonalElevation = 0.dp,
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = accentColor,
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        StatusPill(
+                            label = statusLabel,
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                }
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                supportingContent?.invoke()
+                FilledTonalButton(onClick = onAction) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Text(actionLabel)
                 }
             }
         }
@@ -337,20 +839,51 @@ private fun SmsThreadCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val initials = thread.address.take(2).uppercase()
+    val context = LocalContext.current
+    val displayName = remember(thread.address) { displayNameFor(context, thread.address) }
+    val initials = displayName.toAvatarInitials()
     val hasUnread = thread.unreadCount > 0
-    Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (hasUnread) {
-                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
+    val containerColor by animateColorAsState(
+        targetValue = if (hasUnread) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        label = "thread_card_container",
+    )
+    val outlineColor by animateColorAsState(
+        targetValue = if (hasUnread) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
+        },
+        label = "thread_card_outline",
+    )
+    val semanticsLabel = remember(displayName, thread.unreadCount) {
+        buildString {
+            append("Open thread ")
+            append(displayName)
+            if (thread.unreadCount > 0) {
+                append(", ")
+                append(thread.unreadCount)
+                append(" unread")
             }
-        ),
+        }
+    }
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = semanticsLabel
+            }
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = SolidColor(outlineColor),
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -361,13 +894,13 @@ private fun SmsThreadCard(
             SerafinaAvatar(imageUrl = null, initials = initials, hasUnread = hasUnread, size = 48.dp)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = thread.address,
+                    text = displayName,
                     style = if (hasUnread) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     else MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    thread.snippet,
+                    text = thread.snippet,
                     style = if (hasUnread) {
                         MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                     } else {
@@ -381,10 +914,9 @@ private fun SmsThreadCard(
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    thread.timestamp.toInboxTimestamp(),
+                    text = thread.timestamp.toInboxTimestamp(),
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (hasUnread) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (hasUnread) {
                     Box(
@@ -400,12 +932,140 @@ private fun SmsThreadCard(
 }
 
 @Composable
+private fun NewChatScreen(
+    threads: List<SmsThread>,
+    listState: LazyListState,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onBack: () -> Unit,
+    onStartConversation: (NewChatRecipient, Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val fallbackSimOption = remember {
+        NewChatSimOption(
+            key = "sim_default",
+            subscriptionId = null,
+            slotLabel = "SIM 1",
+            carrierLabel = "Default line",
+        )
+    }
+    val directoryRecipients by produceState<List<NewChatRecipient>?>(
+        initialValue = null,
+        key1 = context,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            loadNewChatRecipients(context)
+        }
+    }
+    val recipients = remember(directoryRecipients, threads) {
+        directoryRecipients?.mergeThreadRecipients(threads)
+    }
+    val simOptions by produceState(
+        initialValue = emptyList<NewChatSimOption>(),
+        key1 = context,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            loadSimOptions(context)
+        }
+    }
+    var selectedSimKey by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(simOptions) {
+        if (simOptions.isNotEmpty() && simOptions.none { it.key == selectedSimKey }) {
+            selectedSimKey = simOptions.first().key
+        }
+    }
+
+    val availableSimOptions = remember(simOptions, fallbackSimOption) {
+        if (simOptions.isEmpty()) listOf(fallbackSimOption) else simOptions
+    }
+    val selectedSim = remember(availableSimOptions, selectedSimKey) {
+        availableSimOptions.firstOrNull { it.key == selectedSimKey } ?: availableSimOptions.firstOrNull()
+    }
+    val normalizedQuery = remember(query) { query.trim() }
+    val filteredRecipients = remember(normalizedQuery, recipients) {
+        val availableRecipients = recipients.orEmpty()
+        if (normalizedQuery.isBlank()) {
+            availableRecipients
+        } else {
+            availableRecipients.filter { recipient ->
+                recipient.displayName.contains(normalizedQuery, ignoreCase = true) ||
+                    recipient.address.contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+    }
+    val directEntryAddress = normalizedQuery.takeIf { it.isDirectAddressCandidate() }
+    val shouldShowDirectEntry = remember(directEntryAddress, filteredRecipients) {
+        directEntryAddress != null && filteredRecipients.none { recipient ->
+            recipient.address.equals(directEntryAddress, ignoreCase = true) ||
+                recipient.displayName.equals(directEntryAddress, ignoreCase = true)
+        }
+    }
+    val groupedRecipients = remember(filteredRecipients) {
+        filteredRecipients.toContactGroups()
+    }
+    val recipientIndex = remember(filteredRecipients) {
+        filteredRecipients.associateBy { it.key }
+    }
+
+    NewChatContactSelectionScreen(
+        contactGroups = groupedRecipients,
+        loading = recipients == null,
+        searchQuery = query,
+        simOptions = availableSimOptions,
+        selectedSimKey = selectedSim?.key,
+        onContactClick = { contact ->
+            val recipient = recipientIndex[contact.key] ?: NewChatRecipient(
+                key = contact.key,
+                displayName = contact.name,
+                address = contact.phoneNumber,
+                sortLabel = contact.name,
+            )
+            onStartConversation(recipient, selectedSim?.subscriptionId)
+        },
+        onBackClick = onBack,
+        onSearchQueryChange = onQueryChange,
+        modifier = modifier,
+        listState = listState,
+        manualEntry = directEntryAddress?.takeIf { shouldShowDirectEntry }?.let { address ->
+            ContactListItem(
+                key = "manual_$address",
+                name = address,
+                phoneNumber = address,
+            )
+        },
+        onManualEntryClick = { contact ->
+            onStartConversation(
+                NewChatRecipient(
+                    key = contact.key,
+                    displayName = contact.phoneNumber,
+                    address = contact.phoneNumber,
+                    sortLabel = contact.phoneNumber,
+                ),
+                selectedSim?.subscriptionId,
+            )
+        },
+        onSimOptionClick = { option ->
+            selectedSimKey = option.key
+        },
+    )
+}
+
+@Composable
 private fun RealConversationScreen(
+    title: String,
     address: String,
+    initialDraft: String,
     messages: List<SystemSms>,
+    loading: Boolean,
     importantMessageIds: Set<Long>,
+    sendState: SendState,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
+    onRetrySend: () -> Unit,
+    onClearSendState: () -> Unit,
+    onDraftConsumed: () -> Unit,
     onToggleImportantMessage: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -414,6 +1074,33 @@ private fun RealConversationScreen(
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     var draft by rememberSaveable(address) { mutableStateOf("") }
     var previousMessageCount by remember(address) { mutableIntStateOf(0) }
+
+    LaunchedEffect(address, initialDraft) {
+        if (initialDraft.isNotBlank()) {
+            draft = initialDraft
+            onDraftConsumed()
+        }
+    }
+
+    LaunchedEffect(address) {
+        onClearSendState()
+    }
+
+    LaunchedEffect(sendState) {
+        when (sendState) {
+            is SendState.Sent -> {
+                draft = ""
+                delay(1200)
+                onClearSendState()
+            }
+            is SendState.Failed -> {
+                if (draft.isBlank()) {
+                    draft = sendState.body
+                }
+            }
+            else -> Unit
+        }
+    }
 
     val timelineItems = remember(messages) { messages.toConversationTimeline() }
     val unreadCount = remember(messages) { messages.count { it.isInbound && !it.read } }
@@ -444,6 +1131,20 @@ private fun RealConversationScreen(
         previousMessageCount = messages.size
     }
 
+    val isReplyable = remember(address) {
+        // Addresses containing letters are typically business/shortcode senders
+        // that don't accept replies (OTP, bank, service notifications)
+        address.none { it.isLetter() }
+    }
+
+    // ── Keyboard auto-scroll: when IME opens, scroll to latest message ──
+    val isKeyboardVisible = WindowInsets.isImeVisible
+    LaunchedEffect(isKeyboardVisible, isNearEnd, timelineItems.size) {
+        if (isKeyboardVisible && isNearEnd && timelineItems.isNotEmpty()) {
+            listState.scrollToItemSmoothly(timelineItems.lastIndex)
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surface,
@@ -467,13 +1168,13 @@ private fun RealConversationScreen(
                     ) {
                         SerafinaAvatar(
                             imageUrl = null,
-                            initials = address.toAvatarInitials(),
+                            initials = title.toAvatarInitials(),
                             hasUnread = messages.lastOrNull()?.let { it.isInbound && !it.read } == true,
                             size = 40.dp,
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = address,
+                                text = title,
                                 style = MaterialTheme.typography.titleLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -497,16 +1198,31 @@ private fun RealConversationScreen(
             )
         },
         bottomBar = {
-            ConversationComposer(
-                draft = draft,
-                onDraftChange = { draft = it },
-                onSend = {
-                    val message = draft.trim()
-                    if (message.isEmpty()) return@ConversationComposer
-                    onSend(message)
-                    draft = ""
-                },
-            )
+            if (isReplyable) {
+                Column {
+                    ConversationSendStatusRow(
+                        sendState = sendState,
+                        onRetrySend = onRetrySend,
+                    )
+                    ConversationComposer(
+                        draft = draft,
+                        sendState = sendState,
+                        onDraftChange = {
+                            draft = it
+                            if (sendState is SendState.Failed || sendState is SendState.Sent) {
+                                onClearSendState()
+                            }
+                        },
+                        onSend = {
+                            val message = draft.trim()
+                            if (message.isEmpty()) return@ConversationComposer
+                            onSend(message)
+                        },
+                    )
+                }
+            } else {
+                ReadOnlyConversationNotice()
+            }
         },
     ) { innerPadding ->
         Box(
@@ -537,6 +1253,7 @@ private fun RealConversationScreen(
             ) {
                 item(key = "conversation_header") {
                     ConversationOverviewCard(
+                        title = title,
                         address = address,
                         messageCount = messages.size,
                         unreadCount = unreadCount,
@@ -546,64 +1263,74 @@ private fun RealConversationScreen(
                     )
                 }
 
-                if (timelineItems.isEmpty()) {
-                    item(key = "conversation_empty") {
-                        EmptyConversationState(
-                            address = address,
-                            modifier = rememberEntranceModifier("conversation_empty_$address", reducedMotion),
-                        )
+                when {
+                    loading -> {
+                        item(key = "conversation_loading") {
+                            ConversationLoadingSkeleton(
+                                modifier = rememberEntranceModifier("conversation_loading_$address", reducedMotion),
+                            )
+                        }
                     }
-                } else {
-                    items(
-                        items = timelineItems,
-                        key = ConversationTimelineItem::key,
-                        contentType = ConversationTimelineItem::contentType,
-                    ) { item ->
-                        when (item) {
-                            is ConversationTimelineItem.DayDivider -> {
-                                Box(
-                                    modifier = motionAnimateItemModifier(reducedMotion)
-                                        .then(rememberEntranceModifier(item.key, reducedMotion))
-                                        .fillMaxWidth(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(999.dp),
-                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    timelineItems.isEmpty() -> {
+                        item(key = "conversation_empty") {
+                            EmptyConversationState(
+                                title = title,
+                                modifier = rememberEntranceModifier("conversation_empty_$address", reducedMotion),
+                            )
+                        }
+                    }
+                    else -> {
+                        items(
+                            items = timelineItems,
+                            key = ConversationTimelineItem::key,
+                            contentType = ConversationTimelineItem::contentType,
+                        ) { item ->
+                            when (item) {
+                                is ConversationTimelineItem.DayDivider -> {
+                                    Box(
+                                        modifier = motionAnimateItemModifier(reducedMotion)
+                                            .then(rememberEntranceModifier(item.key, reducedMotion))
+                                            .fillMaxWidth(),
+                                        contentAlignment = Alignment.Center,
                                     ) {
-                                        Text(
-                                            text = item.label,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        Surface(
+                                            shape = RoundedCornerShape(999.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        ) {
+                                            Text(
+                                                text = item.label,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                is ConversationTimelineItem.UnreadDivider -> {
+                                    Box(
+                                        modifier = motionAnimateItemModifier(reducedMotion)
+                                            .then(rememberEntranceModifier(item.key, reducedMotion))
+                                            .fillMaxWidth(),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        StatusPill(
+                                            label = item.label,
+                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                                         )
                                     }
                                 }
-                            }
 
-                            is ConversationTimelineItem.UnreadDivider -> {
-                                Box(
-                                    modifier = motionAnimateItemModifier(reducedMotion)
-                                        .then(rememberEntranceModifier(item.key, reducedMotion))
-                                        .fillMaxWidth(),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) {
-                                    StatusPill(
-                                        label = item.label,
-                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                is ConversationTimelineItem.Message -> {
+                                    ConversationMessageBubble(
+                                        message = item.message,
+                                        isImportant = item.message.id in importantMessageIds,
+                                        onToggleImportant = { onToggleImportantMessage(item.message.id) },
+                                        modifier = motionAnimateItemModifier(reducedMotion)
+                                            .then(rememberEntranceModifier(item.key, reducedMotion)),
                                     )
                                 }
-                            }
-
-                            is ConversationTimelineItem.Message -> {
-                                ConversationMessageBubble(
-                                    message = item.message,
-                                    isImportant = item.message.id in importantMessageIds,
-                                    onToggleImportant = { onToggleImportantMessage(item.message.id) },
-                                    modifier = motionAnimateItemModifier(reducedMotion)
-                                        .then(rememberEntranceModifier(item.key, reducedMotion)),
-                                )
                             }
                         }
                     }
@@ -615,6 +1342,7 @@ private fun RealConversationScreen(
 
 @Composable
 private fun ConversationOverviewCard(
+    title: String,
     address: String,
     messageCount: Int,
     unreadCount: Int,
@@ -637,7 +1365,7 @@ private fun ConversationOverviewCard(
         ) {
             SerafinaAvatar(
                 imageUrl = null,
-                initials = address.toAvatarInitials(),
+                initials = title.toAvatarInitials(),
                 size = 52.dp,
             )
             Column(
@@ -645,7 +1373,7 @@ private fun ConversationOverviewCard(
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
-                    text = address,
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -728,13 +1456,6 @@ private fun ConversationMessageBubble(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (isUnread) {
-                    StatusPill(
-                        label = "Unread",
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                }
                 if (isImportant) {
                     StatusPill(
                         label = "Kept",
@@ -765,260 +1486,440 @@ private fun ConversationMessageBubble(
 @Composable
 private fun ConversationComposer(
     draft: String,
+    sendState: SendState,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = rememberReducedMotionEnabled()
-    val canSend by remember(draft) {
-        derivedStateOf { draft.isNotBlank() }
+    val isSending = sendState is SendState.Sending
+    val canSend by remember(draft, isSending) {
+        derivedStateOf { draft.isNotBlank() && !isSending }
     }
     val fieldInteractionSource = remember { MutableInteractionSource() }
     val isFocused by fieldInteractionSource.collectIsFocusedAsState()
     val sendInteractionSource = remember { MutableInteractionSource() }
     val isSendPressed by sendInteractionSource.collectIsPressedAsState()
-    val isActivated by remember(draft, isFocused) {
-        derivedStateOf { draft.isNotBlank() || isFocused }
-    }
-    val quickDuration = if (reducedMotion) 0 else 180
-    val exitDuration = if (reducedMotion) 0 else 120
-    val containerOffsetY by animateFloatAsState(
-        targetValue = if (isFocused) -3f else 0f,
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_composer_offset",
-    )
-    val accentHeight by animateDpAsState(
-        targetValue = if (isFocused) 30.dp else 18.dp,
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_composer_accent_height",
-    )
-    val outerBorderColor by animateColorAsState(
+    val quickDuration = if (reducedMotion) 0 else 200
+    val exitDuration = if (reducedMotion) 0 else 140
+
+    // ── Pill container animations ──
+    val containerColor by animateColorAsState(
         targetValue = if (isFocused) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+            MaterialTheme.colorScheme.surfaceContainerHighest
         } else {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+            MaterialTheme.colorScheme.surfaceContainerHigh
         },
         animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_composer_border",
+        label = "composer_container",
     )
-    val fieldBorderColor by animateColorAsState(
-        targetValue = if (isFocused) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
-        },
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_field_border",
-    )
-    val placeholderAlpha by animateFloatAsState(
-        targetValue = if (draft.isEmpty()) 1f else 0f,
-        animationSpec = tween(durationMillis = exitDuration),
-        label = "conversation_placeholder_alpha",
-    )
-    val labelAlpha by animateFloatAsState(
-        targetValue = if (isActivated) 1f else 0f,
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_label_alpha",
-    )
-    val labelTranslationY by animateFloatAsState(
-        targetValue = if (isActivated) 0f else 8f,
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_label_translation",
-    )
-    val sendWidth by animateDpAsState(
-        targetValue = if (canSend) 112.dp else 58.dp,
-        animationSpec = spring(
-            stiffness = if (reducedMotion) Spring.StiffnessHigh else Spring.StiffnessMedium,
+    val containerLift by animateFloatAsState(
+        targetValue = if (isFocused) -2f else 0f,
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMediumLow,
             dampingRatio = Spring.DampingRatioNoBouncy,
         ),
-        label = "conversation_send_width",
+        label = "composer_lift",
     )
+
+    // ── Send button animations (the hero moment) ──
     val sendScale by animateFloatAsState(
         targetValue = when {
-            isSendPressed && canSend -> 0.96f
+            isSendPressed && canSend -> 0.92f
             canSend -> 1f
-            else -> 0.94f
+            else -> 0.88f
         },
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_send_scale",
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "send_scale",
     )
     val sendContainerColor by animateColorAsState(
         targetValue = if (canSend) {
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.surfaceContainerHighest
         },
         animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_send_container",
+        label = "send_color",
     )
     val sendContentColor by animateColorAsState(
         targetValue = if (canSend) {
-            MaterialTheme.colorScheme.onPrimaryContainer
+            MaterialTheme.colorScheme.onPrimary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_send_content",
+        label = "send_content",
     )
-    val sendIconOffsetX by animateFloatAsState(
-        targetValue = if (canSend) 0f else 6f,
-        animationSpec = tween(durationMillis = quickDuration),
-        label = "conversation_send_icon_offset",
+    val sendIconRotation by animateFloatAsState(
+        targetValue = if (canSend) 0f else -30f,
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "send_rotation",
     )
-    val composerShape = RoundedCornerShape(30.dp)
-    val fieldShape = RoundedCornerShape(26.dp)
+
+    val pillShape = RoundedCornerShape(28.dp)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .graphicsLayer { translationY = containerLift },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        // ── Text input pill ──
+        BasicTextField(
+            value = draft,
+            onValueChange = onDraftChange,
+            modifier = Modifier.weight(1f),
+            enabled = !isSending,
+            interactionSource = fieldInteractionSource,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Send,
+            ),
+            keyboardActions = KeyboardActions(
+                onSend = {
+                    if (canSend) {
+                        onSend()
+                    }
+                },
+            ),
+            maxLines = 6,
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(pillShape)
+                        .background(containerColor)
+                        .heightIn(min = 52.dp)
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (draft.isEmpty()) {
+                        Text(
+                            text = if (isSending) "Sending…" else "Message",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+
+        // ── Send button (hero moment) ──
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .graphicsLayer {
+                    scaleX = sendScale
+                    scaleY = sendScale
+                }
+                .clip(CircleShape)
+                .background(sendContainerColor)
+                .clickable(
+                    interactionSource = sendInteractionSource,
+                    indication = null,
+                    enabled = canSend,
+                    onClick = onSend,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.Send,
+                contentDescription = "Send message",
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer { rotationZ = sendIconRotation },
+                tint = sendContentColor,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationSendStatusRow(
+    sendState: SendState,
+    onRetrySend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val reducedMotion = rememberReducedMotionEnabled()
+    AnimatedVisibility(
+        visible = sendState !is SendState.Idle,
+        enter = fadeIn(animationSpec = tween(if (reducedMotion) 0 else 180)),
+        exit = fadeOut(animationSpec = tween(if (reducedMotion) 0 else 120)),
+        modifier = modifier,
+    ) {
+        val containerColor = when (sendState) {
+            is SendState.Sending -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+            is SendState.Sent -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+            is SendState.Failed -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.76f)
+            SendState.Idle -> MaterialTheme.colorScheme.surfaceContainerLow
+        }
+        val contentColor = when (sendState) {
+            is SendState.Sending -> MaterialTheme.colorScheme.onTertiaryContainer
+            is SendState.Sent -> MaterialTheme.colorScheme.onSecondaryContainer
+            is SendState.Failed -> MaterialTheme.colorScheme.onErrorContainer
+            SendState.Idle -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        val icon = when (sendState) {
+            is SendState.Sending -> Icons.Rounded.HourglassTop
+            is SendState.Sent -> Icons.Rounded.CheckCircle
+            is SendState.Failed -> Icons.Rounded.ErrorOutline
+            SendState.Idle -> Icons.Rounded.CheckCircle
+        }
+        val title = when (sendState) {
+            is SendState.Sending -> "Sending message"
+            is SendState.Sent -> "Message sent"
+            is SendState.Failed -> "Send failed"
+            SendState.Idle -> ""
+        }
+        val subtitle = when (sendState) {
+            is SendState.Sending -> "Holding your draft until Android confirms the handoff."
+            is SendState.Sent -> "Your draft cleared after the send completed."
+            is SendState.Failed -> "Your draft is still here. Retry when you're ready."
+            SendState.Idle -> ""
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .padding(top = 8.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = containerColor,
+            tonalElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = contentColor,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.84f),
+                    )
+                }
+                if (sendState is SendState.Failed) {
+                    FilledTonalButton(onClick = onRetrySend) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadOnlyConversationNotice(
+    modifier: Modifier = Modifier,
+) {
+    val borderColor by animateColorAsState(
+        targetValue = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+        label = "read_only_notice_border",
+    )
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .imePadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
-            .graphicsLayer { translationY = containerOffsetY }
-            .border(width = 1.dp, color = outerBorderColor, shape = composerShape),
-        shape = composerShape,
+            .border(
+                width = 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(28.dp),
+            )
+            .semantics {
+                contentDescription = "Read only business sender. Replies are disabled."
+            },
+        shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 2.dp,
+        tonalElevation = 0.dp,
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0f),
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = if (canSend) 0.10f else 0.04f),
-                        ),
+            modifier = Modifier.background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        MaterialTheme.colorScheme.surfaceContainerLow,
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
                     ),
                 ),
+            ),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .padding(start = 2.dp)
-                        .size(width = 4.dp, height = accentHeight)
-                        .clip(CircleShape)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.90f),
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.72f),
-                                ),
-                            ),
-                        ),
-                )
-
-                BasicTextField(
-                    value = draft,
-                    onValueChange = onDraftChange,
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Outlined.Sms,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Column(
                     modifier = Modifier.weight(1f),
-                    interactionSource = fieldInteractionSource,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "Read only",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = "This sender doesn't accept replies",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Sentences,
-                        imeAction = ImeAction.Send,
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (canSend) {
-                                onSend()
-                            }
+                    )
+                    Text(
+                        text = "Business sender",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "SMS",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationLoadingSkeleton(
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            StatusPill(
+                label = "Opening thread",
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            SerafinaProgressIndicator(modifier = Modifier.fillMaxWidth())
+            repeat(3) { index ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (index % 2 == 0) Arrangement.Start else Arrangement.End,
+                ) {
+                    Surface(
+                        modifier = Modifier.widthIn(max = 280.dp),
+                        shape = RoundedCornerShape(
+                            topStart = 24.dp,
+                            topEnd = 24.dp,
+                            bottomStart = if (index % 2 == 0) 10.dp else 24.dp,
+                            bottomEnd = if (index % 2 == 0) 24.dp else 10.dp,
+                        ),
+                        color = if (index % 2 == 0) {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                         },
-                    ),
-                    maxLines = 5,
-                    decorationBox = { innerTextField ->
-                        Box(
+                        tonalElevation = 0.dp,
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(fieldShape)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.22f))
-                                .border(width = 1.dp, color = fieldBorderColor, shape = fieldShape)
-                                .heightIn(min = 58.dp)
-                                .padding(horizontal = 18.dp, vertical = 14.dp),
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text(
-                                text = "Message",
-                                modifier = Modifier.graphicsLayer {
-                                    alpha = labelAlpha
-                                    translationY = labelTranslationY
-                                },
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
-                            )
-
-                            Box(
+                            Surface(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = if (isActivated) 16.dp else 0.dp),
-                            ) {
-                                if (draft.isEmpty()) {
-                                    Text(
-                                        text = "Write a message",
-                                        modifier = Modifier.graphicsLayer { alpha = placeholderAlpha },
-                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        ),
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        }
-                    },
-                )
-
-                Box(
-                    modifier = Modifier
-                        .graphicsLayer {
-                            scaleX = sendScale
-                            scaleY = sendScale
-                        }
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(sendContainerColor)
-                        .clickable(
-                            interactionSource = sendInteractionSource,
-                            enabled = canSend,
-                            onClick = onSend,
-                        )
-                        .padding(horizontal = 14.dp, vertical = 14.dp)
-                        .width(sendWidth),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AnimatedContent(
-                        targetState = canSend,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(durationMillis = quickDuration)) togetherWith
-                                fadeOut(animationSpec = tween(durationMillis = exitDuration))
-                        },
-                        label = "conversation_send_content",
-                    ) { isEnabled ->
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.Send,
-                                contentDescription = "Send message",
-                                modifier = Modifier.graphicsLayer { translationX = sendIconOffsetX },
-                                tint = sendContentColor,
-                            )
-                            if (isEnabled) {
-                                Text(
-                                    text = "Send",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = sendContentColor,
-                                )
-                            }
+                                    .fillMaxWidth(if (index == 1) 0.78f else 0.9f)
+                                    .height(14.dp),
+                                shape = RoundedCornerShape(999.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                                tonalElevation = 0.dp,
+                            ) {}
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth(if (index == 2) 0.52f else 0.66f)
+                                    .height(14.dp),
+                                shape = RoundedCornerShape(999.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
+                                tonalElevation = 0.dp,
+                            ) {}
                         }
                     }
                 }
@@ -1029,7 +1930,7 @@ private fun ConversationComposer(
 
 @Composable
 private fun EmptyConversationState(
-    address: String,
+    title: String,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -1049,7 +1950,7 @@ private fun EmptyConversationState(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = "Start a cleaner thread with $address using the composer below.",
+                text = "Start a cleaner thread with $title using the composer below.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1577,6 +2478,11 @@ private fun String.toAvatarInitials(): String =
         .take(2)
         .joinToString("") { it.take(1).uppercase() }
         .ifBlank { take(2).uppercase().ifBlank { "#" } }
+
+private fun String.isDirectAddressCandidate(): Boolean {
+    if (isBlank()) return false
+    return any(Char::isDigit) || contains('@') || any { it == '+' }
+}
 
 private fun String.toConversationCategoryLabel(): String =
     if (any(Char::isLetter)) "Business SMS" else "Personal SMS"

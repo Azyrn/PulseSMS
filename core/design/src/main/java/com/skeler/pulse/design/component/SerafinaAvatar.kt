@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -38,6 +39,15 @@ import androidx.graphics.shapes.toPath
 import coil.compose.AsyncImage
 import com.skeler.pulse.design.theme.LocalReduceMotion
 import com.skeler.pulse.design.theme.SerafinaFullShape
+
+private val FallbackAvatarPalette = listOf(
+    Color(0xFF5CC4FF),
+    Color(0xFF64D27A),
+    Color(0xFFFFB84D),
+    Color(0xFFFF63C3),
+    Color(0xFF8D5BFF),
+    Color(0xFF7DD3B0),
+)
 
 /**
  * Animated avatar composable with shape-morph between a 12-pointed star
@@ -93,8 +103,14 @@ fun SerafinaAvatar(
     }
 
     val strokeColor = MaterialTheme.colorScheme.primaryContainer
-    val containerColor = MaterialTheme.colorScheme.secondaryContainer
-    val textColor = MaterialTheme.colorScheme.onSecondaryContainer
+    val containerColor = remember(initials) {
+        FallbackAvatarPalette[initials.trim().ifBlank { "#" }.hashCode().mod(FallbackAvatarPalette.size)]
+    }
+    val textColor = if (containerColor.luminance() > 0.45f) {
+        Color(0xFF111111)
+    } else {
+        Color.White
+    }
 
     Box(
         modifier = modifier

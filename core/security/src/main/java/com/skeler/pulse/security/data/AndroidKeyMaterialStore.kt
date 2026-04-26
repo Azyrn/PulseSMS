@@ -11,6 +11,15 @@ import java.security.KeyStore
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
+internal fun resolveKeyManagementState(
+    aliasExists: Boolean,
+    key: SecretKey?,
+): KeyManagementState = when {
+    !aliasExists -> KeyManagementState.Ready
+    key != null -> KeyManagementState.Ready
+    else -> KeyManagementState.Corrupted
+}
+
 class AndroidKeyMaterialStore(
     private val context: Context,
 ) : KeyMaterialStore {
@@ -28,11 +37,13 @@ class AndroidKeyMaterialStore(
 
     override fun getKeyManagementState(alias: String): KeyManagementState = try {
         val keyStore = androidKeyStore().apply { load(null) }
-        if (keyStore.containsAlias(alias)) {
-            KeyManagementState.Ready
+        val aliasExists = keyStore.containsAlias(alias)
+        val key = if (aliasExists) {
+            keyStore.getKey(alias, null) as? SecretKey
         } else {
-            KeyManagementState.Ready
+            null
         }
+        resolveKeyManagementState(aliasExists, key)
     } catch (_: Exception) {
         KeyManagementState.Unrecoverable
     }

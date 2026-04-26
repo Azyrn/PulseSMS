@@ -25,11 +25,11 @@ class ComposeSmsActivity : ComponentActivity() {
             ?: intent?.getStringExtra(Intent.EXTRA_TEXT)
             ?: ""
 
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_COMPOSE_RECIPIENT, recipient)
-            putExtra(EXTRA_COMPOSE_BODY, body)
-        }
+        val launchIntent = MainActivity.createLaunchIntent(
+            context = this,
+            conversationAddress = recipient,
+            draftBody = body,
+        )
         startActivity(launchIntent)
         finish()
     }
@@ -43,8 +43,4 @@ class ComposeSmsActivity : ComponentActivity() {
         return uri.schemeSpecificPart?.replace("-", "")?.trim() ?: ""
     }
 
-    companion object {
-        const val EXTRA_COMPOSE_RECIPIENT = "extra_compose_recipient"
-        const val EXTRA_COMPOSE_BODY = "extra_compose_body"
-    }
 }

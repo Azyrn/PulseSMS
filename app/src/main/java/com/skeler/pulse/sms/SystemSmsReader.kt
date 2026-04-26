@@ -1,15 +1,17 @@
 package com.skeler.pulse.sms
 
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.database.ContentObserver
 import android.database.Cursor
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Telephony
 import android.telephony.SmsManager
+import android.util.Log
 import androidx.compose.runtime.Immutable
+import com.skeler.pulse.contact.normalizeAddressForDisplay
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -75,7 +77,12 @@ class SystemSmsReader(
         fun scheduleRead() {
             readJob?.cancel()
             readJob = launch(ioDispatcher) {
-                trySend(readThreads())
+                try {
+                    trySend(readThreads())
+                } catch (e: SecurityException) {
+                    Log.w("SystemSmsReader", "READ_SMS permission not granted", e)
+                    trySend(emptyList())
+                }
             }
         }
 
@@ -98,12 +105,17 @@ class SystemSmsReader(
     /**
      * Observes messages for a specific address/thread as a reactive [Flow].
      */
-    fun observeMessages(address: String): Flow<List<SystemSms>> = callbackFlow {
+    fun observeMessages(address: String, threadId: Long? = null): Flow<List<SystemSms>> = callbackFlow {
         var readJob: Job? = null
         fun scheduleRead() {
             readJob?.cancel()
             readJob = launch(ioDispatcher) {
-                trySend(readMessages(address))
+                try {
+                    trySend(readMessages(address = address, threadId = threadId))
+                } catch (e: SecurityException) {
+                    Log.w("SystemSmsReader", "READ_SMS permission not granted", e)
+                    trySend(emptyList())
+                }
             }
         }
 
@@ -127,7 +139,7 @@ class SystemSmsReader(
      * grouped by sender address and sorted by most recent first.
      */
     fun readThreads(): List<SmsThread> {
-        val threads = mutableMapOf<String, MutableList<SystemSms>>()
+        val threads = linkedMapOf<Long, MutableThreadAccumulator>()
 
         val cursor = contentResolver.query(
             Telephony.Sms.CONTENT_URI,
@@ -139,55 +151,101 @@ class SystemSmsReader(
         cursor.use {
             while (it.moveToNext()) {
                 val sms = it.toSystemSms()
-                val key = sms.address.normalizeAddress()
-                threads.getOrPut(key) { mutableListOf() }.add(sms)
+                val accumulator = threads.getOrPut(sms.threadId) {
+                    MutableThreadAccumulator(
+                        threadId = sms.threadId,
+                        address = sms.address.normalizeAddressForDisplay(),
+                        snippet = sms.body.take(120),
+                        date = sms.date,
+                    )
+                }
+                accumulator.messageCount += 1
+                if (!sms.read && sms.isInbound) {
+                    accumulator.unreadCount += 1
+                }
             }
         }
 
-        return threads.map { (address, messages) ->
-            val latest = messages.first()
+        return threads.values.map { accumulator ->
             SmsThread(
-                threadId = latest.threadId,
-                address = address,
-                snippet = latest.body.take(120),
-                date = latest.date,
-                messageCount = messages.size,
-                unreadCount = messages.count { !it.read && it.isInbound },
+                threadId = accumulator.threadId,
+                address = accumulator.address,
+                snippet = accumulator.snippet,
+                date = accumulator.date,
+                messageCount = accumulator.messageCount,
+                unreadCount = accumulator.unreadCount,
             )
-        }.sortedByDescending { it.date }
+        }
     }
 
     /**
      * Reads all messages for a specific address, sorted oldest first.
      */
-    fun readMessages(address: String): List<SystemSms> {
-        val normalized = address.normalizeAddress()
-        val allMessages = mutableListOf<SystemSms>()
+    fun readMessages(address: String, threadId: Long? = null): List<SystemSms> {
+        val normalized = address.normalizeAddressForDisplay()
+        val selection = if (threadId != null) {
+            "${Telephony.Sms.THREAD_ID} = ?"
+        } else {
+            null
+        }
+        val selectionArgs = if (threadId != null) {
+            arrayOf(threadId.toString())
+        } else {
+            null
+        }
+        val messages = mutableListOf<SystemSms>()
 
         val cursor = contentResolver.query(
             Telephony.Sms.CONTENT_URI,
             SMS_PROJECTION,
-            null, null,
+            selection,
+            selectionArgs,
             "${Telephony.Sms.DATE} ASC",
         ) ?: return emptyList()
 
         cursor.use {
             while (it.moveToNext()) {
                 val sms = it.toSystemSms()
-                if (sms.address.normalizeAddress() == normalized) {
-                    allMessages.add(sms)
+                if (threadId != null || sms.address.normalizeAddressForDisplay() == normalized) {
+                    messages.add(sms)
                 }
             }
         }
-        return allMessages
+        return messages
+    }
+
+    fun markThreadAsRead(threadId: Long?, address: String) {
+        val normalizedAddress = address.normalizeAddressForDisplay()
+        val selection = buildList {
+            add("${Telephony.Sms.TYPE} = ?")
+            add("${Telephony.Sms.READ} = 0")
+            if (threadId != null) {
+                add("${Telephony.Sms.THREAD_ID} = ?")
+            } else {
+                add("${Telephony.Sms.ADDRESS} = ?")
+            }
+        }.joinToString(separator = " AND ")
+        val selectionArgs = buildList {
+            add(Telephony.Sms.MESSAGE_TYPE_INBOX.toString())
+            add(if (threadId != null) threadId.toString() else normalizedAddress)
+        }.toTypedArray()
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
+        }
+        contentResolver.update(Telephony.Sms.CONTENT_URI, values, selection, selectionArgs)
     }
 
     /**
      * Sends an SMS and writes it to the system SMS content provider.
      */
     @Suppress("DEPRECATION")
-    fun sendSms(address: String, body: String) {
-        val smsManager = SmsManager.getDefault()
+    fun sendSms(address: String, body: String, subscriptionId: Int? = null) {
+        val smsManager = if (subscriptionId != null) {
+            SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
+        } else {
+            SmsManager.getDefault()
+        }
         val parts = smsManager.divideMessage(body)
         smsManager.sendMultipartTextMessage(address, null, parts, null, null)
 
@@ -213,15 +271,14 @@ class SystemSmsReader(
         threadId = getLong(getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)),
     )
 
-    /**
-     * Normalizes phone numbers for grouping (strips non-digit except +).
-     */
-    private fun String.normalizeAddress(): String {
-        // For short codes / alphanumeric senders, keep as-is
-        if (this.any { it.isLetter() }) return this.trim()
-        // For phone numbers, strip formatting
-        return this.filter { it.isDigit() || it == '+' }
-    }
+    private data class MutableThreadAccumulator(
+        val threadId: Long,
+        val address: String,
+        val snippet: String,
+        val date: Long,
+        var messageCount: Int = 0,
+        var unreadCount: Int = 0,
+    )
 
     companion object {
         private val SMS_PROJECTION = arrayOf(
