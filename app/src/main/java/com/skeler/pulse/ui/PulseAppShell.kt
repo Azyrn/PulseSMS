@@ -2,6 +2,9 @@
 
 package com.skeler.pulse.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.PulseLaunchRequest
 import com.skeler.pulse.contact.displayNameFor
@@ -25,7 +28,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -72,12 +77,14 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.rounded.AddComment
+import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Key
@@ -90,6 +97,8 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -101,6 +110,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -121,11 +131,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -136,6 +148,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.skeler.pulse.MainActivity
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
 import com.skeler.pulse.design.component.StatusPill
@@ -164,6 +177,7 @@ private const val DESTINATION_INBOX = "inbox"
 private const val DESTINATION_NEW_CHAT = "new_chat"
 private const val DESTINATION_CONVERSATION = "conversation"
 private const val DESTINATION_SETTINGS = "settings"
+private const val DESTINATION_ARCHIVED = "archived"
 
 private enum class InboxFilter(val label: String) {
     All("All"), Personal("Personal"), Business("Business"), OTP("OTP"),
@@ -186,7 +200,6 @@ fun PulseAppShell(
     onRequestSmsPermissions: () -> Unit = {},
     onOpenConversation: (String, Long?) -> Unit,
     onSendMessage: (String, String, Int?) -> Unit,
-    onToggleImportantMessage: (Long) -> Unit,
     themeViewModel: SerafinaThemeViewModel,
     onRequestDefaultSms: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -196,6 +209,7 @@ fun PulseAppShell(
     var activeConversationTitle by rememberSaveable { mutableStateOf("") }
     var activeSubscriptionId by rememberSaveable { mutableStateOf<Int?>(null) }
     var conversationDraftSeed by rememberSaveable { mutableStateOf("") }
+    var pendingForwardDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var newChatQuery by rememberSaveable { mutableStateOf("") }
     var lastHandledNewChatRequestKey by rememberSaveable { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -229,8 +243,15 @@ fun PulseAppShell(
         lastHandledNewChatRequestKey = openNewChatRequestKey
     }
 
-    BackHandler(enabled = currentScreen != DESTINATION_INBOX) {
+    fun navigateBack() {
+        if (currentScreen == DESTINATION_CONVERSATION) {
+            smsViewModel.closeConversation()
+        }
         backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+    }
+
+    BackHandler(enabled = currentScreen != DESTINATION_INBOX) {
+        navigateBack()
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -289,11 +310,18 @@ fun PulseAppShell(
                                 onOpenConversation(address, threadId)
                                 backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
                             },
+                            onOpenArchivedChats = {
+                                backStack = listOf(DESTINATION_INBOX, DESTINATION_ARCHIVED)
+                            },
                             onOpenSettings = {
                                 backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS)
                             },
                             onOpenNewChat = onRequestNewChat,
                             onRefreshInbox = smsViewModel::refreshInbox,
+                            onTogglePinned = smsViewModel::toggleThreadPinned,
+                            onToggleArchived = smsViewModel::toggleThreadArchived,
+                            onSetThreadUnread = smsViewModel::setThreadUnread,
+                            onDeleteThread = smsViewModel::deleteThread,
                         )
                     }
                 }
@@ -312,7 +340,8 @@ fun PulseAppShell(
                             activeAddress = recipient.address
                             activeConversationTitle = displayNameFor(context, recipient.address)
                             activeSubscriptionId = subscriptionId
-                            conversationDraftSeed = ""
+                            conversationDraftSeed = pendingForwardDraft.orEmpty()
+                            pendingForwardDraft = null
                             onOpenConversation(recipient.address, null)
                             backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT, DESTINATION_CONVERSATION)
                         },
@@ -326,6 +355,7 @@ fun PulseAppShell(
                         title = activeConversationTitle.ifBlank { displayNameFor(context, activeAddress) },
                         address = activeAddress,
                         initialDraft = conversationDraftSeed,
+                        initialSubscriptionId = activeSubscriptionId,
                         messages = if (conversationState.address == activeAddress) {
                             conversationState.messages
                         } else {
@@ -339,26 +369,67 @@ fun PulseAppShell(
                         },
                         sendState = sendState,
                         onBack = {
-                            backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                            navigateBack()
                         },
+                        onSubscriptionIdChange = { activeSubscriptionId = it },
                         onSend = { body ->
                             onSendMessage(activeAddress, body, activeSubscriptionId)
                         },
                         onRetrySend = smsViewModel::retrySend,
                         onClearSendState = smsViewModel::clearSendState,
                         onDraftConsumed = { conversationDraftSeed = "" },
-                        onToggleImportantMessage = onToggleImportantMessage,
+                        onDeleteMessage = smsViewModel::deleteMessage,
+                        onForwardMessage = { body ->
+                            pendingForwardDraft = body
+                            newChatQuery = ""
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT)
+                        },
                     )
                 }
 
-                DESTINATION_SETTINGS -> SettingsScreen(
-                    themeViewModel = themeViewModel,
-                    listState = settingsListState,
-                    onBack = {
-                        backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
-                    },
-                    onRequestDefaultSms = onRequestDefaultSms,
-                )
+                DESTINATION_SETTINGS -> {
+                    val inboxState by smsViewModel.inboxState.collectAsState()
+                    SettingsScreen(
+                        themeViewModel = themeViewModel,
+                        listState = settingsListState,
+                        archivedCount = inboxState.archivedThreads.size,
+                        onBack = {
+                            backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                        },
+                        onRequestDefaultSms = onRequestDefaultSms,
+                        onOpenArchivedChats = {
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED)
+                        },
+                    )
+                }
+
+                DESTINATION_ARCHIVED -> {
+                    val inboxState by smsViewModel.inboxState.collectAsState()
+                    ArchivedChatsScreen(
+                        threads = inboxState.archivedThreads,
+                        pinnedThreadIds = inboxState.pinnedThreadIds,
+                        archivedThreadIds = inboxState.archivedThreadIds,
+                        loading = inboxState.loading,
+                        errorMessage = inboxState.errorMessage,
+                        listState = inboxListState,
+                        onBack = {
+                            backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                        },
+                        onOpenConversation = { address, threadId ->
+                            activeAddress = address
+                            activeConversationTitle = displayNameFor(context, address)
+                            activeSubscriptionId = null
+                            conversationDraftSeed = ""
+                            onOpenConversation(address, threadId)
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED, DESTINATION_CONVERSATION)
+                        },
+                        onRefreshInbox = smsViewModel::refreshInbox,
+                        onTogglePinned = smsViewModel::toggleThreadPinned,
+                        onToggleArchived = smsViewModel::toggleThreadArchived,
+                        onSetThreadUnread = smsViewModel::setThreadUnread,
+                        onDeleteThread = smsViewModel::deleteThread,
+                    )
+                }
             }
         }
     }
@@ -374,16 +445,24 @@ private fun RealInboxScreen(
     listState: LazyListState,
     filterState: LazyListState,
     onOpenConversation: (String, Long?) -> Unit,
+    onOpenArchivedChats: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenNewChat: () -> Unit,
     onRefreshInbox: () -> Unit,
+    onTogglePinned: (Long) -> Unit,
+    onToggleArchived: (Long) -> Unit,
+    onSetThreadUnread: (Long?, String, Boolean) -> Unit,
+    onDeleteThread: (Long?, String) -> Unit,
 ) {
-    var selectedFilter by remember { mutableIntStateOf(0) }
+    var selectedFilter by rememberSaveable { mutableIntStateOf(0) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val context = LocalContext.current
     val reducedMotion = rememberReducedMotionEnabled()
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     val filterFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
 
-    val filteredThreads = remember(state.threads, selectedFilter) {
+    val filteredByChip = remember(state.threads, selectedFilter) {
         when (InboxFilter.entries[selectedFilter]) {
             InboxFilter.All -> state.threads
             InboxFilter.OTP -> state.threads.filter { t ->
@@ -392,6 +471,31 @@ private fun RealInboxScreen(
             }
             InboxFilter.Business -> state.threads.filter { t -> t.address.any { it.isLetter() } }
             InboxFilter.Personal -> state.threads.filter { t -> t.address.all { it.isDigit() || it == '+' || it == ' ' } }
+        }
+    }
+
+    val normalizedQuery = remember(searchQuery) { searchQuery.trim() }
+    val searchableDisplayNames = remember(filteredByChip, context) {
+        filteredByChip.associateWith { thread ->
+            displayNameFor(context, thread.address)
+        }
+    }
+    val filteredThreads = remember(filteredByChip, normalizedQuery, searchableDisplayNames) {
+        if (normalizedQuery.isBlank()) {
+            filteredByChip
+        } else {
+            filteredByChip.filter { thread ->
+                val displayName = searchableDisplayNames[thread].orEmpty()
+                displayName.contains(normalizedQuery, ignoreCase = true) ||
+                    thread.address.contains(normalizedQuery, ignoreCase = true) ||
+                    thread.snippet.contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    LaunchedEffect(normalizedQuery, selectedFilter) {
+        if (listState.firstVisibleItemIndex > 0) {
+            listState.scrollToItem(0)
         }
     }
 
@@ -404,6 +508,9 @@ private fun RealInboxScreen(
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    IconButton(onClick = onOpenArchivedChats) {
+                        Icon(Icons.Rounded.Archive, contentDescription = "Archived chats", tint = MaterialTheme.colorScheme.onSurface)
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
                     }
@@ -435,7 +542,8 @@ private fun RealInboxScreen(
             )
         },
     ) { innerPadding ->
-        LazyColumn(
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
             state = listState,
             flingBehavior = listFlingBehavior,
             modifier = Modifier
@@ -451,6 +559,43 @@ private fun RealInboxScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            item(key = "inbox_search") {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .padding(bottom = 6.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(34.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Clear search",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    },
+                    placeholder = {
+                        Text(
+                            text = "Search conversations",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    shape = RoundedCornerShape(18.dp),
+                )
+            }
             item(key = "filter_chips") {
                 LazyRow(
                     state = filterState,
@@ -474,8 +619,10 @@ private fun RealInboxScreen(
                             .then(rememberEntranceModifier(filter.name, reducedMotion))
                         FilterChip(
                             modifier = animatedModifier,
-                            selected = selectedFilter == index, onClick = { selectedFilter = index },
-                            label = { Text(filter.label) }, shape = RoundedCornerShape(20.dp),
+                            selected = selectedFilter == index,
+                            onClick = { selectedFilter = index },
+                            label = { Text(filter.label) },
+                            shape = RoundedCornerShape(20.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -506,8 +653,15 @@ private fun RealInboxScreen(
                 filteredThreads.isEmpty() -> {
                     item(key = "inbox_filtered_empty") {
                         InboxFilteredEmptyStateCard(
-                            activeFilter = InboxFilter.entries[selectedFilter].label,
-                            onShowAll = { selectedFilter = InboxFilter.All.ordinal },
+                            activeFilter = if (normalizedQuery.isNotBlank()) {
+                                "${InboxFilter.entries[selectedFilter].label} · \"$normalizedQuery\""
+                            } else {
+                                InboxFilter.entries[selectedFilter].label
+                            },
+                            onShowAll = {
+                                selectedFilter = InboxFilter.All.ordinal
+                                searchQuery = ""
+                            },
                         )
                     }
                 }
@@ -517,16 +671,187 @@ private fun RealInboxScreen(
                         key = { it.address },
                         contentType = { "inbox_thread" },
                     ) { thread ->
+                        val isMenuOpenForThread = contextMenuThreadId == thread.threadId
                         val itemModifier = motionAnimateItemModifier(reducedMotion)
                             .then(rememberEntranceModifier(thread.address, reducedMotion))
+                            .then(if (isMenuOpenForThread) Modifier.zIndex(2f) else Modifier)
                         SmsThreadCard(
                             thread = thread,
+                            isPinned = thread.threadId in state.pinnedThreadIds,
+                            isArchived = thread.threadId in state.archivedThreadIds,
+                            isContextMenuOpen = contextMenuThreadId == thread.threadId,
                             onClick = { onOpenConversation(thread.address, thread.threadId) },
+                            onLongPress = { contextMenuThreadId = thread.threadId },
+                            onDismissMenu = { contextMenuThreadId = null },
+                            onTogglePinned = { onTogglePinned(thread.threadId) },
+                            onToggleArchived = { onToggleArchived(thread.threadId) },
+                            onToggleUnread = {
+                                onSetThreadUnread(
+                                    thread.threadId,
+                                    thread.address,
+                                    thread.unreadCount == 0,
+                                )
+                            },
+                            onDelete = { onDeleteThread(thread.threadId, thread.address) },
                             modifier = itemModifier,
                         )
                     }
                 }
             }
+
+            if (contextMenuThreadId != null) {
+                item(key = "inbox_context_scrim") {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                    )
+                }
+            }
+        }
+
+        if (contextMenuThreadId != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { contextMenuThreadId = null })
+                    },
+            )
+        }
+    }
+}
+}
+
+@Composable
+private fun ArchivedChatsScreen(
+    threads: List<SmsThread>,
+    pinnedThreadIds: Set<Long>,
+    archivedThreadIds: Set<Long>,
+    loading: Boolean,
+    errorMessage: String?,
+    listState: LazyListState,
+    onBack: () -> Unit,
+    onOpenConversation: (String, Long?) -> Unit,
+    onRefreshInbox: () -> Unit,
+    onTogglePinned: (Long) -> Unit,
+    onToggleArchived: (Long) -> Unit,
+    onSetThreadUnread: (Long?, String, Boolean) -> Unit,
+    onDeleteThread: (Long?, String) -> Unit,
+) {
+    val reducedMotion = rememberReducedMotionEnabled()
+    val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
+    var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Archived chats", style = MaterialTheme.typography.headlineMedium) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Rounded.ArrowBackIosNew, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { innerPadding ->
+        LazyColumn(
+            state = listState,
+            flingBehavior = listFlingBehavior,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .elasticOverscroll(
+                    enabled = !reducedMotion,
+                    state = listState,
+                ),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            when {
+                loading -> {
+                    item(key = "archived_loading") {
+                        InboxLoadingStateCard(onRefreshInbox = onRefreshInbox)
+                    }
+                }
+                errorMessage != null -> {
+                    item(key = "archived_error") {
+                        InboxErrorStateCard(
+                            message = errorMessage,
+                            onRetry = onRefreshInbox,
+                        )
+                    }
+                }
+                threads.isEmpty() -> {
+                    item(key = "archived_empty") {
+                        InboxStateCard(
+                            title = "No archived chats",
+                            body = "Archive a conversation from the inbox to keep it out of your primary list without deleting it.",
+                            statusLabel = "Archive empty",
+                            actionLabel = "Back to inbox",
+                            icon = Icons.Rounded.Archive,
+                            onAction = onBack,
+                        )
+                    }
+                }
+                else -> {
+                    items(
+                        items = threads,
+                        key = { it.address },
+                        contentType = { "archived_thread" },
+                    ) { thread ->
+                        val itemModifier = motionAnimateItemModifier(reducedMotion)
+                            .then(rememberEntranceModifier("archived_${thread.address}", reducedMotion))
+                        val isMenuOpenForThread = contextMenuThreadId == thread.threadId
+                        SmsThreadCard(
+                            thread = thread,
+                            isPinned = thread.threadId in pinnedThreadIds,
+                            isArchived = thread.threadId in archivedThreadIds,
+                            isContextMenuOpen = isMenuOpenForThread,
+                            onClick = { onOpenConversation(thread.address, thread.threadId) },
+                            onLongPress = { contextMenuThreadId = thread.threadId },
+                            onDismissMenu = { contextMenuThreadId = null },
+                            onTogglePinned = { onTogglePinned(thread.threadId) },
+                            onToggleArchived = { onToggleArchived(thread.threadId) },
+                            onToggleUnread = {
+                                onSetThreadUnread(
+                                    thread.threadId,
+                                    thread.address,
+                                    thread.unreadCount == 0,
+                                )
+                            },
+                            onDelete = { onDeleteThread(thread.threadId, thread.address) },
+                            modifier = if (isMenuOpenForThread) itemModifier.then(Modifier.zIndex(2f)) else itemModifier,
+                        )
+                    }
+                }
+            }
+
+            if (contextMenuThreadId != null) {
+                item(key = "archived_context_scrim") {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                    )
+                }
+            }
+        }
+
+        if (contextMenuThreadId != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { contextMenuThreadId = null })
+                    },
+            )
         }
     }
 }
@@ -836,7 +1161,16 @@ private fun InboxStateCard(
 @Composable
 private fun SmsThreadCard(
     thread: SmsThread,
+    isPinned: Boolean,
+    isArchived: Boolean,
+    isContextMenuOpen: Boolean,
     onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onToggleArchived: () -> Unit,
+    onToggleUnread: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -870,63 +1204,152 @@ private fun SmsThreadCard(
             }
         }
     }
-    Card(
+    val cardShape = RoundedCornerShape(20.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .clip(cardShape)
+            .semantics {
                 role = Role.Button
                 contentDescription = semanticsLabel
             }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(outlineColor),
-        ),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongPress,
+            ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = cardShape,
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = CardDefaults.outlinedCardBorder().copy(
+                brush = SolidColor(outlineColor),
+            ),
         ) {
-            SerafinaAvatar(imageUrl = null, initials = initials, hasUnread = hasUnread, size = 48.dp)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = displayName,
-                    style = if (hasUnread) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    else MaterialTheme.typography.titleMedium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = thread.snippet,
-                    style = if (hasUnread) {
-                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                    } else {
-                        MaterialTheme.typography.bodyMedium
-                    },
-                    color = if (hasUnread) MaterialTheme.colorScheme.onSecondaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = thread.timestamp.toInboxTimestamp(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (hasUnread) {
-                    Box(
-                        modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                        contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SerafinaAvatar(imageUrl = null, initials = initials, hasUnread = hasUnread, size = 48.dp)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                        Text(
+                            text = displayName,
+                            style = if (hasUnread) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            else MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (isPinned) {
+                            StatusPill(
+                                label = "Pinned",
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                    Text(
+                        text = thread.snippet,
+                        style = if (hasUnread) {
+                            MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                        } else {
+                            MaterialTheme.typography.bodyMedium
+                        },
+                        color = if (hasUnread) MaterialTheme.colorScheme.onSecondaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = thread.timestamp.toInboxTimestamp(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (hasUnread) {
+                        Box(
+                            modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
             }
+        }
+
+        DropdownMenu(
+            expanded = isContextMenuOpen,
+            onDismissRequest = onDismissMenu,
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (isPinned) "Unpin" else "Pin") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (isPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        contentDescription = null,
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                onClick = {
+                    onDismissMenu()
+                    onTogglePinned()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (isArchived) "Unarchive" else "Archive") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Archive,
+                        contentDescription = null,
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                onClick = {
+                    onDismissMenu()
+                    onToggleArchived()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (hasUnread) "Mark as read" else "Mark as unread") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.MarkunreadMailbox,
+                        contentDescription = null,
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                onClick = {
+                    onDismissMenu()
+                    onToggleUnread()
+                },
+            )
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+            )
+            DropdownMenuItem(
+                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                onClick = {
+                    onDismissMenu()
+                    onDelete()
+                },
+            )
         }
     }
 }
@@ -1057,23 +1480,64 @@ private fun RealConversationScreen(
     title: String,
     address: String,
     initialDraft: String,
+    initialSubscriptionId: Int?,
     messages: List<SystemSms>,
     loading: Boolean,
     importantMessageIds: Set<Long>,
     sendState: SendState,
     onBack: () -> Unit,
+    onSubscriptionIdChange: (Int?) -> Unit,
     onSend: (String) -> Unit,
     onRetrySend: () -> Unit,
     onClearSendState: () -> Unit,
     onDraftConsumed: () -> Unit,
-    onToggleImportantMessage: (Long) -> Unit,
+    onDeleteMessage: (Long) -> Unit,
+    onForwardMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     val reducedMotion = rememberReducedMotionEnabled()
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     var draft by rememberSaveable(address) { mutableStateOf("") }
     var previousMessageCount by remember(address) { mutableIntStateOf(0) }
+    val fallbackSimOption = remember {
+        NewChatSimOption(
+            key = "sim_default",
+            subscriptionId = null,
+            slotLabel = "SIM 1",
+            carrierLabel = "Default line",
+        )
+    }
+    val simOptions by produceState(
+        initialValue = emptyList<NewChatSimOption>(),
+        key1 = context,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            loadSimOptions(context)
+        }
+    }
+    val availableSimOptions = remember(simOptions, fallbackSimOption) {
+        if (simOptions.isEmpty()) listOf(fallbackSimOption) else simOptions
+    }
+    var selectedSimKey by rememberSaveable(address) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(address, initialSubscriptionId, availableSimOptions) {
+        val matchingOption = availableSimOptions.firstOrNull { it.subscriptionId == initialSubscriptionId }
+        selectedSimKey = when {
+            matchingOption != null -> matchingOption.key
+            availableSimOptions.any { it.key == selectedSimKey } -> selectedSimKey
+            else -> availableSimOptions.firstOrNull()?.key
+        }
+    }
+
+    val selectedSim = remember(availableSimOptions, selectedSimKey) {
+        availableSimOptions.firstOrNull { it.key == selectedSimKey } ?: availableSimOptions.firstOrNull()
+    }
+
+    LaunchedEffect(selectedSim?.subscriptionId) {
+        onSubscriptionIdChange(selectedSim?.subscriptionId)
+    }
 
     LaunchedEffect(address, initialDraft) {
         if (initialDraft.isNotBlank()) {
@@ -1106,6 +1570,13 @@ private fun RealConversationScreen(
     val unreadCount = remember(messages) { messages.count { it.isInbound && !it.read } }
     val importantCount = remember(messages, importantMessageIds) {
         messages.count { it.id in importantMessageIds }
+    }
+    var contextMenuMessageId by rememberSaveable(address) { mutableStateOf<Long?>(null) }
+    val contextMenuMessage = remember(messages, contextMenuMessageId) {
+        messages.firstOrNull { it.id == contextMenuMessageId }
+    }
+    val clipboardManager = remember(context) {
+        context.getSystemService(ClipboardManager::class.java)
     }
     val isNearEnd by remember(listState) {
         derivedStateOf { listState.isNearListEnd() }
@@ -1201,12 +1672,20 @@ private fun RealConversationScreen(
             if (isReplyable) {
                 Column {
                     ConversationSendStatusRow(
-                        sendState = sendState,
+                        sendState = when (sendState) {
+                            is SendState.Sent -> SendState.Idle
+                            else -> sendState
+                        },
                         onRetrySend = onRetrySend,
                     )
                     ConversationComposer(
                         draft = draft,
                         sendState = sendState,
+                        simOptions = availableSimOptions,
+                        selectedSimKey = selectedSim?.key,
+                        onSimOptionClick = { option ->
+                            selectedSimKey = option.key
+                        },
                         onDraftChange = {
                             draft = it
                             if (sendState is SendState.Failed || sendState is SendState.Sent) {
@@ -1326,7 +1805,26 @@ private fun RealConversationScreen(
                                     ConversationMessageBubble(
                                         message = item.message,
                                         isImportant = item.message.id in importantMessageIds,
-                                        onToggleImportant = { onToggleImportantMessage(item.message.id) },
+                                        isContextMenuOpen = contextMenuMessageId == item.message.id,
+                                        onLongPress = {
+                                            contextMenuMessageId =
+                                                if (contextMenuMessageId == item.message.id) null else item.message.id
+                                        },
+                                        onDismissMenu = { contextMenuMessageId = null },
+                                        onCopy = {
+                                            clipboardManager?.setPrimaryClip(
+                                                ClipData.newPlainText("message", item.message.body)
+                                            )
+                                            contextMenuMessageId = null
+                                        },
+                                        onDelete = {
+                                            onDeleteMessage(item.message.id)
+                                            contextMenuMessageId = null
+                                        },
+                                        onForward = {
+                                            onForwardMessage(item.message.body)
+                                            contextMenuMessageId = null
+                                        },
                                         modifier = motionAnimateItemModifier(reducedMotion)
                                             .then(rememberEntranceModifier(item.key, reducedMotion)),
                                     )
@@ -1337,6 +1835,7 @@ private fun RealConversationScreen(
                 }
             }
         }
+
     }
 }
 
@@ -1403,7 +1902,12 @@ private fun ConversationOverviewCard(
 private fun ConversationMessageBubble(
     message: SystemSms,
     isImportant: Boolean,
-    onToggleImportant: () -> Unit,
+    isContextMenuOpen: Boolean,
+    onLongPress: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit,
+    onForward: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isOutbound = message.isOutbound
@@ -1419,65 +1923,106 @@ private fun ConversationMessageBubble(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
     ) {
-        Column(
-            modifier = Modifier.widthIn(max = 320.dp),
-            horizontalAlignment = if (isOutbound) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Surface(
-                modifier = Modifier.then(
-                    if (isUnread && !isOutbound) {
-                        Modifier.border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.42f),
-                            shape = bubbleShape,
-                        )
-                    } else {
-                        Modifier
-                    }
+        Box(
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongPress,
                 ),
-                shape = bubbleShape,
-                color = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
-                else if (isUnread) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
-                else MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = if (isOutbound) 0.dp else 1.dp,
+        ) {
+            Column(
+                modifier = Modifier.widthIn(max = 320.dp),
+                horizontalAlignment = if (isOutbound) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    text = message.body.ifBlank { " " },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                Surface(
+                    modifier = Modifier.then(
+                        if (isUnread && !isOutbound) {
+                            Modifier.border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.42f),
+                                shape = bubbleShape,
+                            )
+                        } else {
+                            Modifier
+                        }
                     ),
-                    color = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (isImportant) {
-                    StatusPill(
-                        label = "Kept",
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
-                Text(
-                    text = message.timestamp.toConversationTime(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isUnread) MaterialTheme.colorScheme.tertiary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FilledTonalIconButton(
-                    onClick = onToggleImportant,
-                    modifier = Modifier.size(30.dp),
+                    shape = bubbleShape,
+                    color = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
+                    else if (isUnread) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
+                    else MaterialTheme.colorScheme.surfaceContainerLow,
+                    tonalElevation = if (isOutbound) 0.dp else 1.dp,
                 ) {
-                    Icon(
-                        imageVector = if (isImportant) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        contentDescription = if (isImportant) "Remove important marker" else "Keep message marked",
+                    Text(
+                        text = message.body.ifBlank { " " },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                        ),
+                        color = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface,
                     )
                 }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (isImportant) {
+                        StatusPill(
+                            label = "Kept",
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                    Text(
+                        text = message.timestamp.toConversationTime(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isUnread) MaterialTheme.colorScheme.tertiary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = isContextMenuOpen,
+                onDismissRequest = onDismissMenu,
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Copy") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.ContentCopy,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = onCopy,
+                )
+                DropdownMenuItem(
+                    text = { Text("Forward") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = onForward,
+                )
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = onDelete,
+                )
             }
         }
     }
@@ -1487,6 +2032,9 @@ private fun ConversationMessageBubble(
 private fun ConversationComposer(
     draft: String,
     sendState: SendState,
+    simOptions: List<NewChatSimOption>,
+    selectedSimKey: String?,
+    onSimOptionClick: (NewChatSimOption) -> Unit,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1496,6 +2044,7 @@ private fun ConversationComposer(
     val canSend by remember(draft, isSending) {
         derivedStateOf { draft.isNotBlank() && !isSending }
     }
+    val showSimToggle = simOptions.size > 1
     val fieldInteractionSource = remember { MutableInteractionSource() }
     val isFocused by fieldInteractionSource.collectIsFocusedAsState()
     val sendInteractionSource = remember { MutableInteractionSource() }
@@ -1564,87 +2113,116 @@ private fun ConversationComposer(
 
     val pillShape = RoundedCornerShape(28.dp)
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .imePadding()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .graphicsLayer { translationY = containerLift },
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // ── Text input pill ──
-        BasicTextField(
-            value = draft,
-            onValueChange = onDraftChange,
-            modifier = Modifier.weight(1f),
-            enabled = !isSending,
-            interactionSource = fieldInteractionSource,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Send,
-            ),
-            keyboardActions = KeyboardActions(
-                onSend = {
-                    if (canSend) {
-                        onSend()
+        if (showSimToggle) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp),
+            ) {
+                items(simOptions, key = { it.key }) { option ->
+                    val selected = option.key == selectedSimKey
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSimOptionClick(option) },
+                        enabled = !isSending,
+                        modifier = Modifier.height(32.dp),
+                        label = {
+                            Text(
+                                text = option.slotLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = null,
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            BasicTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.weight(1f),
+                enabled = !isSending,
+                interactionSource = fieldInteractionSource,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Send,
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (canSend) {
+                            onSend()
+                        }
+                    },
+                ),
+                maxLines = 6,
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(pillShape)
+                            .background(containerColor)
+                            .heightIn(min = 52.dp)
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (draft.isEmpty()) {
+                            Text(
+                                text = if (isSending) "Sending…" else "Message",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        }
+                        innerTextField()
                     }
                 },
-            ),
-            maxLines = 6,
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(pillShape)
-                        .background(containerColor)
-                        .heightIn(min = 52.dp)
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = if (isSending) "Sending…" else "Message",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        )
-                    }
-                    innerTextField()
-                }
-            },
-        )
-
-        // ── Send button (hero moment) ──
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .graphicsLayer {
-                    scaleX = sendScale
-                    scaleY = sendScale
-                }
-                .clip(CircleShape)
-                .background(sendContainerColor)
-                .clickable(
-                    interactionSource = sendInteractionSource,
-                    indication = null,
-                    enabled = canSend,
-                    onClick = onSend,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.Send,
-                contentDescription = "Send message",
-                modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer { rotationZ = sendIconRotation },
-                tint = sendContentColor,
             )
+
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .graphicsLayer {
+                        scaleX = sendScale
+                        scaleY = sendScale
+                    }
+                    .clip(CircleShape)
+                    .background(sendContainerColor)
+                    .clickable(
+                        interactionSource = sendInteractionSource,
+                        indication = null,
+                        enabled = canSend,
+                        onClick = onSend,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "Send message",
+                    modifier = Modifier
+                        .size(22.dp)
+                        .graphicsLayer { rotationZ = sendIconRotation },
+                    tint = sendContentColor,
+                )
+            }
         }
     }
 }
@@ -1763,7 +2341,7 @@ private fun ReadOnlyConversationNotice(
     modifier: Modifier = Modifier,
 ) {
     val borderColor by animateColorAsState(
-        targetValue = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+        targetValue = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
         label = "read_only_notice_border",
     )
 
@@ -1771,85 +2349,54 @@ private fun ReadOnlyConversationNotice(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .border(
                 width = 1.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(20.dp),
             )
             .semantics {
                 contentDescription = "Read only business sender. Replies are disabled."
             },
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 0.dp,
     ) {
-        Box(
-            modifier = Modifier.background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                        MaterialTheme.colorScheme.surfaceContainerLow,
-                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
-                    ),
-                ),
-            ),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(32.dp),
             ) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = Icons.Outlined.Sms,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = "Read only",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = "This sender doesn't accept replies",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Business sender",
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = Icons.Outlined.Sms,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
-                    text = "SMS",
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = "Read only",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Business sender — replies unavailable",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1966,8 +2513,10 @@ private fun EmptyConversationState(
 private fun SettingsScreen(
     themeViewModel: SerafinaThemeViewModel,
     listState: LazyListState,
+    archivedCount: Int,
     onBack: () -> Unit,
     onRequestDefaultSms: () -> Unit,
+    onOpenArchivedChats: () -> Unit,
 ) {
     val themeState by themeViewModel.state.collectAsState()
     val reducedMotion = rememberReducedMotionEnabled()
@@ -2033,6 +2582,13 @@ private fun SettingsScreen(
             item(key = "general_card") {
                 SettingsGroupCard {
                     SettingsRow(icon = Icons.Outlined.Sms, title = "Default SMS app", subtitle = "Tap to set Pulse as default", onClick = onRequestDefaultSms)
+                    SettingsGroupDivider()
+                    SettingsRow(
+                        icon = Icons.Rounded.Archive,
+                        title = "Archived chats",
+                        subtitle = if (archivedCount == 0) "No archived chats" else "$archivedCount archived chats",
+                        onClick = onOpenArchivedChats,
+                    )
                 }
             }
             item(key = "appearance_header") { SettingsSectionHeader("Appearance") }

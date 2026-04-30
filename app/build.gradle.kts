@@ -15,11 +15,31 @@ val pulseSyncProdApiKey = providers.gradleProperty("pulseSyncProdApiKey").orElse
 val pulseSyncConnectTimeoutMillis = providers.gradleProperty("pulseSyncConnectTimeoutMillis").orElse("5000").get()
 val pulseSyncReadTimeoutMillis = providers.gradleProperty("pulseSyncReadTimeoutMillis").orElse("5000").get()
 
+val releaseStoreFile = providers.gradleProperty("pulseReleaseStoreFile").orElse("").get().trim()
+val releaseStorePassword = providers.gradleProperty("pulseReleaseStorePassword").orElse("").get().trim()
+val releaseKeyAlias = providers.gradleProperty("pulseReleaseKeyAlias").orElse("").get().trim()
+val releaseKeyPassword = providers.gradleProperty("pulseReleaseKeyPassword").orElse("").get().trim()
+val hasReleaseKeystoreConfig = releaseStoreFile.isNotEmpty() &&
+    releaseStorePassword.isNotEmpty() &&
+    releaseKeyAlias.isNotEmpty() &&
+    releaseKeyPassword.isNotEmpty()
+
 android {
     namespace = "com.skeler.pulse"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseKeystoreConfig) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -44,6 +64,11 @@ android {
 
     buildTypes {
         release {
+            signingConfig = if (hasReleaseKeystoreConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -60,6 +85,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -70,6 +96,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

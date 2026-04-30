@@ -10,6 +10,8 @@ data class PersistedMessageEnvelope(
     val messageId: MessageId,
     val conversationId: ConversationId,
     val bodyCiphertext: String?,
+    val bodyKeyAlias: String?,
+    val bodyInitializationVector: String?,
     val bodyPreview: String,
     val payloadStoragePolicy: PayloadStoragePolicy,
     val sentAtEpochMillis: Long?,

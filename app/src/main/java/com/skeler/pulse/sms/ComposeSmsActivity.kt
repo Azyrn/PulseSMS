@@ -20,9 +20,12 @@ class ComposeSmsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val recipient = extractRecipient(intent?.data)
+        val data = intent?.data
+        val recipient = extractRecipient(data)
         val body = intent?.getStringExtra("sms_body")
             ?: intent?.getStringExtra(Intent.EXTRA_TEXT)
+            ?: data?.getQueryParameter("body")
+            ?: data?.getQueryParameter("sms_body")
             ?: ""
 
         val launchIntent = MainActivity.createLaunchIntent(
@@ -39,8 +42,14 @@ class ComposeSmsActivity : ComponentActivity() {
      */
     private fun extractRecipient(uri: Uri?): String {
         if (uri == null) return ""
-        // URI format: sms:+1234567890 or smsto:+1234567890
-        return uri.schemeSpecificPart?.replace("-", "")?.trim() ?: ""
+        return uri.schemeSpecificPart
+            ?.substringBefore("?")
+            ?.split(",", ";")
+            ?.joinToString(separator = ",") { recipient ->
+                recipient.replace("-", "").trim()
+            }
+            ?.trim(',')
+            .orEmpty()
     }
 
 }

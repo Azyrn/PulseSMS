@@ -3,6 +3,7 @@ package com.skeler.pulse.sync.worker
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.skeler.pulse.sync.data.WorkManagerSyncScheduler
 import com.skeler.pulse.sync.domain.MessageSyncOrchestrator
 import com.skeler.pulse.sync.domain.SyncRunResult
 
@@ -18,13 +19,20 @@ class PulseSyncWorker(
             ?: return Result.retry()
 
         return when (val result = orchestrator.run(conversationId)) {
-            is SyncRunResult.Success -> Result.success()
-            is SyncRunResult.PartialFailure ->
-                if (result.failed > 0) {
-                    Result.retry()
-                } else {
-                    Result.success()
+            is SyncRunResult.Success -> {
+                result.nextRetryAtEpochMillis?.let { nextRetryAt ->
+                    WorkManagerSyncScheduler(applicationContext)
+                        .enqueueConversationSync(conversationId, nextRetryAt)
                 }
+                Result.success()
+            }
+            is SyncRunResult.PartialFailure -> {
+                result.nextRetryAtEpochMillis?.let { nextRetryAt ->
+                    WorkManagerSyncScheduler(applicationContext)
+                        .enqueueConversationSync(conversationId, nextRetryAt)
+                }
+                Result.success()
+            }
             is SyncRunResult.Failure -> Result.failure()
         }
     }

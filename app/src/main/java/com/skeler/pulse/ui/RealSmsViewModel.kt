@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.sms.ImportantMessagePreferences
+import com.skeler.pulse.sms.InboxThreadPreferences
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
 import com.skeler.pulse.sms.SystemSmsReader
@@ -42,6 +43,9 @@ internal fun SmsThread.matchesReadTarget(target: ReadConversationTarget): Boolea
  */
 data class RealInboxState(
     val threads: List<SmsThread> = emptyList(),
+    val archivedThreads: List<SmsThread> = emptyList(),
+    val pinnedThreadIds: Set<Long> = emptySet(),
+    val archivedThreadIds: Set<Long> = emptySet(),
     val loading: Boolean = true,
     val permissionDenied: Boolean = false,
     val isDefaultSmsApp: Boolean = true,
@@ -85,6 +89,7 @@ private data class PendingSendRequest(
 class RealSmsViewModel(
     private val smsReader: SystemSmsReader,
     private val importantMessagePreferences: ImportantMessagePreferences,
+    private val inboxThreadPreferences: InboxThreadPreferences,
 ) : ViewModel() {
 
     private val _inboxState = MutableStateFlow(RealInboxState())
@@ -107,17 +112,30 @@ class RealSmsViewModel(
         inboxJob?.cancel()
         inboxJob = viewModelScope.launch {
             try {
-                smsReader.observeThreads().collectLatest { threads ->
+                combine(
+                    smsReader.observeThreads(),
+                    inboxThreadPreferences.pinnedThreadIds,
+                    inboxThreadPreferences.archivedThreadIds,
+                ) { threads, pinnedIds, archivedIds ->
+                    Triple(threads, pinnedIds, archivedIds)
+                }.collectLatest { (threads, pinnedIds, archivedIds) ->
                     val readTarget = pendingReadTarget
-                    val visibleThreads = if (readTarget == null) {
+                    val threadsWithReadOverlay = if (readTarget == null) {
                         threads
                     } else {
                         threads.map { thread ->
                             if (thread.matchesReadTarget(readTarget)) thread.asRead() else thread
                         }
                     }
+                    val sortedThreads = threadsWithReadOverlay
+                        .sortedWith(compareByDescending<SmsThread> { it.threadId in pinnedIds }.thenByDescending { it.date })
+                    val visibleThreads = sortedThreads.filterNot { it.threadId in archivedIds }
+                    val archivedThreads = sortedThreads.filter { it.threadId in archivedIds }
                     _inboxState.value = _inboxState.value.copy(
                         threads = visibleThreads,
+                        archivedThreads = archivedThreads,
+                        pinnedThreadIds = pinnedIds,
+                        archivedThreadIds = archivedIds,
                         loading = false,
                         errorMessage = null,
                     )
@@ -125,6 +143,7 @@ class RealSmsViewModel(
             } catch (_: Exception) {
                 _inboxState.value = _inboxState.value.copy(
                     threads = emptyList(),
+                    archivedThreads = emptyList(),
                     loading = false,
                     errorMessage = "Pulse couldn't read your messages right now.",
                 )
@@ -147,6 +166,7 @@ class RealSmsViewModel(
             inboxJob = null
             _inboxState.value = _inboxState.value.copy(
                 threads = emptyList(),
+                archivedThreads = emptyList(),
                 loading = false,
                 errorMessage = null,
             )
@@ -182,6 +202,7 @@ class RealSmsViewModel(
                 smsReader.observeMessages(address = address, threadId = threadId),
                 importantMessagePreferences.importantMessageIds,
             ) { messages, importantIds ->
+                val hasUnreadInbound = messages.hasUnreadInboundMessages()
                 val visibleMessages = if (pendingReadTarget == ReadConversationTarget(address, threadId)) {
                     messages.map(SystemSms::asReadIfInbound)
                 } else {
@@ -196,14 +217,23 @@ class RealSmsViewModel(
                     messages = visibleMessages,
                     loading = false,
                     importantMessageIds = visibleImportantIds,
-                )
-            }.collectLatest { conversationState ->
+                ) to hasUnreadInbound
+            }.collectLatest { (conversationState, hasUnreadInbound) ->
                 _conversationState.value = conversationState
-                if (conversationState.messages.hasUnreadInboundMessages()) {
-                    smsReader.markThreadAsRead(threadId = threadId, address = address)
+                if (hasUnreadInbound) {
+                    smsReader.setThreadUnreadState(threadId = threadId, address = address, unread = false)
                 }
             }
         }
+    }
+
+    fun closeConversation() {
+        conversationJob?.cancel()
+        conversationJob = null
+        activeConversationAddress = null
+        activeConversationThreadId = null
+        pendingReadTarget = null
+        _conversationState.value = RealConversationState(loading = false)
     }
 
     fun toggleImportantMessage(messageId: Long) {
@@ -247,6 +277,39 @@ class RealSmsViewModel(
     fun clearSendState() {
         if (_sendState.value !is SendState.Sending) {
             _sendState.value = SendState.Idle
+        }
+    }
+
+    fun toggleThreadPinned(threadId: Long) {
+        viewModelScope.launch {
+            inboxThreadPreferences.togglePinned(threadId)
+        }
+    }
+
+    fun toggleThreadArchived(threadId: Long) {
+        viewModelScope.launch {
+            inboxThreadPreferences.toggleArchived(threadId)
+        }
+    }
+
+    fun setThreadUnread(threadId: Long?, address: String, unread: Boolean) {
+        viewModelScope.launch {
+            smsReader.setThreadUnreadState(threadId = threadId, address = address, unread = unread)
+        }
+    }
+
+    fun deleteThread(threadId: Long?, address: String) {
+        viewModelScope.launch {
+            smsReader.deleteThread(threadId = threadId, address = address)
+            if (threadId != null) {
+                inboxThreadPreferences.removeThread(threadId)
+            }
+        }
+    }
+
+    fun deleteMessage(messageId: Long) {
+        viewModelScope.launch {
+            smsReader.deleteMessage(messageId)
         }
     }
 

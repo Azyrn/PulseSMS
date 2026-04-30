@@ -67,6 +67,8 @@ class MessagingSyncBackoffIntegrationTest {
                     messageId = "msg-1",
                     conversationId = "conv-1",
                     bodyCiphertext = "cipher",
+                    bodyKeyAlias = "alias",
+                    bodyInitializationVector = "iv",
                     bodyPreview = "",
                     payloadStoragePolicy = PayloadStoragePolicy.CiphertextOnly,
                     sentAtEpochMillis = 1_000L,

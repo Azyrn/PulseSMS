@@ -51,10 +51,10 @@ class HttpSyncTransport(
             return@withContext SyncTransportResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
         }
 
-        val connection = (endpoint.openConnection() as? HttpURLConnection)
-            ?: return@withContext SyncTransportResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
-
+        var connection: HttpURLConnection? = null
         try {
+            connection = (endpoint.openConnection() as? HttpURLConnection)
+                ?: return@withContext SyncTransportResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
             connection.requestMethod = "POST"
             connection.connectTimeout = endpointConfig.connectTimeoutMillis
             connection.readTimeout = endpointConfig.readTimeoutMillis
@@ -93,8 +93,16 @@ class HttpSyncTransport(
                 attributes = endpointAttributes(endpoint.toExternalForm()),
             )
             SyncTransportResult.RetryableFailure(code = ERROR_NETWORK_IO)
+        } catch (_: SecurityException) {
+            observabilityProvider.logger(scope).log(
+                level = LogLevel.WARN,
+                event = ObservedEvent(EventName("sync.transport_network_failure")),
+                traceContext = traceContext,
+                attributes = endpointAttributes(endpoint.toExternalForm()),
+            )
+            SyncTransportResult.RetryableFailure(code = ERROR_NETWORK_IO)
         } finally {
-            connection.disconnect()
+            connection?.disconnect()
         }
     }
 

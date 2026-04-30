@@ -44,6 +44,7 @@ class MessageSyncOrchestrator(
         var synced = 0
         var retried = 0
         var failed = 0
+        var nextRetryAtEpochMillis: Long? = null
 
         pending.forEach { envelope ->
             val traceContext = observabilityProvider.newTraceContext(
@@ -72,26 +73,46 @@ class MessageSyncOrchestrator(
 
                 is SyncTransportResult.RetryableFailure -> {
                     val nextAttempt = envelope.sync.attempt + 1
-                    val nextRetryAt = retryPolicy.nextRetryAt(nextAttempt, timeProvider.now())
-                    encryptedMessageStore.updateSync(
-                        messageId = envelope.messageId,
-                        sync = PersistedSyncEnvelope(
-                            schemaVersion = envelope.sync.schemaVersion,
-                            queueKey = envelope.sync.queueKey,
-                            dedupeKey = envelope.sync.dedupeKey,
-                            attempt = nextAttempt,
-                            maxAttempts = envelope.sync.maxAttempts,
-                            nextRetryAtEpochMillis = nextRetryAt.toEpochMilli(),
-                            lastFailureCode = result.code,
-                            completedAtEpochMillis = null,
-                        ),
-                    )
-                    observabilityProvider.logger(scope).log(
-                        level = LogLevel.WARN,
-                        event = ObservedEvent(EventName("sync.message_retry_scheduled")),
-                        traceContext = traceContext,
-                    )
-                    retried += 1
+                    if (nextAttempt >= envelope.sync.maxAttempts) {
+                        encryptedMessageStore.updateSync(
+                            messageId = envelope.messageId,
+                            sync = envelope.sync.copy(
+                                attempt = nextAttempt,
+                                lastFailureCode = result.code,
+                                nextRetryAtEpochMillis = null,
+                                completedAtEpochMillis = null,
+                            ),
+                        )
+                        observabilityProvider.logger(scope).log(
+                            level = LogLevel.ERROR,
+                            event = ObservedEvent(EventName("sync.message_failed")),
+                            traceContext = traceContext,
+                        )
+                        failed += 1
+                    } else {
+                        val nextRetryAt = retryPolicy.nextRetryAt(nextAttempt, timeProvider.now())
+                        val nextRetryAtMillis = nextRetryAt.toEpochMilli()
+                        nextRetryAtEpochMillis = minOfNullable(nextRetryAtEpochMillis, nextRetryAtMillis)
+                        encryptedMessageStore.updateSync(
+                            messageId = envelope.messageId,
+                            sync = PersistedSyncEnvelope(
+                                schemaVersion = envelope.sync.schemaVersion,
+                                queueKey = envelope.sync.queueKey,
+                                dedupeKey = envelope.sync.dedupeKey,
+                                attempt = nextAttempt,
+                                maxAttempts = envelope.sync.maxAttempts,
+                                nextRetryAtEpochMillis = nextRetryAtMillis,
+                                lastFailureCode = result.code,
+                                completedAtEpochMillis = null,
+                            ),
+                        )
+                        observabilityProvider.logger(scope).log(
+                            level = LogLevel.WARN,
+                            event = ObservedEvent(EventName("sync.message_retry_scheduled")),
+                            traceContext = traceContext,
+                        )
+                        retried += 1
+                    }
                 }
 
                 is SyncTransportResult.PermanentFailure -> {
@@ -162,12 +183,17 @@ class MessageSyncOrchestrator(
         }
 
         return if (failed == 0 && !complianceNeedsRetry) {
-            SyncRunResult.Success(synced = synced, retried = retried)
+            SyncRunResult.Success(
+                synced = synced,
+                retried = retried,
+                nextRetryAtEpochMillis = nextRetryAtEpochMillis,
+            )
         } else {
             SyncRunResult.PartialFailure(
                 synced = synced,
                 retried = retried,
                 failed = failed + if (complianceNeedsRetry) 1 else 0,
+                nextRetryAtEpochMillis = nextRetryAtEpochMillis,
             )
         }
     }
@@ -177,16 +203,21 @@ class MessageSyncOrchestrator(
     }
 }
 
+private fun minOfNullable(current: Long?, candidate: Long): Long =
+    current?.let { minOf(it, candidate) } ?: candidate
+
 sealed interface SyncRunResult {
     data class Success(
         val synced: Int,
         val retried: Int,
+        val nextRetryAtEpochMillis: Long? = null,
     ) : SyncRunResult
 
     data class PartialFailure(
         val synced: Int,
         val retried: Int,
         val failed: Int,
+        val nextRetryAtEpochMillis: Long? = null,
     ) : SyncRunResult
 
     data class Failure(

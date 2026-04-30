@@ -14,6 +14,6 @@ abstract class PulseDatabase : RoomDatabase() {
 
     companion object {
         const val NAME: String = "pulse.db"
-        const val VERSION: Int = 4
+        const val VERSION: Int = 5
     }
 }

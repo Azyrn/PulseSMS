@@ -50,10 +50,10 @@ class HttpComplianceSyncTransport(
             return@withContext ComplianceSyncResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
         }
 
-        val connection = (endpoint.openConnection() as? HttpURLConnection)
-            ?: return@withContext ComplianceSyncResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
-
+        var connection: HttpURLConnection? = null
         try {
+            connection = (endpoint.openConnection() as? HttpURLConnection)
+                ?: return@withContext ComplianceSyncResult.PermanentFailure(code = ERROR_INVALID_ENDPOINT)
             connection.requestMethod = "GET"
             connection.connectTimeout = endpointConfig.connectTimeoutMillis
             connection.readTimeout = endpointConfig.readTimeoutMillis
@@ -98,8 +98,16 @@ class HttpComplianceSyncTransport(
                 attributes = endpointAttributes(endpoint.toExternalForm()),
             )
             ComplianceSyncResult.RetryableFailure(code = ERROR_NETWORK_IO)
+        } catch (_: SecurityException) {
+            observabilityProvider.logger(scope).log(
+                level = LogLevel.WARN,
+                event = ObservedEvent(EventName("sync.compliance_network_failure")),
+                traceContext = traceContext,
+                attributes = endpointAttributes(endpoint.toExternalForm()),
+            )
+            ComplianceSyncResult.RetryableFailure(code = ERROR_NETWORK_IO)
         } finally {
-            connection.disconnect()
+            connection?.disconnect()
         }
     }
 

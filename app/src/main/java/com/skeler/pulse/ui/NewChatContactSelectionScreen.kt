@@ -6,6 +6,7 @@
 package com.skeler.pulse.ui
 
 import android.content.res.Configuration
+import android.telephony.PhoneNumberUtils
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +66,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.skeler.pulse.contact.normalizeAddressForDisplay
 import com.skeler.pulse.design.theme.SerafinaAppTheme
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
@@ -85,36 +86,20 @@ internal data class ContactGroup(
     val contacts: List<ContactListItem>,
 )
 
-@Immutable
-private sealed interface ContactPickerRow {
-    val key: String
-    val contentType: String
-}
-
-@Immutable
-private data class ContactPickerHeaderRow(
-    override val key: String,
-    val label: String,
-) : ContactPickerRow {
-    override val contentType: String = "new_chat_header"
-}
-
-@Immutable
-private data class ContactPickerContactRow(
-    override val key: String,
-    val contact: ContactListItem,
-) : ContactPickerRow {
-    override val contentType: String = "new_chat_contact"
-}
-
 // ── Expressive design tokens ──
 
 private object ContactPickerTokens {
-    val avatarSize = 44.dp
-    val rowHorizontalPadding = 20.dp
-    val rowVerticalPadding = 10.dp
-    val searchCardCorner = 28.dp
-    val sectionHeaderPadding = 20.dp
+    val avatarSize = 52.dp
+    val rowHorizontalPadding = 0.dp
+    val rowVerticalPadding = 4.dp
+    val rowCardCorner = 16.dp
+    val rowInnerHorizontalPadding = 16.dp
+    val rowInnerVerticalPadding = 14.dp
+    val searchCardCorner = 24.dp
+    val sectionHeaderPadding = 4.dp
+    val groupCardCorner = 18.dp
+    val groupHorizontalPadding = 0.dp
+    val groupVerticalPadding = 4.dp
 }
 
 private val AvatarPalette = listOf(
@@ -144,7 +129,6 @@ internal fun NewChatContactSelectionScreen(
 ) {
     val colors = MaterialTheme.colorScheme
     val reducedMotion = rememberReducedMotionEnabled()
-    val listRows = remember(contactGroups) { contactGroups.flattenToPickerRows() }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -177,7 +161,7 @@ internal fun NewChatContactSelectionScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 12.dp),
         ) {
             ExpressiveSearchCard(
                 query = searchQuery,
@@ -186,9 +170,8 @@ internal fun NewChatContactSelectionScreen(
                 selectedSimKey = selectedSimKey,
                 onSimOptionClick = onSimOptionClick,
                 reducedMotion = reducedMotion,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
             )
-            Spacer(modifier = Modifier.height(16.dp))
 
             LazyColumn(
                 state = listState,
@@ -212,23 +195,20 @@ internal fun NewChatContactSelectionScreen(
                     item(key = "new_chat_loading") {
                         NewChatLoadingState()
                     }
-                } else if (listRows.isEmpty()) {
+                } else if (contactGroups.isEmpty()) {
                     item(key = "new_chat_empty") {
                         NewChatEmptyState(query = searchQuery)
                     }
                 } else {
-                    items(
-                        items = listRows,
-                        key = { it.key },
-                        contentType = { it.contentType },
-                    ) { row ->
-                        when (row) {
-                            is ContactPickerHeaderRow -> NewChatSectionHeader(label = row.label)
-                            is ContactPickerContactRow -> NewChatContactRow(
-                                contact = row.contact,
-                                onClick = { onContactClick(row.contact) },
-                            )
-                        }
+                    itemsIndexed(
+                        items = contactGroups,
+                        key = { _, group -> "new_chat_group_${group.label}" },
+                    ) { _, group ->
+                        NewChatSectionHeader(label = group.label)
+                        NewChatSegmentedContactGroup(
+                            contacts = group.contacts,
+                            onContactClick = onContactClick,
+                        )
                     }
                 }
             }
@@ -401,18 +381,57 @@ private fun NewChatSectionHeader(
             .background(colors.surface)
             .padding(
                 horizontal = ContactPickerTokens.sectionHeaderPadding,
-                vertical = 8.dp,
+                vertical = 12.dp,
             ),
-        style = MaterialTheme.typography.titleSmall.copy(
+        style = MaterialTheme.typography.titleMedium.copy(
             fontWeight = FontWeight.SemiBold,
         ),
-        color = colors.primary,
+        color = colors.onSurfaceVariant,
     )
 }
 
 // ── Contact row — with phone number pills ──
 
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NewChatSegmentedContactGroup(
+    contacts: List<ContactListItem>,
+    onContactClick: (ContactListItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = ContactPickerTokens.groupHorizontalPadding,
+                vertical = ContactPickerTokens.groupVerticalPadding,
+            ),
+        shape = RoundedCornerShape(ContactPickerTokens.groupCardCorner),
+        color = colors.surfaceContainerLow,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            contacts.forEachIndexed { index, contact ->
+                NewChatContactRow(
+                    contact = contact,
+                    onClick = { onContactClick(contact) },
+                )
+                if (index != contacts.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = ContactPickerTokens.rowInnerHorizontalPadding + ContactPickerTokens.avatarSize + 14.dp)
+                            .height(1.dp)
+                            .background(colors.outlineVariant.copy(alpha = 0.45f)),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun NewChatContactRow(
     contact: ContactListItem,
@@ -420,6 +439,7 @@ private fun NewChatContactRow(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val displayNumber = remember(contact.phoneNumber) { contact.phoneNumber.formatForContactRow() }
     val avatarColor = remember(contact.name) {
         AvatarPalette[contact.name.trim().ifBlank { "#" }.hashCode().mod(AvatarPalette.size)]
     }
@@ -429,8 +449,8 @@ private fun NewChatContactRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(
-                horizontal = ContactPickerTokens.rowHorizontalPadding,
-                vertical = ContactPickerTokens.rowVerticalPadding,
+                horizontal = ContactPickerTokens.rowInnerHorizontalPadding,
+                vertical = ContactPickerTokens.rowInnerVerticalPadding,
             ),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -462,19 +482,25 @@ private fun NewChatContactRow(
         }
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
             Text(
                 text = contact.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
+                style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Medium,
                 ),
                 color = colors.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!contact.name.isSameDisplayValueAs(contact.phoneNumber)) {
-                PhoneNumberPill(number = contact.phoneNumber)
+            if (!contact.name.isSameDisplayValueAs(displayNumber)) {
+                Text(
+                    text = displayNumber,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -512,6 +538,7 @@ private fun NewChatManualEntryRow(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val displayNumber = remember(contact.phoneNumber) { contact.phoneNumber.formatForContactRow() }
 
     Row(
         modifier = modifier
@@ -543,7 +570,7 @@ private fun NewChatManualEntryRow(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = contact.phoneNumber,
+                text = displayNumber,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                 ),
@@ -631,25 +658,6 @@ internal fun mockContactGroups(): List<ContactGroup> {
         }
     }
 
-private fun List<ContactGroup>.flattenToPickerRows(): List<ContactPickerRow> = buildList {
-    for (group in this@flattenToPickerRows) {
-        add(
-            ContactPickerHeaderRow(
-                key = "new_chat_header_${group.label}",
-                label = group.label,
-            ),
-        )
-        group.contacts.forEach { contact ->
-            add(
-                ContactPickerContactRow(
-                    key = "contact_${contact.key}",
-                    contact = contact,
-                ),
-            )
-        }
-    }
-}
-
 private fun String.contactInitial(): String? =
     trim()
         .firstOrNull { it.isLetter() }
@@ -666,6 +674,19 @@ private fun String.normalizeDisplayValue(): String {
         return trimmed.lowercase()
     }
     return trimmed.filter { it.isDigit() || it == '+' || it == '@' || it == '.' }.lowercase()
+}
+
+private fun String.formatForContactRow(): String {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return ""
+    if (trimmed.any(Char::isLetter) || trimmed.contains('@')) return trimmed
+
+    val normalized = normalizeAddressForDisplay()
+    if (normalized.isBlank()) return trimmed
+
+    return PhoneNumberUtils.formatNumber(normalized, java.util.Locale.getDefault().country)
+        ?.takeIf(String::isNotBlank)
+        ?: normalized
 }
 
 @Preview(

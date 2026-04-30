@@ -161,6 +161,8 @@ class DefaultConversationRepositoryTest {
         messageId = "message-1",
         conversationId = conversationId,
         bodyCiphertext = "ciphertext",
+        bodyKeyAlias = "alias",
+        bodyInitializationVector = "iv",
         bodyPreview = "",
         payloadStoragePolicy = PayloadStoragePolicy.CiphertextOnly,
         sentAtEpochMillis = 1_000L,

@@ -31,7 +31,11 @@ interface EncryptedMessageDao {
         """
         SELECT * FROM encrypted_messages
         WHERE syncCompletedAtEpochMillis IS NULL
-          AND (lastFailureCode IS NULL OR nextRetryAtEpochMillis IS NOT NULL)
+          AND attempt < maxAttempts
+          AND (
+              nextRetryAtEpochMillis IS NULL
+              OR nextRetryAtEpochMillis <= :nowEpochMillis
+          )
         ORDER BY
             CASE WHEN nextRetryAtEpochMillis IS NULL THEN 0 ELSE 1 END ASC,
             COALESCE(nextRetryAtEpochMillis, sentAtEpochMillis, receivedAtEpochMillis, 0) ASC,
@@ -39,7 +43,7 @@ interface EncryptedMessageDao {
         LIMIT :limit
         """
     )
-    suspend fun pendingSync(limit: Int): List<EncryptedMessageEntity>
+    suspend fun pendingSync(limit: Int, nowEpochMillis: Long): List<EncryptedMessageEntity>
 
     @Query(
         """

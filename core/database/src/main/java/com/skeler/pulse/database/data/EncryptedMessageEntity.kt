@@ -10,6 +10,8 @@ data class EncryptedMessageEntity(
     val schemaVersion: Int,
     val conversationId: String,
     val bodyCiphertext: String,
+    val bodyKeyAlias: String,
+    val bodyInitializationVector: String,
     val bodyPreview: String,
     val payloadStoragePolicy: String,
     val sentAtEpochMillis: Long?,

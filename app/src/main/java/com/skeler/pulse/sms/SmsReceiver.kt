@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsMessage
 
@@ -33,11 +34,16 @@ class SmsReceiver : BroadcastReceiver() {
             val body = parts.joinToString("") { it.messageBody ?: "" }
             if (body.isBlank()) continue
 
-            // Write to system SMS content provider
-            writeSmsToProvider(context, sender, body, parts.first())
-
-            // Post notification
-            SmsNotificationHelper.notifyIncomingSms(context, sender, body)
+            val persistedUri = writeSmsToProvider(context, sender, body, parts.first())
+            if (persistedUri != null) {
+                SmsNotificationHelper.notifyIncomingSms(context, sender, body)
+            } else {
+                SmsNotificationHelper.notifyIncomingSms(
+                    context = context,
+                    sender = sender,
+                    body = "New message received, but Pulse couldn't save it yet.",
+                )
+            }
         }
     }
 
@@ -50,7 +56,7 @@ class SmsReceiver : BroadcastReceiver() {
         sender: String,
         body: String,
         smsMessage: SmsMessage,
-    ) {
+    ): Uri? =
         try {
             val values = ContentValues().apply {
                 put(Telephony.Sms.ADDRESS, sender)
@@ -64,6 +70,6 @@ class SmsReceiver : BroadcastReceiver() {
             context.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
         } catch (_: Exception) {
             // Provider write may fail if permissions aren't fully granted yet
+            null
         }
-    }
 }

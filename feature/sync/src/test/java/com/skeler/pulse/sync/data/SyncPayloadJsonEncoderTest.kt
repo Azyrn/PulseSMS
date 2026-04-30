@@ -15,6 +15,8 @@ class SyncPayloadJsonEncoderTest {
                 messageId = "message-1",
                 conversationId = "conversation-1",
                 bodyCiphertext = "cipher\"value",
+                bodyKeyAlias = "alias",
+                bodyInitializationVector = "iv",
                 bodyPreview = "visible\npreview",
                 payloadStoragePolicy = PayloadStoragePolicy.CiphertextOnly,
                 sentAtEpochMillis = 100L,
@@ -33,6 +35,8 @@ class SyncPayloadJsonEncoderTest {
 
         assertTrue(json.contains("\"messageId\": \"message-1\""))
         assertTrue(json.contains("\"bodyCiphertext\": \"cipher\\\"value\""))
+        assertTrue(json.contains("\"bodyKeyAlias\": \"alias\""))
+        assertTrue(json.contains("\"bodyInitializationVector\": \"iv\""))
         assertTrue(json.contains("\"bodyPreview\": \"visible\\npreview\""))
         assertTrue(json.contains("\"lastFailureCode\": \"timeout\""))
     }

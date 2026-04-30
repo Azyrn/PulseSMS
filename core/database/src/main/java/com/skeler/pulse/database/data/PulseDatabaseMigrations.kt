@@ -47,5 +47,23 @@ object PulseDatabaseMigrations {
             }
         }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    val MIGRATION_4_5: Migration =
+        object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    ALTER TABLE encrypted_messages
+                    ADD COLUMN bodyKeyAlias TEXT NOT NULL DEFAULT ''
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    ALTER TABLE encrypted_messages
+                    ADD COLUMN bodyInitializationVector TEXT NOT NULL DEFAULT ''
+                    """.trimIndent()
+                )
+            }
+        }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

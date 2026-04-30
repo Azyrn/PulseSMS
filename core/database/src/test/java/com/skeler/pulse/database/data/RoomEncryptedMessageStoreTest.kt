@@ -60,7 +60,7 @@ class RoomEncryptedMessageStoreTest {
 
         override fun observeAllMessages(): Flow<List<EncryptedMessageEntity>> = flowOf(emptyList())
 
-        override suspend fun pendingSync(limit: Int): List<EncryptedMessageEntity> = emptyList()
+        override suspend fun pendingSync(limit: Int, nowEpochMillis: Long): List<EncryptedMessageEntity> = emptyList()
 
         override suspend fun findByMessageId(messageId: String): EncryptedMessageEntity? = null
 

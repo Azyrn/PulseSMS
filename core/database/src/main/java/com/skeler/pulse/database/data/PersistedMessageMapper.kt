@@ -9,12 +9,15 @@ internal object PersistedMessageMapper {
     fun toEntity(
         request: StoreEncryptedMessageRequest,
         ciphertext: String,
+        initializationVector: String,
         correlationId: String = "",
     ): EncryptedMessageEntity = EncryptedMessageEntity(
         messageId = request.messageId,
         schemaVersion = request.schemaVersion,
         conversationId = request.conversationId,
         bodyCiphertext = ciphertext,
+        bodyKeyAlias = request.encryptedPayload.keyAlias,
+        bodyInitializationVector = initializationVector,
         bodyPreview = request.bodyPreview,
         payloadStoragePolicy = request.payloadStoragePolicy.name,
         sentAtEpochMillis = request.sentAt?.toEpochMilli(),
@@ -34,8 +37,10 @@ internal object PersistedMessageMapper {
         messageId = entity.messageId,
         conversationId = entity.conversationId,
         bodyCiphertext = entity.bodyCiphertext,
+        bodyKeyAlias = entity.bodyKeyAlias.ifBlank { null },
+        bodyInitializationVector = entity.bodyInitializationVector.ifBlank { null },
         bodyPreview = entity.bodyPreview,
-        payloadStoragePolicy = PayloadStoragePolicy.valueOf(entity.payloadStoragePolicy),
+        payloadStoragePolicy = entity.payloadStoragePolicy.toPayloadStoragePolicy(),
         sentAtEpochMillis = entity.sentAtEpochMillis,
         receivedAtEpochMillis = entity.receivedAtEpochMillis,
         sync = PersistedSyncEnvelope(
@@ -49,4 +54,8 @@ internal object PersistedMessageMapper {
             completedAtEpochMillis = entity.syncCompletedAtEpochMillis,
         ),
     )
+
+    private fun String.toPayloadStoragePolicy(): PayloadStoragePolicy =
+        PayloadStoragePolicy.entries.firstOrNull { it.name == this }
+            ?: PayloadStoragePolicy.CiphertextOnly
 }

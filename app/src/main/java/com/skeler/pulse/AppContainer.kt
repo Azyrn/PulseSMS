@@ -20,6 +20,7 @@ import com.skeler.pulse.sync.di.SyncComponentFactory
 import com.skeler.pulse.ui.PulseHomeViewModel
 import com.skeler.pulse.ui.RealSmsViewModel
 import com.skeler.pulse.sms.ImportantMessagePreferences
+import com.skeler.pulse.sms.InboxThreadPreferences
 import com.skeler.pulse.sms.SystemSmsReader
 
 class AppContainer(
@@ -88,6 +89,7 @@ class AppContainer(
             RealSmsViewModel(
                 smsReader = SystemSmsReader(appContext),
                 importantMessagePreferences = ImportantMessagePreferences(appContext),
+                inboxThreadPreferences = InboxThreadPreferences(appContext),
             ) as T
     }
 }

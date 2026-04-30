@@ -10,18 +10,24 @@ import android.os.Bundle
 import android.provider.Settings
 import android.provider.Telephony
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
 import com.skeler.pulse.contact.displayNameFor
 import com.skeler.pulse.design.theme.SerafinaAppTheme
+import com.skeler.pulse.design.theme.SerafinaThemeMode
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.ui.PulseAppShell
 import com.skeler.pulse.ui.RealSmsViewModel
@@ -209,7 +215,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+            ),
+            navigationBarStyle = SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+            ),
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         requestRequiredPermissions()
         launchRequestState.value = intent.toPulseLaunchRequestOrNull(this)
 
@@ -230,6 +248,18 @@ class MainActivity : ComponentActivity() {
                 themeState = themeState,
                 reduceMotion = themeState.reduceMotion,
             ) {
+                val isDarkMode = when (themeState.themeMode) {
+                    SerafinaThemeMode.System -> isSystemInDarkTheme()
+                    SerafinaThemeMode.Light -> false
+                    SerafinaThemeMode.Dark -> true
+                }
+                val view = LocalView.current
+                SideEffect {
+                    val controller = WindowInsetsControllerCompat(window, view)
+                    controller.isAppearanceLightStatusBars = !isDarkMode
+                    controller.isAppearanceLightNavigationBars = !isDarkMode
+                }
+
                 PulseAppShell(
                     smsViewModel = realSmsViewModel,
                     launchRequest = launchRequest,
@@ -247,7 +277,6 @@ class MainActivity : ComponentActivity() {
                     onSendMessage = { address, body, subscriptionId ->
                         realSmsViewModel.sendMessage(address, body, subscriptionId)
                     },
-                    onToggleImportantMessage = realSmsViewModel::toggleImportantMessage,
                     themeViewModel = themeViewModel,
                     onRequestDefaultSms = { requestDefaultSmsApp() },
                 )

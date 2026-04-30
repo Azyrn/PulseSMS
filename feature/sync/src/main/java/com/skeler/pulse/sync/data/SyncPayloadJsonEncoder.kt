@@ -11,6 +11,8 @@ internal object SyncPayloadJsonEncoder {
         appendIndented("\"messageId\": \"${message.messageId.escapeJson()}\",")
         appendIndented("\"conversationId\": \"${message.conversationId.escapeJson()}\",")
         appendIndented("\"bodyCiphertext\": ${message.bodyCiphertext.toJsonStringOrNull()},")
+        appendIndented("\"bodyKeyAlias\": ${message.bodyKeyAlias.toJsonStringOrNull()},")
+        appendIndented("\"bodyInitializationVector\": ${message.bodyInitializationVector.toJsonStringOrNull()},")
         appendIndented("\"bodyPreview\": \"${message.bodyPreview.escapeJson()}\",")
         appendIndented("\"payloadStoragePolicy\": \"${message.payloadStoragePolicy.name}\",")
         appendIndented("\"sentAtEpochMillis\": ${message.sentAtEpochMillis?.toString() ?: "null"},")

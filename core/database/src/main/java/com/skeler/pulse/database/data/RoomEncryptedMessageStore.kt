@@ -19,6 +19,7 @@ class RoomEncryptedMessageStore(
     private val encryptedMessageDao: EncryptedMessageDao,
     private val ciphertextCodec: CiphertextCodec,
     private val observabilityProvider: ObservabilityProvider,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : EncryptedMessageStore {
 
     private val scope = ObservabilityScope(
@@ -37,6 +38,7 @@ class RoomEncryptedMessageStore(
             val entity = PersistedMessageMapper.toEntity(
                 request = request,
                 ciphertext = ciphertextCodec.encode(request.encryptedPayload.ciphertext),
+                initializationVector = ciphertextCodec.encode(request.encryptedPayload.initializationVector),
             )
             encryptedMessageDao.upsert(entity)
 
@@ -68,7 +70,7 @@ class RoomEncryptedMessageStore(
         }
 
     override suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope> =
-        encryptedMessageDao.pendingSync(limit).map(PersistedMessageMapper::toEnvelope)
+        encryptedMessageDao.pendingSync(limit, clock()).map(PersistedMessageMapper::toEnvelope)
 
     override suspend fun updateSync(
         messageId: String,
@@ -102,6 +104,12 @@ class RoomEncryptedMessageStore(
     private fun validate(request: StoreEncryptedMessageRequest): SystemError.ValidationFailure? {
         if (request.encryptedPayload.ciphertext.isEmpty()) {
             return SystemError.ValidationFailure(message = "Ciphertext is required")
+        }
+        if (request.encryptedPayload.keyAlias.isBlank()) {
+            return SystemError.ValidationFailure(message = "Key alias is required")
+        }
+        if (request.encryptedPayload.initializationVector.isEmpty()) {
+            return SystemError.ValidationFailure(message = "Initialization vector is required")
         }
         if (request.payloadStoragePolicy == PayloadStoragePolicy.CiphertextOnly && request.bodyPreview.isNotEmpty()) {
             return SystemError.ValidationFailure(message = "Ciphertext-only records cannot store a preview")
