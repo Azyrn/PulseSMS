@@ -128,6 +128,7 @@ class MessageSyncOrchestratorTest {
 
         assertTrue(result is SyncRunResult.PartialFailure)
         assertEquals(1, (result as SyncRunResult.PartialFailure).failed)
+        assertTrue(result.needsComplianceRetry)
         assertTrue(complianceStore.lastRequest == null)
     }
 
@@ -165,6 +166,9 @@ class MessageSyncOrchestratorTest {
         override fun observeAllMessages(): Flow<List<PersistedMessageEnvelope>> = emptyFlow()
 
         override suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope> = messages.take(limit)
+
+        override suspend fun pendingSync(conversationId: String, limit: Int): List<PersistedMessageEnvelope> =
+            messages.filter { it.conversationId == conversationId }.take(limit)
 
         override suspend fun updateSync(
             messageId: String,

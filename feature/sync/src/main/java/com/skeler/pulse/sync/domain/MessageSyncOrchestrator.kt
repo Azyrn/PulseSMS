@@ -38,8 +38,7 @@ class MessageSyncOrchestrator(
         conversationId: ConversationId,
         batchSize: Int = DEFAULT_BATCH_SIZE,
     ): SyncRunResult {
-        val pending = encryptedMessageStore.pendingSync(batchSize)
-            .filter { it.conversationId == conversationId }
+        val pending = encryptedMessageStore.pendingSync(conversationId, batchSize)
 
         var synced = 0
         var retried = 0
@@ -187,6 +186,7 @@ class MessageSyncOrchestrator(
                 synced = synced,
                 retried = retried,
                 nextRetryAtEpochMillis = nextRetryAtEpochMillis,
+                needsComplianceRetry = false,
             )
         } else {
             SyncRunResult.PartialFailure(
@@ -194,6 +194,7 @@ class MessageSyncOrchestrator(
                 retried = retried,
                 failed = failed + if (complianceNeedsRetry) 1 else 0,
                 nextRetryAtEpochMillis = nextRetryAtEpochMillis,
+                needsComplianceRetry = complianceNeedsRetry,
             )
         }
     }
@@ -211,6 +212,7 @@ sealed interface SyncRunResult {
         val synced: Int,
         val retried: Int,
         val nextRetryAtEpochMillis: Long? = null,
+        val needsComplianceRetry: Boolean = false,
     ) : SyncRunResult
 
     data class PartialFailure(
@@ -218,6 +220,7 @@ sealed interface SyncRunResult {
         val retried: Int,
         val failed: Int,
         val nextRetryAtEpochMillis: Long? = null,
+        val needsComplianceRetry: Boolean = false,
     ) : SyncRunResult
 
     data class Failure(

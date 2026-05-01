@@ -6,6 +6,7 @@ sealed interface KeyStoreCapability {
     ) : KeyStoreCapability
 
     data object SoftwareOnly : KeyStoreCapability
+
     data object Unavailable : KeyStoreCapability
 }
 

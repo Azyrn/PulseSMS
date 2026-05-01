@@ -7,6 +7,7 @@ import com.skeler.pulse.contracts.observability.LogLevel
 import com.skeler.pulse.contracts.observability.ObservabilityProvider
 import com.skeler.pulse.contracts.observability.ObservabilityScope
 import com.skeler.pulse.contracts.observability.ObservedEvent
+import com.skeler.pulse.contracts.observability.TraceContext
 import com.skeler.pulse.contracts.persistence.PersistedMessageEnvelope
 import com.skeler.pulse.sync.api.SyncTransport
 import com.skeler.pulse.sync.api.SyncTransportResult

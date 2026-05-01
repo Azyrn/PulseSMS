@@ -2,9 +2,11 @@ package com.skeler.pulse
 
 import android.Manifest
 import android.app.role.RoleManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -180,6 +182,23 @@ internal fun isDefaultSmsApp(
     )
 }
 
+@Suppress("DEPRECATION")
+internal fun legacyDefaultSmsRequestIntent(packageName: String): Intent =
+    Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).apply {
+        putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
+    }
+
+internal fun defaultAppsSettingsIntent(): Intent =
+    Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+
+internal fun appDetailsSettingsIntent(packageName: String): Intent =
+    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var realSmsViewModel: RealSmsViewModel
@@ -320,35 +339,28 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Requests the user to set Pulse as the default SMS app.
-     * If already default, opens system default apps settings so user can see status.
+     * Uses RoleManager.createRequestRoleIntent to show the small system dialog.
+     * Falls back to the app info settings page on failure.
      */
     @Suppress("DEPRECATION")
     private fun requestDefaultSmsApp() {
-        val currentDefault = Telephony.Sms.getDefaultSmsPackage(this)
-
-        if (currentDefault == packageName) {
-            val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-            startActivity(intent)
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val roleManager = getSystemService(RoleManager::class.java)
-            if (
-                roleManager != null &&
+            if (roleManager != null &&
                 roleManager.isRoleAvailable(RoleManager.ROLE_SMS) &&
                 !roleManager.isRoleHeld(RoleManager.ROLE_SMS)
             ) {
-                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS)
-                smsRoleLauncher.launch(intent)
-                return
+                roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS)
+            } else {
+                defaultAppsSettingsIntent()
             }
-            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
         } else {
-            val intent = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).apply {
-                putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
-            }
+            legacyDefaultSmsRequestIntent(packageName)
+        }
+        try {
             smsRoleLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            smsRoleLauncher.launch(appDetailsSettingsIntent(packageName))
         }
     }
 

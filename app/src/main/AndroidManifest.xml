@@ -30,6 +30,9 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.Pulse">
+            <meta-data
+                android:name="android.app.role_request"
+                android:resource="@xml/role_request" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -50,7 +53,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- 2. MMS Receive — handles incoming MMS (WAP Push) when app is default -->
+        <!-- 2. MMS Receive — required for Android to offer app as default SMS app -->
         <receiver
             android:name=".sms.MmsReceiver"
             android:exported="true"

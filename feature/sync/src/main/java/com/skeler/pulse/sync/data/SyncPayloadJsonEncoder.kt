@@ -41,13 +41,15 @@ internal object SyncPayloadJsonEncoder {
 
     private fun String.escapeJson(): String = buildString(length + 8) {
         this@escapeJson.forEach { character ->
-            when (character) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\b' -> append("\\b")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
+            when (character.code) {
+                0x5C -> append("\\\\")  // backslash
+                0x22 -> append("\\\"")  // double quote
+                0x08 -> append("\\b")   // backspace
+                0x0C -> append("\\f")   // form feed
+                0x0A -> append("\\n")   // newline
+                0x0D -> append("\\r")   // carriage return
+                0x09 -> append("\\t")   // tab
+                in 0x00..0x1F -> append(String.format("\\u%04X", character.code))
                 else -> append(character)
             }
         }

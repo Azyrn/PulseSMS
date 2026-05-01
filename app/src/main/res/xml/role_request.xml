@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<role-request xmlns:android="http://schemas.android.com/apk/res/android">
+    <role name="android.app.role.SMS" />
+</role-request>

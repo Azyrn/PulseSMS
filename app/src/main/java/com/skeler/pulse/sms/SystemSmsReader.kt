@@ -333,13 +333,14 @@ class SystemSmsReader(
         }
         val parts = smsManager.divideMessage(body)
         val messageUri = insertOutgoingMessage(address, body, Telephony.Sms.MESSAGE_TYPE_QUEUED)
+        val token = deliveryCallbackToken(address, messageUri)
         try {
-            val deliveryIntents = buildDeliveryIntents(address, parts, messageUri)
-            awaitSentCallbacks(address, parts, messageUri) { sentIntents ->
+            val deliveryIntents = buildDeliveryIntents(address, parts, messageUri, token)
+            awaitSentCallbacks(address, parts, messageUri, token) { sentIntents ->
                 smsManager.sendMultipartTextMessage(address, null, parts, sentIntents, deliveryIntents)
             }
             updateOutgoingMessage(messageUri, Telephony.Sms.MESSAGE_TYPE_SENT)
-            awaitDeliveryCallbacks(address, parts, messageUri)
+            awaitDeliveryCallbacks(address, parts, messageUri, token)
         } catch (exception: Exception) {
             updateOutgoingMessage(messageUri, Telephony.Sms.MESSAGE_TYPE_FAILED)
             throw exception
@@ -385,10 +386,10 @@ class SystemSmsReader(
         address: String,
         parts: ArrayList<String>,
         messageUri: Uri?,
+        token: String,
         send: (ArrayList<PendingIntent>) -> Unit,
     ) = withTimeout(SEND_CALLBACK_TIMEOUT_MILLIS) {
         suspendCancellableCoroutine { continuation ->
-            val token = callbackToken(address, messageUri)
             val action = "$ACTION_SMS_SENT.$token"
             val remainingParts = AtomicInteger(parts.size)
             val completed = AtomicBoolean(false)
@@ -443,8 +444,8 @@ class SystemSmsReader(
         address: String,
         parts: ArrayList<String>,
         messageUri: Uri?,
+        token: String,
     ): ArrayList<PendingIntent> {
-        val token = callbackToken(address, messageUri)
         val action = "$ACTION_SMS_DELIVERED.$token"
         return buildCallbackIntents(
             action = action,
@@ -458,10 +459,10 @@ class SystemSmsReader(
         address: String,
         parts: ArrayList<String>,
         messageUri: Uri?,
+        token: String,
     ) = runCatching {
         withTimeout(DELIVERY_CALLBACK_TIMEOUT_MILLIS) {
             suspendCancellableCoroutine { continuation ->
-                val token = callbackToken(address, messageUri)
                 val action = "$ACTION_SMS_DELIVERED.$token"
                 val remainingParts = AtomicInteger(parts.size)
                 val completed = AtomicBoolean(false)
@@ -498,8 +499,8 @@ class SystemSmsReader(
         }
     }
 
-    private fun callbackToken(address: String, messageUri: Uri?): String =
-        "${System.currentTimeMillis()}_${messageUri?.lastPathSegment.orEmpty()}_${address.hashCode()}"
+    private fun deliveryCallbackToken(address: String, messageUri: Uri?): String =
+        "${java.util.UUID.randomUUID()}_${messageUri?.lastPathSegment.orEmpty()}_${address.hashCode()}"
 
     private fun buildCallbackIntents(
         action: String,

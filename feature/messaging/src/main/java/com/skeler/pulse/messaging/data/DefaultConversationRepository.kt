@@ -122,14 +122,15 @@ class DefaultConversationRepository(
                 SendMessageResult.Failure(protectedPayload.error)
 
             is com.skeler.pulse.security.api.ProtectionResult.Success -> {
+                val storePolicy = PayloadStoragePolicy.CiphertextOnly
                 when (val stored = encryptedMessageStore.store(
                     StoreEncryptedMessageRequest(
                         schemaVersion = 1,
                         messageId = messageId,
                         conversationId = conversationId,
                         encryptedPayload = protectedPayload.payload,
-                        bodyPreview = draft.text.toBodyPreview(),
-                        payloadStoragePolicy = PayloadStoragePolicy.RedactedPreviewWithCiphertext,
+                        bodyPreview = "",
+                        payloadStoragePolicy = storePolicy,
                         sentAt = protectedPayload.payload.encryptedAt,
                         receivedAt = null,
                         sync = PersistedSyncEnvelope(

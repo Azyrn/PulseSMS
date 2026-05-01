@@ -48,6 +48,29 @@ interface EncryptedMessageDao {
     @Query(
         """
         SELECT * FROM encrypted_messages
+        WHERE conversationId = :conversationId
+          AND syncCompletedAtEpochMillis IS NULL
+          AND attempt < maxAttempts
+          AND (
+              nextRetryAtEpochMillis IS NULL
+              OR nextRetryAtEpochMillis <= :nowEpochMillis
+          )
+        ORDER BY
+            CASE WHEN nextRetryAtEpochMillis IS NULL THEN 0 ELSE 1 END ASC,
+            COALESCE(nextRetryAtEpochMillis, sentAtEpochMillis, receivedAtEpochMillis, 0) ASC,
+            messageId ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun pendingSyncForConversation(
+        conversationId: String,
+        limit: Int,
+        nowEpochMillis: Long,
+    ): List<EncryptedMessageEntity>
+
+    @Query(
+        """
+        SELECT * FROM encrypted_messages
         WHERE messageId = :messageId
         LIMIT 1
         """

@@ -41,6 +41,8 @@ interface EncryptedMessageStore {
 
     suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope>
 
+    suspend fun pendingSync(conversationId: ConversationId, limit: Int): List<PersistedMessageEnvelope>
+
     suspend fun updateSync(
         messageId: MessageId,
         sync: PersistedSyncEnvelope,

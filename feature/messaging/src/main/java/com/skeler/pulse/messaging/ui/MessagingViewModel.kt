@@ -87,11 +87,13 @@ class MessagingViewModel(
         if (current.composer.draft.text.isBlank() || current.composer.eligibility is SendEligibility.Blocked) {
             return
         }
+        val capturedConversationId = currentConversationId
+        val capturedDraft = current.composer.draft
 
         val messageId = java.util.UUID.randomUUID().toString()
         mutate(MessagingMutation.SendingStarted(messageId))
         viewModelScope.launch {
-            when (val result = sendMessage(currentConversationId, mutableState.value.composer.draft)) {
+            when (val result = sendMessage(capturedConversationId, capturedDraft)) {
                 is com.skeler.pulse.messaging.api.SendMessageResult.Failure ->
                     mutate(MessagingMutation.SendFailed(result.error))
 

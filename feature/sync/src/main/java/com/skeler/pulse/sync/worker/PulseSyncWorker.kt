@@ -20,18 +20,28 @@ class PulseSyncWorker(
 
         return when (val result = orchestrator.run(conversationId)) {
             is SyncRunResult.Success -> {
-                result.nextRetryAtEpochMillis?.let { nextRetryAt ->
-                    WorkManagerSyncScheduler(applicationContext)
-                        .enqueueConversationSync(conversationId, nextRetryAt)
+                if (result.needsComplianceRetry) {
+                    Result.retry()
+                } else {
+                    result.nextRetryAtEpochMillis?.let { nextRetryAt ->
+                        WorkManagerSyncScheduler(applicationContext)
+                            .enqueueConversationSync(conversationId, nextRetryAt)
+                    }
+                    Result.success()
                 }
-                Result.success()
             }
             is SyncRunResult.PartialFailure -> {
-                result.nextRetryAtEpochMillis?.let { nextRetryAt ->
-                    WorkManagerSyncScheduler(applicationContext)
-                        .enqueueConversationSync(conversationId, nextRetryAt)
+                // If compliance alone needs retry with no pending message slots, use
+                // WorkManager backoff rather than dropping the retry.
+                if (result.needsComplianceRetry && result.nextRetryAtEpochMillis == null) {
+                    Result.retry()
+                } else {
+                    result.nextRetryAtEpochMillis?.let { nextRetryAt ->
+                        WorkManagerSyncScheduler(applicationContext)
+                            .enqueueConversationSync(conversationId, nextRetryAt)
+                    }
+                    Result.success()
                 }
-                Result.success()
             }
             is SyncRunResult.Failure -> Result.failure()
         }

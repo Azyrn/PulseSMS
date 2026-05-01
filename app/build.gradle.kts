@@ -63,17 +63,28 @@ android {
     }
 
     buildTypes {
-        release {
-            signingConfig = if (hasReleaseKeystoreConfig) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+        // Only register the release variant when keystore config is present.
+        // Without it, assembleRelease fails at configuration time with a clear message.
+        if (hasReleaseKeystoreConfig) {
+            release {
+                require(pulseSyncEnvironment == "prod") {
+                    "Release build requires pulseSyncEnvironment=prod (got: $pulseSyncEnvironment). " +
+                    "Set -PpulseSyncEnvironment=prod"
+                }
+                require(pulseSyncProdBaseUrl.startsWith("https://")) {
+                    "Release build requires HTTPS base URL. Set pulseSyncProdBaseUrl to an https:// URL."
+                }
+                require(pulseSyncProdApiKey.isNotEmpty()) {
+                    "Release build requires a non-empty pulseSyncProdApiKey. " +
+                    "Set -PpulseSyncProdApiKey=<key>"
+                }
+                signingConfig = signingConfigs.getByName("release")
+                isMinifyEnabled = false
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
             }
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
     }
     splits {

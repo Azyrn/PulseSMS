@@ -72,6 +72,10 @@ class RoomEncryptedMessageStore(
     override suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope> =
         encryptedMessageDao.pendingSync(limit, clock()).map(PersistedMessageMapper::toEnvelope)
 
+    override suspend fun pendingSync(conversationId: String, limit: Int): List<PersistedMessageEnvelope> =
+        encryptedMessageDao.pendingSyncForConversation(conversationId, limit, clock())
+            .map(PersistedMessageMapper::toEnvelope)
+
     override suspend fun updateSync(
         messageId: String,
         sync: PersistedSyncEnvelope,

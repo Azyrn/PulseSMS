@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicTextField
@@ -212,6 +213,7 @@ fun PulseAppShell(
     var pendingForwardDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var newChatQuery by rememberSaveable { mutableStateOf("") }
     var lastHandledNewChatRequestKey by rememberSaveable { mutableIntStateOf(0) }
+    var consumedLaunchRequest by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val currentScreen = backStack.lastOrNull() ?: DESTINATION_INBOX
     val reducedMotion = rememberReducedMotionEnabled()
@@ -220,17 +222,23 @@ fun PulseAppShell(
     val settingsListState = rememberLazyListState()
     val newChatListState = rememberLazyListState()
 
-    LaunchedEffect(launchRequest, accessState) {
-        if (!shouldHandleLaunchRequest(launchRequest, accessState)) return@LaunchedEffect
+    LaunchedEffect(launchRequest, accessState, consumedLaunchRequest) {
+        if (!accessState.isReady || consumedLaunchRequest) return@LaunchedEffect
         val request = launchRequest ?: return@LaunchedEffect
+        consumedLaunchRequest = true
         val requestedAddress = request.conversationAddress
+        conversationDraftSeed = request.draftBody
         if (requestedAddress.isNotBlank()) {
             activeAddress = requestedAddress
             activeConversationTitle = request.conversationTitle.ifBlank { displayNameFor(context, requestedAddress) }
             activeSubscriptionId = null
-            conversationDraftSeed = request.draftBody
             onOpenConversation(requestedAddress, null)
             backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
+        } else {
+            activeAddress = ""
+            activeConversationTitle = ""
+            activeSubscriptionId = null
+            backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT)
         }
         onLaunchRequestConsumed()
     }
@@ -400,6 +408,7 @@ fun PulseAppShell(
                         onOpenArchivedChats = {
                             backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED)
                         },
+                        isDefaultSmsApp = inboxState.isDefaultSmsApp,
                     )
                 }
 
@@ -668,7 +677,7 @@ private fun RealInboxScreen(
                 else -> {
                     items(
                         items = filteredThreads,
-                        key = { it.address },
+                        key = { "${it.threadId}:${it.address}" },
                         contentType = { "inbox_thread" },
                     ) { thread ->
                         val isMenuOpenForThread = contextMenuThreadId == thread.threadId
@@ -864,6 +873,8 @@ private fun InboxOnboardingScreen(
     onRequestDefaultSms: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isAlreadyDefault = !accessState.permissionDenied && accessState.isDefaultSmsApp
+
     val title: String
     val body: String
     val ctaLabel: String
@@ -878,6 +889,13 @@ private fun InboxOnboardingScreen(
         ctaIcon = Icons.Rounded.Key
         onCtaClick = onRequestSmsPermissions
         statusLabel = "SMS permission required"
+    } else if (isAlreadyDefault) {
+        title = "Pulse is your default app"
+        body = "Android is ready to route SMS messages to Pulse. Everything is set up correctly."
+        ctaLabel = "Manage default app"
+        ctaIcon = Icons.Rounded.CheckCircle
+        onCtaClick = onRequestDefaultSms
+        statusLabel = "Default SMS app active"
     } else {
         title = "Make Pulse your default"
         body = "Set Pulse as your default SMS app so Android can hand off compose requests, send reliably, and keep your inbox in one place."
@@ -1585,7 +1603,11 @@ private fun RealConversationScreen(
     LaunchedEffect(address) {
         previousMessageCount = messages.size
         if (timelineItems.isNotEmpty()) {
-            listState.scrollToItem(timelineItems.lastIndex)
+            // Use animateScrollToItem instead of scrollToItem so the lazy
+            // column's layout is stable (animateItem animations complete
+            // before the offset is calculated). scrollToItem fires before
+            // layout settles, landing on a random old message.
+            listState.animateScrollToItem(timelineItems.lastIndex)
         }
     }
 
@@ -2517,6 +2539,7 @@ private fun SettingsScreen(
     onBack: () -> Unit,
     onRequestDefaultSms: () -> Unit,
     onOpenArchivedChats: () -> Unit,
+    isDefaultSmsApp: Boolean,
 ) {
     val themeState by themeViewModel.state.collectAsState()
     val reducedMotion = rememberReducedMotionEnabled()
@@ -2555,15 +2578,9 @@ private fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Settings", style = MaterialTheme.typography.headlineMedium) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.Close, contentDescription = "Close") } },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
+            SettingsTopBar(onBack = onBack)
         },
+        containerColor = MaterialTheme.colorScheme.surface,
     ) { innerPadding ->
         LazyColumn(
             state = listState,
@@ -2581,7 +2598,12 @@ private fun SettingsScreen(
             item(key = "general_header") { SettingsSectionHeader("General") }
             item(key = "general_card") {
                 SettingsGroupCard {
-                    SettingsRow(icon = Icons.Outlined.Sms, title = "Default SMS app", subtitle = "Tap to set Pulse as default", onClick = onRequestDefaultSms)
+                    SettingsRow(
+                        icon = if (isDefaultSmsApp) Icons.Rounded.CheckCircle else Icons.Outlined.Sms,
+                        title = if (isDefaultSmsApp) "Default SMS app" else "Set as default",
+                        subtitle = if (isDefaultSmsApp) "Pulse is your default SMS app" else "Tap to set Pulse as default",
+                        onClick = onRequestDefaultSms,
+                    )
                     SettingsGroupDivider()
                     SettingsRow(
                         icon = Icons.Rounded.Archive,
@@ -2627,6 +2649,36 @@ private fun SettingsScreen(
 }
 
 // ── Settings sub-components ──
+
+@Composable
+private fun SettingsTopBar(onBack: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .statusBarsPadding()
+                .height(72.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
 
 @Composable
 private fun SettingsSectionHeader(title: String) {
@@ -2780,14 +2832,11 @@ private fun SettingsExpressiveToggleRow(
     checked: Boolean,
     onToggle: () -> Unit,
 ) {
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.24f)
-        },
-        label = "settings_toggle_track",
-    )
+    val trackColor = if (checked) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.24f)
+    }
 
     Row(
         modifier = Modifier
@@ -2892,30 +2941,21 @@ private fun SettingsChoicePill(
     reducedMotion: Boolean,
     onClick: () -> Unit,
 ) {
-    val backgroundColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f)
-        },
-        label = "settings_choice_background",
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.68f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
-        },
-        label = "settings_choice_border",
-    )
-    val textColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        label = "settings_choice_text",
-    )
+    val backgroundColor = if (selected) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.34f)
+    }
+    val borderColor = if (selected) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.68f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+    }
+    val textColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val scale by animateFloatAsState(
         targetValue = if (selected) 1f else 0.985f,
         animationSpec = if (reducedMotion) tween(0) else spring(stiffness = Spring.StiffnessMediumLow),
