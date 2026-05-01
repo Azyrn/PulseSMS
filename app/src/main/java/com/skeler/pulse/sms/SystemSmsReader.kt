@@ -170,9 +170,10 @@ class SystemSmsReader(
         cursor.use {
             while (it.moveToNext()) {
                 val sms = it.toSystemSms()
-                val accumulator = threads.getOrPut(sms.threadId) {
+                val resolvedThreadId = sms.resolvedThreadId()
+                val accumulator = threads.getOrPut(resolvedThreadId) {
                     MutableThreadAccumulator(
-                        threadId = sms.threadId,
+                        threadId = resolvedThreadId,
                         address = sms.address.normalizeAddressForDisplay(),
                         snippet = sms.body.take(120),
                         date = sms.date,
@@ -202,12 +203,12 @@ class SystemSmsReader(
      */
     fun readMessages(address: String, threadId: Long? = null): List<SystemSms> {
         val normalized = address.normalizeAddressForDisplay()
-        val selection = if (threadId != null) {
+        val selection = if (threadId.isProviderThreadId()) {
             "${Telephony.Sms.THREAD_ID} = ?"
         } else {
             null
         }
-        val selectionArgs = if (threadId != null) {
+        val selectionArgs = if (threadId.isProviderThreadId()) {
             arrayOf(threadId.toString())
         } else {
             null
@@ -225,7 +226,7 @@ class SystemSmsReader(
         cursor.use {
             while (it.moveToNext()) {
                 val sms = it.toSystemSms()
-                if (threadId != null || sms.address.normalizeAddressForDisplay() == normalized) {
+                if (threadId.isProviderThreadId() || sms.address.normalizeAddressForDisplay() == normalized) {
                     messages.add(sms)
                 }
             }
@@ -277,7 +278,7 @@ class SystemSmsReader(
     ): List<Long> {
         val normalizedAddress = address.normalizeAddressForDisplay()
         val selection = buildList {
-            if (threadId != null) {
+            if (threadId.isProviderThreadId()) {
                 add("${Telephony.Sms.THREAD_ID} = ?")
             }
             if (inboundOnly) {
@@ -288,7 +289,7 @@ class SystemSmsReader(
             }
         }.joinToString(separator = " AND ").ifBlank { null }
         val selectionArgs = buildList {
-            if (threadId != null) {
+            if (threadId.isProviderThreadId()) {
                 add(threadId.toString())
             }
             if (inboundOnly) {
@@ -310,7 +311,7 @@ class SystemSmsReader(
         cursor.use {
             while (it.moveToNext()) {
                 val rawAddress = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)).orEmpty()
-                if (threadId != null || rawAddress.normalizeAddressForDisplay() == normalizedAddress) {
+                if (threadId.isProviderThreadId() || rawAddress.normalizeAddressForDisplay() == normalizedAddress) {
                     ids.add(it.getLong(it.getColumnIndexOrThrow(Telephony.Sms._ID)))
                 }
             }
@@ -356,6 +357,7 @@ class SystemSmsReader(
             put(Telephony.Sms.SEEN, 1)
             put(Telephony.Sms.TYPE, messageType)
             put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_PENDING)
+            put(Telephony.Sms.THREAD_ID, Telephony.Threads.getOrCreateThreadId(context, address))
         }
         return contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
     }
@@ -536,6 +538,17 @@ class SystemSmsReader(
         read = getInt(getColumnIndexOrThrow(Telephony.Sms.READ)) == 1,
         threadId = getLong(getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)),
     )
+
+    private fun SystemSms.resolvedThreadId(): Long =
+        if (threadId > 0L) threadId else syntheticThreadId(address)
+
+    private fun Long?.isProviderThreadId(): Boolean = this != null && this > 0L
+
+    private fun syntheticThreadId(address: String): Long {
+        val normalizedAddress = address.normalizeAddressForDisplay()
+        val unsignedHash = normalizedAddress.hashCode().toLong() and 0xffffffffL
+        return -1L - unsignedHash
+    }
 
     private data class MutableThreadAccumulator(
         val threadId: Long,

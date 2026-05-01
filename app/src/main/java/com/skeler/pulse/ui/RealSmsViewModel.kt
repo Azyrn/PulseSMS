@@ -47,6 +47,7 @@ data class RealInboxState(
     val pinnedThreadIds: Set<Long> = emptySet(),
     val archivedThreadIds: Set<Long> = emptySet(),
     val loading: Boolean = true,
+    val showLoadingCard: Boolean = false,
     val permissionDenied: Boolean = false,
     val isDefaultSmsApp: Boolean = true,
     val errorMessage: String? = null,
@@ -137,6 +138,7 @@ class RealSmsViewModel(
                         pinnedThreadIds = pinnedIds,
                         archivedThreadIds = archivedIds,
                         loading = false,
+                        showLoadingCard = false,
                         errorMessage = null,
                     )
                 }
@@ -145,6 +147,7 @@ class RealSmsViewModel(
                     threads = emptyList(),
                     archivedThreads = emptyList(),
                     loading = false,
+                    showLoadingCard = false,
                     errorMessage = "Pulse couldn't read your messages right now.",
                 )
             }
@@ -158,7 +161,11 @@ class RealSmsViewModel(
         )
         if (accessState.isReady) {
             if (inboxJob?.isActive != true) {
-                _inboxState.value = _inboxState.value.copy(loading = true, errorMessage = null)
+                _inboxState.value = _inboxState.value.copy(
+                    loading = true,
+                    showLoadingCard = false,
+                    errorMessage = null,
+                )
                 observeInbox()
             }
         } else {
@@ -168,6 +175,7 @@ class RealSmsViewModel(
                 threads = emptyList(),
                 archivedThreads = emptyList(),
                 loading = false,
+                showLoadingCard = false,
                 errorMessage = null,
             )
         }
@@ -176,6 +184,7 @@ class RealSmsViewModel(
     fun refreshInbox() {
         _inboxState.value = _inboxState.value.copy(
             loading = true,
+            showLoadingCard = true,
             errorMessage = null,
         )
         observeInbox()

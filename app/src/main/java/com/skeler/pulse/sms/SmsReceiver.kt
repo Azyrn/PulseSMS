@@ -58,14 +58,16 @@ class SmsReceiver : BroadcastReceiver() {
         smsMessage: SmsMessage,
     ): Uri? =
         try {
+            val receivedAt = System.currentTimeMillis()
             val values = ContentValues().apply {
                 put(Telephony.Sms.ADDRESS, sender)
                 put(Telephony.Sms.BODY, body)
-                put(Telephony.Sms.DATE, smsMessage.timestampMillis)
+                put(Telephony.Sms.DATE, receivedAt)
                 put(Telephony.Sms.DATE_SENT, smsMessage.timestampMillis)
                 put(Telephony.Sms.READ, 0)
                 put(Telephony.Sms.SEEN, 0)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+                put(Telephony.Sms.THREAD_ID, Telephony.Threads.getOrCreateThreadId(context, sender))
             }
             context.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
         } catch (_: Exception) {

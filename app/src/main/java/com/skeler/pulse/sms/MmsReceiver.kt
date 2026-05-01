@@ -54,6 +54,7 @@ class MmsReceiver : BroadcastReceiver() {
             put(Telephony.Sms.READ, 0)
             put(Telephony.Sms.SEEN, 0)
             put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+            put(Telephony.Sms.THREAD_ID, Telephony.Threads.getOrCreateThreadId(context, sender))
         }
         context.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
     } catch (_: Exception) {

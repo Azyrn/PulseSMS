@@ -641,7 +641,7 @@ private fun RealInboxScreen(
                 }
             }
             when {
-                state.loading -> {
+                state.loading && state.showLoadingCard -> {
                     item(key = "inbox_loading") {
                         InboxLoadingStateCard(onRefreshInbox = onRefreshInbox)
                     }
@@ -654,7 +654,7 @@ private fun RealInboxScreen(
                         )
                     }
                 }
-                state.threads.isEmpty() -> {
+                state.threads.isEmpty() && !state.loading -> {
                     item(key = "inbox_empty") {
                         InboxEmptyStateCard(onOpenNewChat = onOpenNewChat)
                     }
@@ -1599,15 +1599,18 @@ private fun RealConversationScreen(
     val isNearEnd by remember(listState) {
         derivedStateOf { listState.isNearListEnd() }
     }
+    var hasPositionedInitialMessages by remember(address) { mutableStateOf(false) }
 
     LaunchedEffect(address) {
-        previousMessageCount = messages.size
-        if (timelineItems.isNotEmpty()) {
-            // Use animateScrollToItem instead of scrollToItem so the lazy
-            // column's layout is stable (animateItem animations complete
-            // before the offset is calculated). scrollToItem fires before
-            // layout settles, landing on a random old message.
+        previousMessageCount = 0
+        hasPositionedInitialMessages = false
+    }
+
+    LaunchedEffect(address, loading, timelineItems.size) {
+        if (!loading && !hasPositionedInitialMessages && timelineItems.isNotEmpty()) {
             listState.animateScrollToItem(timelineItems.lastIndex)
+            previousMessageCount = messages.size
+            hasPositionedInitialMessages = true
         }
     }
 
@@ -1618,7 +1621,7 @@ private fun RealConversationScreen(
         }
 
         val listGrew = messages.size > previousMessageCount
-        if (listGrew && isNearEnd) {
+        if (hasPositionedInitialMessages && listGrew && isNearEnd) {
             listState.scrollToItemSmoothly(timelineItems.lastIndex)
         }
         previousMessageCount = messages.size
