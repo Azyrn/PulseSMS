@@ -146,6 +146,12 @@ class MessagingSyncBackoffIntegrationTest {
         override suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope> =
             state.value.take(limit)
 
+        override suspend fun pendingSync(
+            conversationId: String,
+            limit: Int,
+        ): List<PersistedMessageEnvelope> =
+            state.value.filter { it.conversationId == conversationId }.take(limit)
+
         override suspend fun updateSync(
             messageId: String,
             sync: PersistedSyncEnvelope,

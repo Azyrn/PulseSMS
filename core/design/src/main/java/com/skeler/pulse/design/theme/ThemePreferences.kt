@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -24,28 +26,28 @@ class ThemePreferences(private val context: Context) {
     private val store: DataStore<Preferences>
         get() = context.dataStore
 
+    val state: Flow<SerafinaThemeState> =
+        store.data
+            .map(::preferencesToState)
+            .distinctUntilChanged()
+
     val dynamicColorEnabled: Flow<Boolean> =
-        store.data.map { prefs -> prefs[KEY_DYNAMIC_COLOR] ?: true }
+        state.map { themeState -> themeState.dynamicColorEnabled }.distinctUntilChanged()
 
     val selectedPalette: Flow<SerafinaPalette> =
-        store.data.map { prefs ->
-            val name = prefs[KEY_PALETTE] ?: SerafinaPalette.LavenderVolt.name
-            SerafinaPalette.entries.firstOrNull { it.name == name }
-                ?: SerafinaPalette.LavenderVolt
-        }
+        state.map { themeState -> themeState.selectedPalette }.distinctUntilChanged()
 
     val themeMode: Flow<SerafinaThemeMode> =
-        store.data.map { prefs ->
-            val name = prefs[KEY_THEME_MODE] ?: SerafinaThemeMode.System.name
-            SerafinaThemeMode.entries.firstOrNull { it.name == name }
-                ?: SerafinaThemeMode.System
-        }
+        state.map { themeState -> themeState.themeMode }.distinctUntilChanged()
 
     val blackThemeEnabled: Flow<Boolean> =
-        store.data.map { prefs -> prefs[KEY_BLACK_THEME] ?: false }
+        state.map { themeState -> themeState.blackThemeEnabled }.distinctUntilChanged()
 
     val reduceMotion: Flow<Boolean> =
-        store.data.map { prefs -> prefs[KEY_REDUCE_MOTION] ?: false }
+        state.map { themeState -> themeState.reduceMotion }.distinctUntilChanged()
+
+    suspend fun currentState(): SerafinaThemeState =
+        preferencesToState(store.data.first())
 
     suspend fun setDynamicColorEnabled(enabled: Boolean) {
         store.edit { prefs -> prefs[KEY_DYNAMIC_COLOR] = enabled }
@@ -74,5 +76,20 @@ class ThemePreferences(private val context: Context) {
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_BLACK_THEME = booleanPreferencesKey("black_theme_enabled")
         private val KEY_REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
+    }
+
+    private fun preferencesToState(prefs: Preferences): SerafinaThemeState {
+        val paletteName = prefs[KEY_PALETTE] ?: SerafinaPalette.LavenderVolt.name
+        val themeModeName = prefs[KEY_THEME_MODE] ?: SerafinaThemeMode.System.name
+
+        return SerafinaThemeState(
+            dynamicColorEnabled = prefs[KEY_DYNAMIC_COLOR] ?: true,
+            selectedPalette = SerafinaPalette.entries.firstOrNull { it.name == paletteName }
+                ?: SerafinaPalette.LavenderVolt,
+            themeMode = SerafinaThemeMode.entries.firstOrNull { it.name == themeModeName }
+                ?: SerafinaThemeMode.System,
+            blackThemeEnabled = prefs[KEY_BLACK_THEME] ?: false,
+            reduceMotion = prefs[KEY_REDUCE_MOTION] ?: false,
+        )
     }
 }

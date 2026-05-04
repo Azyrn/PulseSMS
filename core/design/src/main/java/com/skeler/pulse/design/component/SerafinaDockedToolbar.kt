@@ -88,8 +88,8 @@ fun SerafinaDockedToolbar(
             )
         } else {
             spring(
-                stiffness = 400f,
-                dampingRatio = 0.6f,
+                stiffness = Spring.StiffnessMedium,
+                dampingRatio = Spring.DampingRatioNoBouncy,
             )
         },
         label = "toolbar_height",

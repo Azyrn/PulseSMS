@@ -192,6 +192,12 @@ class DefaultConversationRepositoryTest {
 
         override suspend fun pendingSync(limit: Int): List<PersistedMessageEnvelope> = envelopes.take(limit)
 
+        override suspend fun pendingSync(
+            conversationId: String,
+            limit: Int,
+        ): List<PersistedMessageEnvelope> =
+            envelopes.filter { it.conversationId == conversationId }.take(limit)
+
         override suspend fun updateSync(
             messageId: String,
             sync: PersistedSyncEnvelope,

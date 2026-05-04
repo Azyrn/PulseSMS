@@ -37,18 +37,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
+import com.skeler.pulse.design.theme.LocalReduceMotion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
 
-private const val OVERSCROLL_MAX_OFFSET_PX = 280f
-private const val OVERSCROLL_STRETCH_FACTOR = 0.42f
+private const val OVERSCROLL_MAX_OFFSET_PX = 96f
+private const val OVERSCROLL_STRETCH_FACTOR = 0.18f
+
+internal fun overscrollRelaxationDelta(
+    currentOffset: Float,
+    dragDelta: Float,
+): Float {
+    if (dragDelta == 0f || currentOffset == 0f || sign(dragDelta) == sign(currentOffset)) {
+        return 0f
+    }
+    return sign(dragDelta) * minOf(abs(dragDelta), abs(currentOffset))
+}
 
 @Composable
 fun rememberMomentumFlingBehavior(
     enabled: Boolean,
-    momentumMultiplier: Float = 1.12f,
+    momentumMultiplier: Float = 1.03f,
 ): FlingBehavior {
     val baseFlingBehavior = ScrollableDefaults.flingBehavior()
     if (!enabled) return baseFlingBehavior
@@ -71,7 +82,7 @@ fun rememberMomentumFlingBehavior(
 @Composable
 fun rememberSmoothFlingBehavior(
     enabled: Boolean,
-    momentumMultiplier: Float = 1.12f,
+    momentumMultiplier: Float = 1.03f,
 ): FlingBehavior = rememberMomentumFlingBehavior(
     enabled = enabled,
     momentumMultiplier = momentumMultiplier,
@@ -91,7 +102,7 @@ fun Modifier.elasticOverscroll(
     var reboundJob by remember { mutableStateOf<Job?>(null) }
     val resetSpec = remember {
         spring<Float>(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium,
         )
     }
@@ -124,8 +135,12 @@ fun Modifier.elasticOverscroll(
 
                 // Consume opposite-direction drag first to relax any existing stretch before
                 // sending deltas back to the LazyColumn.
-                val relaxation = sign(delta) * minOf(abs(delta), abs(overscrollOffset))
-                overscrollOffset -= relaxation
+                val relaxation = overscrollRelaxationDelta(
+                    currentOffset = overscrollOffset,
+                    dragDelta = delta,
+                )
+                if (relaxation == 0f) return Offset.Zero
+                overscrollOffset += relaxation
                 return if (orientation == Orientation.Vertical) Offset(0f, relaxation) else Offset(relaxation, 0f)
             }
 
@@ -147,10 +162,9 @@ fun Modifier.elasticOverscroll(
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    reboundJob?.cancel()
-                    reboundJob = null
-                }
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                reboundJob?.cancel()
+                reboundJob = null
                 val axisUnconsumed = if (orientation == Orientation.Vertical) available.y else available.x
                 if (axisUnconsumed == 0f) return Offset.Zero
 
@@ -185,8 +199,8 @@ fun LazyItemScope.motionAnimateItemModifier(reducedMotion: Boolean): Modifier {
             fadeInSpec = tween(durationMillis = 250),
             fadeOutSpec = tween(durationMillis = 120),
             placementSpec = spring(
-                stiffness = Spring.StiffnessLow,
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium,
+                dampingRatio = Spring.DampingRatioNoBouncy,
             ),
         )
     }
@@ -215,8 +229,8 @@ fun rememberEntranceModifier(
     val translationY by animateFloatAsState(
         targetValue = if (entered) 0f else entranceOffsetPx,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
-            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
         ),
         label = "list_item_translation",
     )
@@ -229,6 +243,7 @@ fun rememberEntranceModifier(
 
 @Composable
 fun rememberReducedMotionEnabled(): Boolean {
+    val appReduceMotion = LocalReduceMotion.current
     LocalAccessibilityManager.current
     val context = LocalContext.current
     var reducedMotionEnabled by remember(context) { mutableStateOf(isAnimationsDisabled(context)) }
@@ -263,7 +278,7 @@ fun rememberReducedMotionEnabled(): Boolean {
         }
     }
 
-    return reducedMotionEnabled
+    return appReduceMotion || reducedMotionEnabled
 }
 
 private fun isAnimationsDisabled(context: Context): Boolean {

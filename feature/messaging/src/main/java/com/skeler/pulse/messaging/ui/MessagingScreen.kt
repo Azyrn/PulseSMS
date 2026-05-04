@@ -120,7 +120,7 @@ fun MessagingScreen(
     LaunchedEffect(state.conversationId) {
         previousCount = messages.size
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(BOTTOM_INDEX)
+            listState.scrollToItem(BOTTOM_INDEX)
         }
     }
 
@@ -268,14 +268,17 @@ private fun MessageItem(
     var appeared by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(
         targetValue = if (appeared) 1f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
         label = "message_item_alpha",
     )
     val translationY by animateFloatAsState(
         targetValue = if (appeared) 0f else entranceOffsetPx,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
-            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
         ),
         label = "message_item_translation_y",
     )

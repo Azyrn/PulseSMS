@@ -102,7 +102,7 @@ fun SendButtonMorph(
                 animationSpec = if (reduceMotion) {
                     spring(stiffness = Spring.StiffnessHigh, dampingRatio = Spring.DampingRatioNoBouncy)
                 } else {
-                    spring(stiffness = 600f, dampingRatio = 0.7f)
+                    spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
                 },
             )
         }
@@ -116,7 +116,7 @@ fun SendButtonMorph(
                 animationSpec = if (reduceMotion) {
                     spring(stiffness = Spring.StiffnessHigh, dampingRatio = Spring.DampingRatioNoBouncy)
                 } else {
-                    spring(stiffness = 300f, dampingRatio = 0.5f)
+                    spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
                 },
             )
             // Success → Idle
@@ -125,7 +125,7 @@ fun SendButtonMorph(
             progress.snapTo(0f)
             progress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
+                animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy),
             )
             progress.snapTo(0f)
         }

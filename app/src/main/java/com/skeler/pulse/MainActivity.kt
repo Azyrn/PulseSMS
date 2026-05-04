@@ -5,6 +5,7 @@ import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -91,6 +92,16 @@ internal fun shouldHandleOpenNewChatRequest(
     lastHandledRequestKey: Int,
     accessState: InboxAccessState,
 ): Boolean = requestKey > lastHandledRequestKey && accessState.isReady
+
+internal fun isSystemNightMode(uiMode: Int): Boolean =
+    uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+
+internal fun resolveDarkTheme(themeMode: SerafinaThemeMode, systemDarkTheme: Boolean): Boolean =
+    when (themeMode) {
+        SerafinaThemeMode.System -> systemDarkTheme
+        SerafinaThemeMode.Light -> false
+        SerafinaThemeMode.Dark -> true
+    }
 
 internal fun buildPulseLaunchRequestOrNull(
     conversationAddress: String?,
@@ -234,6 +245,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val appContainer = (application as PulseApplication).appContainer
+        val themeViewModel = ViewModelProvider(this)[SerafinaThemeViewModel::class.java]
+        val initialThemeState = themeViewModel.state.value
+
+        // Set window background BEFORE enableEdgeToEdge and setContent.
+        // The theme ViewModel reads DataStore synchronously for its first value, so this
+        // uses the same persisted light/dark choice Compose will use on frame one.
+        val isNightMode = resolveDarkTheme(
+            themeMode = initialThemeState.themeMode,
+            systemDarkTheme = isSystemNightMode(resources.configuration.uiMode),
+        )
+        window.setBackgroundDrawableResource(
+            if (isNightMode) android.R.color.background_dark
+            else android.R.color.background_light
+        )
+
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
@@ -250,8 +278,6 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
         launchRequestState.value = intent.toPulseLaunchRequestOrNull(this)
 
-        val appContainer = (application as PulseApplication).appContainer
-        val themeViewModel = ViewModelProvider(this)[SerafinaThemeViewModel::class.java]
         realSmsViewModel = ViewModelProvider(
             this,
             appContainer.realSmsViewModelFactory(),
@@ -267,11 +293,10 @@ class MainActivity : ComponentActivity() {
                 themeState = themeState,
                 reduceMotion = themeState.reduceMotion,
             ) {
-                val isDarkMode = when (themeState.themeMode) {
-                    SerafinaThemeMode.System -> isSystemInDarkTheme()
-                    SerafinaThemeMode.Light -> false
-                    SerafinaThemeMode.Dark -> true
-                }
+                val isDarkMode = resolveDarkTheme(
+                    themeMode = themeState.themeMode,
+                    systemDarkTheme = isSystemInDarkTheme(),
+                )
                 val view = LocalView.current
                 SideEffect {
                     val controller = WindowInsetsControllerCompat(window, view)

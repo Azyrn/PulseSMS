@@ -14,8 +14,11 @@ import com.skeler.pulse.shouldHandleOpenNewChatRequest
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -25,12 +28,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -138,7 +139,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -179,6 +179,8 @@ private const val DESTINATION_NEW_CHAT = "new_chat"
 private const val DESTINATION_CONVERSATION = "conversation"
 private const val DESTINATION_SETTINGS = "settings"
 private const val DESTINATION_ARCHIVED = "archived"
+private const val SCREEN_TRANSITION_DURATION_MILLIS = 180
+private const val SCREEN_TRANSITION_EXIT_DURATION_MILLIS = 120
 
 private enum class InboxFilter(val label: String) {
     All("All"), Personal("Personal"), Business("Business"), OTP("OTP"),
@@ -189,6 +191,67 @@ private data class SettingsChoiceOption(
     val label: String,
     val accentColor: Color? = null,
 )
+
+private fun screenDepth(destination: String): Int = when (destination) {
+    DESTINATION_INBOX -> 0
+    DESTINATION_NEW_CHAT,
+    DESTINATION_SETTINGS,
+    DESTINATION_ARCHIVED -> 1
+    DESTINATION_CONVERSATION -> 2
+    else -> 0
+}
+
+private fun screenTransition(
+    initialState: String,
+    targetState: String,
+    reducedMotion: Boolean,
+): ContentTransform {
+    if (reducedMotion) {
+        return ContentTransform(
+            targetContentEnter = fadeIn(tween(durationMillis = 0)),
+            initialContentExit = fadeOut(tween(durationMillis = 0)),
+            sizeTransform = null,
+        )
+    }
+
+    val forward = screenDepth(targetState) >= screenDepth(initialState)
+    val enterOffset: (Int) -> Int = { width -> if (forward) width / 5 else -width / 5 }
+    val exitOffset: (Int) -> Int = { width -> if (forward) -width / 8 else width / 8 }
+
+    val enterTransition =
+        slideInHorizontally(
+            animationSpec = tween(
+                durationMillis = SCREEN_TRANSITION_DURATION_MILLIS,
+                easing = FastOutSlowInEasing,
+            ),
+            initialOffsetX = enterOffset,
+        ) + fadeIn(
+            animationSpec = tween(
+                durationMillis = SCREEN_TRANSITION_EXIT_DURATION_MILLIS,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+
+    val exitTransition =
+        slideOutHorizontally(
+            animationSpec = tween(
+                durationMillis = SCREEN_TRANSITION_EXIT_DURATION_MILLIS,
+                easing = LinearOutSlowInEasing,
+            ),
+            targetOffsetX = exitOffset,
+        ) + fadeOut(
+            animationSpec = tween(
+                durationMillis = SCREEN_TRANSITION_EXIT_DURATION_MILLIS,
+                easing = LinearOutSlowInEasing,
+            ),
+        )
+
+    return ContentTransform(
+        targetContentEnter = enterTransition,
+        initialContentExit = exitTransition,
+        sizeTransform = null,
+    )
+}
 
 @Composable
 fun PulseAppShell(
@@ -219,6 +282,7 @@ fun PulseAppShell(
     val reducedMotion = rememberReducedMotionEnabled()
     val inboxListState = rememberLazyListState()
     val inboxFilterState = rememberLazyListState()
+    val archivedListState = rememberLazyListState()
     val settingsListState = rememberLazyListState()
     val newChatListState = rememberLazyListState()
 
@@ -266,32 +330,11 @@ fun PulseAppShell(
         AnimatedContent(
             targetState = currentScreen,
             transitionSpec = {
-                if (reducedMotion) {
-                    fadeIn(tween(durationMillis = 0)) togetherWith fadeOut(tween(durationMillis = 0))
-                } else {
-                val dur = 250
-                when {
-                    targetState == DESTINATION_CONVERSATION && initialState == DESTINATION_INBOX ->
-                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
-                    targetState == DESTINATION_INBOX && initialState == DESTINATION_CONVERSATION ->
-                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
-                    targetState == DESTINATION_NEW_CHAT && initialState == DESTINATION_INBOX ->
-                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
-                    targetState == DESTINATION_INBOX && initialState == DESTINATION_NEW_CHAT ->
-                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
-                    targetState == DESTINATION_CONVERSATION && initialState == DESTINATION_NEW_CHAT ->
-                        (slideInHorizontally(tween(dur)) { it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { -it } + fadeOut(tween(dur)))
-                    targetState == DESTINATION_NEW_CHAT && initialState == DESTINATION_CONVERSATION ->
-                        (slideInHorizontally(tween(dur)) { -it } + fadeIn(tween(dur)))
-                            .togetherWith(slideOutHorizontally(tween(dur)) { it } + fadeOut(tween(dur)))
-                    else -> fadeIn(tween(200)) togetherWith fadeOut(tween(200))
-                }
-                }
+                screenTransition(
+                    initialState = initialState,
+                    targetState = targetState,
+                    reducedMotion = reducedMotion,
+                )
             },
             label = "screen_transition",
         ) { screen ->
@@ -420,7 +463,7 @@ fun PulseAppShell(
                         archivedThreadIds = inboxState.archivedThreadIds,
                         loading = inboxState.loading,
                         errorMessage = inboxState.errorMessage,
-                        listState = inboxListState,
+                        listState = archivedListState,
                         onBack = {
                             backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
                         },
@@ -505,6 +548,13 @@ private fun RealInboxScreen(
     LaunchedEffect(normalizedQuery, selectedFilter) {
         if (listState.firstVisibleItemIndex > 0) {
             listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(filteredThreads, contextMenuThreadId) {
+        val activeThreadId = contextMenuThreadId ?: return@LaunchedEffect
+        if (filteredThreads.none { it.threadId == activeThreadId }) {
+            contextMenuThreadId = null
         }
     }
 
@@ -708,26 +758,6 @@ private fun RealInboxScreen(
                 }
             }
 
-            if (contextMenuThreadId != null) {
-                item(key = "inbox_context_scrim") {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                    )
-                }
-            }
-        }
-
-        if (contextMenuThreadId != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1f)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { contextMenuThreadId = null })
-                    },
-            )
         }
     }
 }
@@ -752,6 +782,13 @@ private fun ArchivedChatsScreen(
     val reducedMotion = rememberReducedMotionEnabled()
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(threads, contextMenuThreadId) {
+        val activeThreadId = contextMenuThreadId ?: return@LaunchedEffect
+        if (threads.none { it.threadId == activeThreadId }) {
+            contextMenuThreadId = null
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -811,11 +848,11 @@ private fun ArchivedChatsScreen(
                 else -> {
                     items(
                         items = threads,
-                        key = { it.address },
+                        key = { "${it.threadId}:${it.address}" },
                         contentType = { "archived_thread" },
                     ) { thread ->
                         val itemModifier = motionAnimateItemModifier(reducedMotion)
-                            .then(rememberEntranceModifier("archived_${thread.address}", reducedMotion))
+                            .then(rememberEntranceModifier("archived_${thread.threadId}_${thread.address}", reducedMotion))
                         val isMenuOpenForThread = contextMenuThreadId == thread.threadId
                         SmsThreadCard(
                             thread = thread,
@@ -841,26 +878,6 @@ private fun ArchivedChatsScreen(
                 }
             }
 
-            if (contextMenuThreadId != null) {
-                item(key = "archived_context_scrim") {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                    )
-                }
-            }
-        }
-
-        if (contextMenuThreadId != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1f)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { contextMenuThreadId = null })
-                    },
-            )
         }
     }
 }
@@ -1192,24 +1209,36 @@ private fun SmsThreadCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val reducedMotion = rememberReducedMotionEnabled()
     val displayName = remember(thread.address) { displayNameFor(context, thread.address) }
     val initials = displayName.toAvatarInitials()
     val hasUnread = thread.unreadCount > 0
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     val containerColor by animateColorAsState(
-        targetValue = if (hasUnread) {
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
+        targetValue = when {
+            isContextMenuOpen -> MaterialTheme.colorScheme.surfaceContainerHigh
+            hasUnread -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
         label = "thread_card_container",
     )
     val outlineColor by animateColorAsState(
-        targetValue = if (hasUnread) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
+        targetValue = when {
+            isContextMenuOpen -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+            hasUnread -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+            isPressed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
         },
         label = "thread_card_outline",
+    )
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed || isContextMenuOpen) 0.985f else 1f,
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "thread_card_press_scale",
     )
     val semanticsLabel = remember(displayName, thread.unreadCount) {
         buildString {
@@ -1226,12 +1255,18 @@ private fun SmsThreadCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
             .clip(cardShape)
             .semantics {
                 role = Role.Button
                 contentDescription = semanticsLabel
             }
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = onLongPress,
             ),
@@ -1303,66 +1338,39 @@ private fun SmsThreadCard(
             }
         }
 
-        DropdownMenu(
+        SerafinaContextMenu(
             expanded = isContextMenuOpen,
             onDismissRequest = onDismissMenu,
         ) {
-            DropdownMenuItem(
-                text = { Text(if (isPinned) "Unpin" else "Pin") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (isPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        contentDescription = null,
-                    )
-                },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            SerafinaContextMenuItem(
+                text = if (isPinned) "Unpin" else "Pin",
+                icon = if (isPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                 onClick = {
                     onDismissMenu()
                     onTogglePinned()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(if (isArchived) "Unarchive" else "Archive") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Archive,
-                        contentDescription = null,
-                    )
-                },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            SerafinaContextMenuItem(
+                text = if (isArchived) "Unarchive" else "Archive",
+                icon = Icons.Rounded.Archive,
                 onClick = {
                     onDismissMenu()
                     onToggleArchived()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(if (hasUnread) "Mark as read" else "Mark as unread") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.MarkunreadMailbox,
-                        contentDescription = null,
-                    )
-                },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            SerafinaContextMenuItem(
+                text = if (hasUnread) "Mark as read" else "Mark as unread",
+                icon = Icons.Rounded.MarkunreadMailbox,
                 onClick = {
                     onDismissMenu()
                     onToggleUnread()
                 },
             )
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
-            )
-            DropdownMenuItem(
-                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            SerafinaContextMenuDivider()
+            SerafinaContextMenuItem(
+                text = "Delete",
+                icon = Icons.Rounded.Delete,
+                contentColor = MaterialTheme.colorScheme.error,
                 onClick = {
                     onDismissMenu()
                     onDelete()
@@ -1370,6 +1378,61 @@ private fun SmsThreadCard(
             )
         }
     }
+}
+
+@Composable
+private fun SerafinaContextMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    shadowElevation: androidx.compose.ui.unit.Dp = 0.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier.widthIn(min = 204.dp),
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 0.dp,
+        shadowElevation = shadowElevation,
+        content = content,
+    )
+}
+
+@Composable
+private fun SerafinaContextMenuItem(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = text,
+                color = contentColor,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+            )
+        },
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun SerafinaContextMenuDivider() {
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+    )
 }
 
 @Composable
@@ -1608,7 +1671,7 @@ private fun RealConversationScreen(
 
     LaunchedEffect(address, loading, timelineItems.size) {
         if (!loading && !hasPositionedInitialMessages && timelineItems.isNotEmpty()) {
-            listState.animateScrollToItem(timelineItems.lastIndex)
+            listState.scrollToItem(timelineItems.lastIndex)
             previousMessageCount = messages.size
             hasPositionedInitialMessages = true
         }
@@ -1935,14 +1998,43 @@ private fun ConversationMessageBubble(
     onForward: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reducedMotion = rememberReducedMotionEnabled()
     val isOutbound = message.isOutbound
     val isUnread = message.isInbound && !message.read
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     val bubbleShape = RoundedCornerShape(
         topStart = 24.dp,
         topEnd = 24.dp,
         bottomStart = if (isOutbound) 24.dp else 10.dp,
         bottomEnd = if (isOutbound) 10.dp else 24.dp,
     )
+    val bubbleScale by animateFloatAsState(
+        targetValue = if (isPressed || isContextMenuOpen) 0.985f else 1f,
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "message_bubble_press_scale",
+    )
+    val bubbleElevation by animateDpAsState(
+        targetValue = if (isContextMenuOpen) 6.dp else if (isPressed) 2.dp else if (isOutbound) 0.dp else 1.dp,
+        animationSpec = if (reducedMotion) tween(0) else spring(
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+        ),
+        label = "message_bubble_press_elevation",
+    )
+    val bubbleOutlineColor by animateColorAsState(
+        targetValue = when {
+            isContextMenuOpen -> MaterialTheme.colorScheme.primary.copy(alpha = 0.46f)
+            isPressed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+            isUnread -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.42f)
+            else -> Color.Transparent
+        },
+        label = "message_bubble_press_outline",
+    )
+    val shouldShowBubbleOutline = isContextMenuOpen || isPressed || (isUnread && !isOutbound)
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -1951,7 +2043,13 @@ private fun ConversationMessageBubble(
         Box(
             modifier = Modifier
                 .widthIn(max = 320.dp)
+                .graphicsLayer {
+                    scaleX = bubbleScale
+                    scaleY = bubbleScale
+                }
                 .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
                     onClick = {},
                     onLongClick = onLongPress,
                 ),
@@ -1963,10 +2061,10 @@ private fun ConversationMessageBubble(
             ) {
                 Surface(
                     modifier = Modifier.then(
-                        if (isUnread && !isOutbound) {
+                        if (shouldShowBubbleOutline) {
                             Modifier.border(
                                 width = 1.dp,
-                                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.42f),
+                                color = bubbleOutlineColor,
                                 shape = bubbleShape,
                             )
                         } else {
@@ -1977,7 +2075,7 @@ private fun ConversationMessageBubble(
                     color = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
                     else if (isUnread) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
                     else MaterialTheme.colorScheme.surfaceContainerLow,
-                    tonalElevation = if (isOutbound) 0.dp else 1.dp,
+                    tonalElevation = bubbleElevation,
                 ) {
                     Text(
                         text = message.body.ifBlank { " " },
@@ -2009,43 +2107,26 @@ private fun ConversationMessageBubble(
                 }
             }
 
-            DropdownMenu(
+            SerafinaContextMenu(
                 expanded = isContextMenuOpen,
                 onDismissRequest = onDismissMenu,
+                shadowElevation = 0.dp,
             ) {
-                DropdownMenuItem(
-                    text = { Text("Copy") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.ContentCopy,
-                            contentDescription = null,
-                        )
-                    },
+                SerafinaContextMenuItem(
+                    text = "Copy",
+                    icon = Icons.Rounded.ContentCopy,
                     onClick = onCopy,
                 )
-                DropdownMenuItem(
-                    text = { Text("Forward") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = null,
-                        )
-                    },
+                SerafinaContextMenuItem(
+                    text = "Forward",
+                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
                     onClick = onForward,
                 )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    },
+                SerafinaContextMenuDivider()
+                SerafinaContextMenuItem(
+                    text = "Delete",
+                    icon = Icons.Rounded.Delete,
+                    contentColor = MaterialTheme.colorScheme.error,
                     onClick = onDelete,
                 )
             }
@@ -2754,6 +2835,7 @@ private fun SettingsAppearanceCard(
                     icon = Icons.Outlined.Palette,
                     title = "Color scheme",
                     subtitle = colorSchemeLabel,
+                    reducedMotion = reducedMotion,
                 ) {
                     SettingsChoiceRail(
                         options = colorSchemeOptions,
@@ -2768,6 +2850,7 @@ private fun SettingsAppearanceCard(
                     icon = Icons.Outlined.Contrast,
                     title = "Theme",
                     subtitle = themeMode.label,
+                    reducedMotion = reducedMotion,
                 ) {
                     SettingsChoiceRail(
                         options = themeOptions,
@@ -2793,6 +2876,7 @@ private fun SettingsExpressiveRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    reducedMotion: Boolean,
     controls: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -2806,7 +2890,16 @@ private fun SettingsExpressiveRow(
                 shape = RoundedCornerShape(24.dp),
             )
             .padding(horizontal = 16.dp, vertical = 16.dp)
-            .animateContentSize(),
+            .animateContentSize(
+                animationSpec = if (reducedMotion) {
+                    tween(durationMillis = 0)
+                } else {
+                    spring(
+                        stiffness = Spring.StiffnessMedium,
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                    )
+                },
+            ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(
@@ -2961,7 +3054,14 @@ private fun SettingsChoicePill(
     }
     val scale by animateFloatAsState(
         targetValue = if (selected) 1f else 0.985f,
-        animationSpec = if (reducedMotion) tween(0) else spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = if (reducedMotion) {
+            tween(0)
+        } else {
+            spring(
+                stiffness = Spring.StiffnessMedium,
+                dampingRatio = Spring.DampingRatioNoBouncy,
+            )
+        },
         label = "settings_choice_scale",
     )
 

@@ -1,7 +1,11 @@
 package com.skeler.pulse
 
+import android.content.res.Configuration
+import com.skeler.pulse.design.theme.SerafinaThemeMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainActivityLaunchRequestTest {
@@ -36,5 +40,19 @@ class MainActivityLaunchRequestTest {
         )
 
         assertNull(request)
+    }
+
+    @Test
+    fun `resolves persisted dark theme before first compose frame`() {
+        assertTrue(resolveDarkTheme(SerafinaThemeMode.Dark, systemDarkTheme = false))
+        assertFalse(resolveDarkTheme(SerafinaThemeMode.Light, systemDarkTheme = true))
+        assertTrue(resolveDarkTheme(SerafinaThemeMode.System, systemDarkTheme = true))
+        assertFalse(resolveDarkTheme(SerafinaThemeMode.System, systemDarkTheme = false))
+    }
+
+    @Test
+    fun `detects system night mode from configuration flags`() {
+        assertTrue(isSystemNightMode(Configuration.UI_MODE_NIGHT_YES))
+        assertFalse(isSystemNightMode(Configuration.UI_MODE_NIGHT_NO))
     }
 }

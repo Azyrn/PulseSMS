@@ -12,6 +12,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import com.materialkolor.rememberDynamicColorScheme
@@ -47,7 +48,7 @@ val LocalReduceMotion = staticCompositionLocalOf { false }
  * 2. **Tier 2** (user-chosen palette): `rememberDynamicColorScheme` from seed
  * 3. **Tier 3**: static brand-fallback [SerafinaLightColorScheme] / [SerafinaDarkColorScheme]
  *
- * Wraps content in [MaterialExpressiveTheme] with [MotionScheme.expressive].
+ * Wraps content in [MaterialExpressiveTheme] with a calm [MotionScheme.standard].
  */
 @Composable
 fun SerafinaAppTheme(
@@ -69,11 +70,7 @@ fun SerafinaAppTheme(
         pureBlackEnabled = themeState.blackThemeEnabled,
     )
 
-    val motionScheme = if (reduceMotion) {
-        MotionScheme.standard()
-    } else {
-        MotionScheme.expressive()
-    }
+    val motionScheme = MotionScheme.standard()
 
     CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
         MaterialExpressiveTheme(
@@ -98,31 +95,37 @@ private fun resolveColorScheme(
     val context = LocalContext.current
     val baseScheme = when {
         dynamicColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            remember(context, darkTheme) {
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            }
         !dynamicColorEnabled ->
             rememberDynamicColorScheme(
                 seedColor = palette.seedColor,
                 isDark = darkTheme,
             )
         else ->
-            if (darkTheme) SerafinaDarkColorScheme else SerafinaLightColorScheme
+            remember(darkTheme) {
+                if (darkTheme) SerafinaDarkColorScheme else SerafinaLightColorScheme
+            }
     }
 
     if (!darkTheme || !pureBlackEnabled) {
         return baseScheme
     }
 
-    return baseScheme.copy(
-        background = PureBlackBackground,
-        surface = PureBlackBackground,
-        surfaceDim = PureBlackBackground,
-        surfaceBright = PureBlackContainerHigh,
-        surfaceContainerLowest = PureBlackBackground,
-        surfaceContainerLow = PureBlackContainerLow,
-        surfaceContainer = PureBlackContainer,
-        surfaceContainerHigh = PureBlackContainerHigh,
-        surfaceContainerHighest = PureBlackContainerHighest,
-    )
+    return remember(baseScheme) {
+        baseScheme.copy(
+            background = PureBlackBackground,
+            surface = PureBlackBackground,
+            surfaceDim = PureBlackBackground,
+            surfaceBright = PureBlackContainerHigh,
+            surfaceContainerLowest = PureBlackBackground,
+            surfaceContainerLow = PureBlackContainerLow,
+            surfaceContainer = PureBlackContainer,
+            surfaceContainerHigh = PureBlackContainerHigh,
+            surfaceContainerHighest = PureBlackContainerHighest,
+        )
+    }
 }
 
 // ── Legacy alias ──

@@ -91,8 +91,8 @@ fun SerafinaAvatar(
             )
         } else {
             spring(
-                stiffness = Spring.StiffnessMediumLow,
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium,
+                dampingRatio = Spring.DampingRatioNoBouncy,
             )
         },
         label = "avatar_morph",

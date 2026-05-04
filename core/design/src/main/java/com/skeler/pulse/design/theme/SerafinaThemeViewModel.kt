@@ -5,9 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Immutable snapshot of the current Serafina theme configuration.
@@ -27,25 +27,14 @@ data class SerafinaThemeState(
 class SerafinaThemeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = ThemePreferences(application)
+    private val initialState = runBlocking {
+        runCatching { prefs.currentState() }.getOrDefault(SerafinaThemeState())
+    }
 
-    val state: StateFlow<SerafinaThemeState> = combine(
-        prefs.dynamicColorEnabled,
-        prefs.selectedPalette,
-        prefs.themeMode,
-        prefs.blackThemeEnabled,
-        prefs.reduceMotion,
-    ) { dynamicColor, palette, themeMode, blackThemeEnabled, reduceMotion ->
-        SerafinaThemeState(
-            dynamicColorEnabled = dynamicColor,
-            selectedPalette = palette,
-            themeMode = themeMode,
-            blackThemeEnabled = blackThemeEnabled,
-            reduceMotion = reduceMotion,
-        )
-    }.stateIn(
+    val state: StateFlow<SerafinaThemeState> = prefs.state.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = SerafinaThemeState(),
+        initialValue = initialState,
     )
 
     fun toggleDynamicColor() {
@@ -55,18 +44,24 @@ class SerafinaThemeViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun selectPalette(palette: SerafinaPalette) {
+        if (state.value.selectedPalette == palette) return
+
         viewModelScope.launch {
             prefs.setSelectedPalette(palette)
         }
     }
 
     fun selectThemeMode(themeMode: SerafinaThemeMode) {
+        if (state.value.themeMode == themeMode) return
+
         viewModelScope.launch {
             prefs.setThemeMode(themeMode)
         }
     }
 
     fun setBlackThemeEnabled(enabled: Boolean) {
+        if (state.value.blackThemeEnabled == enabled) return
+
         viewModelScope.launch {
             prefs.setBlackThemeEnabled(enabled)
         }
