@@ -126,6 +126,7 @@ dependencies {
     implementation(project(":core:security"))
     implementation(project(":feature:messaging"))
     implementation(project(":feature:sync"))
+    implementation(libs.androidx.biometric)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

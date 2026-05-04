@@ -4,7 +4,10 @@ package com.skeler.pulse.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import androidx.fragment.app.FragmentActivity
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.PulseLaunchRequest
 import com.skeler.pulse.contact.displayNameFor
@@ -68,7 +71,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -94,8 +99,12 @@ import androidx.compose.material.icons.rounded.MarkunreadMailbox
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SimCard
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -133,10 +142,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -144,11 +159,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.skeler.pulse.MainActivity
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
@@ -170,6 +190,10 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.skeler.pulse.security.auth.BiometricAvailability
+import com.skeler.pulse.security.auth.BiometricAuthResult
+import com.skeler.pulse.security.auth.checkBiometricAvailability
+import com.skeler.pulse.security.auth.showBiometricPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -179,6 +203,8 @@ private const val DESTINATION_NEW_CHAT = "new_chat"
 private const val DESTINATION_CONVERSATION = "conversation"
 private const val DESTINATION_SETTINGS = "settings"
 private const val DESTINATION_ARCHIVED = "archived"
+private const val DESTINATION_SECURITY = "security"
+private const val DESTINATION_LOCK = "lock"
 private const val SCREEN_TRANSITION_DURATION_MILLIS = 180
 private const val SCREEN_TRANSITION_EXIT_DURATION_MILLIS = 120
 
@@ -197,7 +223,9 @@ private fun screenDepth(destination: String): Int = when (destination) {
     DESTINATION_NEW_CHAT,
     DESTINATION_SETTINGS,
     DESTINATION_ARCHIVED -> 1
-    DESTINATION_CONVERSATION -> 2
+    DESTINATION_CONVERSATION,
+    DESTINATION_SECURITY,
+    DESTINATION_LOCK -> 2
     else -> 0
 }
 
@@ -277,7 +305,9 @@ fun PulseAppShell(
     var newChatQuery by rememberSaveable { mutableStateOf("") }
     var lastHandledNewChatRequestKey by rememberSaveable { mutableIntStateOf(0) }
     var consumedLaunchRequest by rememberSaveable { mutableStateOf(false) }
+    var isAuthenticated by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
+    val shellThemeState by themeViewModel.state.collectAsState()
     val currentScreen = backStack.lastOrNull() ?: DESTINATION_INBOX
     val reducedMotion = rememberReducedMotionEnabled()
     val inboxListState = rememberLazyListState()
@@ -315,6 +345,19 @@ fun PulseAppShell(
         lastHandledNewChatRequestKey = openNewChatRequestKey
     }
 
+    // Trigger biometric auth check when fingerprint is enabled and not yet authenticated.
+    LaunchedEffect(shellThemeState.fingerprintEnabled, isAuthenticated) {
+        if (!shellThemeState.fingerprintEnabled || isAuthenticated) return@LaunchedEffect
+        when (checkBiometricAvailability(context)) {
+            BiometricAvailability.Available -> {
+                backStack = listOf(DESTINATION_LOCK)
+            }
+            else -> {
+                backStack = listOf(DESTINATION_LOCK)
+            }
+        }
+    }
+
     fun navigateBack() {
         if (currentScreen == DESTINATION_CONVERSATION) {
             smsViewModel.closeConversation()
@@ -323,7 +366,9 @@ fun PulseAppShell(
     }
 
     BackHandler(enabled = currentScreen != DESTINATION_INBOX) {
-        navigateBack()
+        if (currentScreen != DESTINATION_LOCK) {
+            navigateBack()
+        }
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -451,6 +496,9 @@ fun PulseAppShell(
                         onOpenArchivedChats = {
                             backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED)
                         },
+                        onOpenSecurity = {
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_SECURITY)
+                        },
                         isDefaultSmsApp = inboxState.isDefaultSmsApp,
                     )
                 }
@@ -480,6 +528,28 @@ fun PulseAppShell(
                         onToggleArchived = smsViewModel::toggleThreadArchived,
                         onSetThreadUnread = smsViewModel::setThreadUnread,
                         onDeleteThread = smsViewModel::deleteThread,
+                    )
+                }
+
+                DESTINATION_SECURITY -> {
+                    SecuritySettingsScreen(
+                        themeViewModel = themeViewModel,
+                        onBack = {
+                            backStack = backStack.dropLast(1).ifEmpty { listOf(DESTINATION_INBOX) }
+                        },
+                    )
+                }
+
+                DESTINATION_LOCK -> {
+                    LockScreen(
+                        availability = checkBiometricAvailability(context),
+                        onAuthenticated = {
+                            isAuthenticated = true
+                            backStack = listOf(DESTINATION_INBOX)
+                        },
+                        onCancel = {
+                            // Stay on lock screen — user must authenticate
+                        },
                     )
                 }
             }
@@ -2623,6 +2693,7 @@ private fun SettingsScreen(
     onBack: () -> Unit,
     onRequestDefaultSms: () -> Unit,
     onOpenArchivedChats: () -> Unit,
+    onOpenSecurity: () -> Unit,
     isDefaultSmsApp: Boolean,
 ) {
     val themeState by themeViewModel.state.collectAsState()
@@ -2694,6 +2765,13 @@ private fun SettingsScreen(
                         title = "Archived chats",
                         subtitle = if (archivedCount == 0) "No archived chats" else "$archivedCount archived chats",
                         onClick = onOpenArchivedChats,
+                    )
+                    SettingsGroupDivider()
+                    SettingsRow(
+                        icon = Icons.Rounded.Fingerprint,
+                        title = "Security & Biometric",
+                        subtitle = "Fingerprint, password",
+                        onClick = onOpenSecurity,
                     )
                 }
             }
@@ -3096,6 +3174,327 @@ private fun SettingsChoicePill(
 }
 
 // ═══════════════════════════════════════════════════════════
+// SECURITY SETTINGS
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun SecuritySettingsScreen(
+    themeViewModel: SerafinaThemeViewModel,
+    onBack: () -> Unit,
+) {
+    val themeState by themeViewModel.state.collectAsState()
+    val context = LocalContext.current
+    val reducedMotion = rememberReducedMotionEnabled()
+    val securityListState = rememberLazyListState()
+    val securityFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
+    var biometricToggleError by rememberSaveable { mutableStateOf<String?>(null) }
+    fun requestFingerprintToggle() {
+        if (themeState.fingerprintEnabled) {
+            biometricToggleError = null
+            themeViewModel.setFingerprintEnabled(false)
+            return
+        }
+        val availability = checkBiometricAvailability(context)
+        if (availability != BiometricAvailability.Available) {
+            biometricToggleError = availability.lockScreenMessage()
+            return
+        }
+        val activity = context.findFragmentActivity()
+        if (activity == null) {
+            biometricToggleError = "Biometric prompt could not be started."
+            return
+        }
+        biometricToggleError = null
+        showBiometricPrompt(
+            activity = activity,
+            title = "Enable biometric login",
+            subtitle = "Authenticate to protect Pulse with biometrics",
+        ) { result ->
+            when (result) {
+                is BiometricAuthResult.Success -> {
+                    biometricToggleError = null
+                    themeViewModel.setFingerprintEnabled(true)
+                }
+                is BiometricAuthResult.Cancelled -> Unit
+                is BiometricAuthResult.Failed -> {
+                    biometricToggleError = "Authentication failed. Try again."
+                }
+                is BiometricAuthResult.Error -> {
+                    biometricToggleError = result.message
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = { SettingsTopBar(onBack = onBack) },
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { innerPadding ->
+        LazyColumn(
+            state = securityListState,
+            flingBehavior = securityFlingBehavior,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .elasticOverscroll(
+                    enabled = !reducedMotion,
+                    state = securityListState,
+                ),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            item(key = "security_header") {
+                SettingsSectionHeader("Security & Biometric")
+            }
+            item(key = "security_card") {
+                SettingsGroupCard {
+                    SecurityFingerprintRow(
+                        enabled = themeState.fingerprintEnabled,
+                        error = biometricToggleError,
+                        onToggle = ::requestFingerprintToggle,
+                    )
+                    SettingsGroupDivider()
+                    SecurityPasswordSection(
+                        passwordSet = themeState.password.isNotEmpty(),
+                        onSetPassword = { themeViewModel.setPassword(it) },
+                        onClearPassword = { themeViewModel.clearPassword() },
+                    )
+                }
+            }
+            item(key = "security_bottom_spacer") { Spacer(Modifier.height(32.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun SecurityFingerprintRow(
+    enabled: Boolean,
+    error: String?,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Fingerprint", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = error ?: if (enabled) "Biometric login active" else "Tap to enable biometric login",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = { onToggle() })
+    }
+}
+
+@Composable
+private fun SecurityPasswordSection(
+    passwordSet: Boolean,
+    onSetPassword: (String) -> Unit,
+    onClearPassword: () -> Unit,
+) {
+    var passwordInput by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var isEditing by rememberSaveable { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Password", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = if (passwordSet) "Alphanumeric password set" else "Set an alphanumeric password",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (isEditing || !passwordSet) {
+            OutlinedTextField(
+                value = passwordInput,
+                onValueChange = { newValue -> passwordInput = newValue.filter { it.isLetterOrDigit() } },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Enter password") },
+                singleLine = true,
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (passwordInput.isNotBlank()) { onSetPassword(passwordInput); passwordInput = ""; isEditing = false }
+                }),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(14.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(
+                    onClick = { if (passwordInput.isNotBlank()) { onSetPassword(passwordInput); passwordInput = ""; isEditing = false } },
+                    enabled = passwordInput.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                ) { Text("Save") }
+                if (passwordSet && isEditing) {
+                    FilledTonalButton(
+                        onClick = { passwordInput = ""; isEditing = false },
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Cancel") }
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(onClick = { isEditing = true }, shape = RoundedCornerShape(12.dp)) { Text("Change") }
+                FilledTonalButton(onClick = { onClearPassword(); passwordInput = "" }, shape = RoundedCornerShape(12.dp)) { Text("Remove") }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOCK SCREEN — Biometric authentication gate
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun LockScreen(
+    availability: BiometricAvailability,
+    onAuthenticated: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val context = LocalContext.current
+    val reducedMotion = rememberReducedMotionEnabled()
+    var authError by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Show the biometric prompt as soon as the lock screen is shown
+    LaunchedEffect(availability) {
+        if (availability != BiometricAvailability.Available) {
+            authError = availability.lockScreenMessage()
+            return@LaunchedEffect
+        }
+        val activity = context.findFragmentActivity() ?: return@LaunchedEffect
+        showBiometricPrompt(
+            activity = activity,
+            title = "Unlock Pulse",
+            subtitle = "Authenticate to access your messages",
+        ) { result ->
+            when (result) {
+                is BiometricAuthResult.Success -> onAuthenticated()
+                is BiometricAuthResult.Cancelled -> onCancel()
+                is BiometricAuthResult.Failed -> {
+                    authError = "Authentication failed. Try again."
+                }
+                is BiometricAuthResult.Error -> {
+                    authError = result.message
+                }
+            }
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(72.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Pulse is locked",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = authError ?: "Tap to authenticate",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = authError?.let { MaterialTheme.colorScheme.error }
+                        ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FilledTonalButton(
+                    onClick = {
+                        val activity = context.findFragmentActivity() ?: return@FilledTonalButton
+                        authError = null
+                        if (checkBiometricAvailability(context) != BiometricAvailability.Available) {
+                            authError = checkBiometricAvailability(context).lockScreenMessage()
+                            return@FilledTonalButton
+                        }
+                        showBiometricPrompt(
+                            activity = activity,
+                            title = "Unlock Pulse",
+                            subtitle = "Authenticate to access your messages",
+                        ) { result ->
+                            when (result) {
+                                is BiometricAuthResult.Success -> onAuthenticated()
+                                is BiometricAuthResult.Cancelled -> onCancel()
+                                is BiometricAuthResult.Failed -> {
+                                    authError = "Authentication failed. Try again."
+                                }
+                                is BiometricAuthResult.Error -> {
+                                    authError = result.message
+                                }
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(Icons.Rounded.Fingerprint, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Authenticate")
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
 
@@ -3103,6 +3502,20 @@ private fun Instant.toInboxTimestamp(): String = when {
     atZone(ZoneId.systemDefault()).toLocalDate() == java.time.LocalDate.now() ->
         INBOX_TIME_FORMATTER.format(atZone(ZoneId.systemDefault()))
     else -> INBOX_DATE_FORMATTER.format(atZone(ZoneId.systemDefault()))
+}
+
+private fun BiometricAvailability.lockScreenMessage(): String = when (this) {
+    BiometricAvailability.Available -> "Tap to authenticate"
+    BiometricAvailability.NoHardware -> "Strong biometric hardware is not available on this device."
+    BiometricAvailability.HardwareUnavailable -> "Strong biometric hardware is temporarily unavailable."
+    BiometricAvailability.NoneEnrolled -> "Enroll a strong biometric before using biometric login."
+    BiometricAvailability.SecurityUpdateRequired -> "Install the required biometric sensor security update."
+}
+
+private tailrec fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
+    is FragmentActivity -> this
+    is ContextWrapper -> baseContext.findFragmentActivity()
+    else -> null
 }
 
 private sealed interface ConversationTimelineItem {

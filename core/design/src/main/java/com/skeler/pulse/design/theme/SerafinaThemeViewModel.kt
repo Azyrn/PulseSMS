@@ -18,6 +18,8 @@ data class SerafinaThemeState(
     val themeMode: SerafinaThemeMode = SerafinaThemeMode.System,
     val blackThemeEnabled: Boolean = false,
     val reduceMotion: Boolean = false,
+    val fingerprintEnabled: Boolean = false,
+    val password: String = "",
 )
 
 /**
@@ -70,6 +72,32 @@ class SerafinaThemeViewModel(application: Application) : AndroidViewModel(applic
     fun toggleReduceMotion() {
         viewModelScope.launch {
             prefs.setReduceMotion(!state.value.reduceMotion)
+        }
+    }
+
+    fun toggleFingerprint() {
+        viewModelScope.launch {
+            prefs.setFingerprintEnabled(!state.value.fingerprintEnabled)
+        }
+    }
+
+    fun setFingerprintEnabled(enabled: Boolean) {
+        if (state.value.fingerprintEnabled == enabled) return
+
+        viewModelScope.launch {
+            prefs.setFingerprintEnabled(enabled)
+        }
+    }
+
+    fun setPassword(password: String) {
+        viewModelScope.launch {
+            prefs.setPassword(password)
+        }
+    }
+
+    fun clearPassword() {
+        viewModelScope.launch {
+            prefs.setPassword("")
         }
     }
 }

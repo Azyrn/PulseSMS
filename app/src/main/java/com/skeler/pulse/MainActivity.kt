@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.provider.Telephony
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
 import com.skeler.pulse.contact.displayNameFor
@@ -210,7 +210,7 @@ internal fun appDetailsSettingsIntent(packageName: String): Intent =
         addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private lateinit var realSmsViewModel: RealSmsViewModel
     private var inboxAccessReconcileJob: Job? = null

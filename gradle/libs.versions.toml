@@ -22,6 +22,7 @@ animationGraphics = "1.10.6"
 graphicsShapes = "1.1.0"
 materialKolor = "4.1.1"
 coilCompose = "2.7.0"
+biometric = "1.2.0-alpha05"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -58,6 +59,7 @@ androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shape
 material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "materialKolor" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
