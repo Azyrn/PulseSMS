@@ -11,6 +11,7 @@ A fast, private SMS app for Android built with Kotlin.
 - **In‑app Camera** — take photos directly from the composer
 - **Gallery Picker** — native gallery with multi‑select (tap multiple photos, then confirm)
 - **MMS Image Viewer** — tap an MMS image to view it full‑screen; download button saves to your gallery and opens it automatically
+- **Voice Messages** — record and send audio messages as MMS attachments; tap to play received voice messages inline
 - **Message Threading** — conversations grouped by contact with inbox filtering (All, Personal, Business, OTP)
 - **SIM Selection** — choose which SIM to send from (dual‑SIM support)
 - **Biometric Lock** — secure the app with fingerprint or passcode
