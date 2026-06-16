@@ -429,6 +429,7 @@ class SystemSmsReader(
                         read = readInt == 1,
                         threadId = resolvedThreadId,
                         mmsPartUri = partUri,
+                        mmsContentType = partsResult.attachmentMimeType,
                         fromAddress = fromAddress,
                         toAddress = toAddress,
                     ),
@@ -617,6 +618,9 @@ class SystemSmsReader(
 
     suspend fun sendMms(address: String, text: String, imageUris: List<Uri> = emptyList()) =
         smsSender.sendMms(address = address, text = text, imageUris = imageUris)
+
+    suspend fun sendVoiceMms(address: String, text: String, audioUri: Uri) =
+        smsSender.sendVoiceMms(address = address, text = text, audioUri = audioUri)
 
     fun countConversationMessages(address: String, threadId: Long?): Int {
         val normalized = address.normalizeAddressForDisplay()

@@ -221,6 +221,7 @@ internal fun ConversationBottomBar(
     onImageSelected: (List<Uri>) -> Unit = {},
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
+    onVoiceRecorded: (Uri) -> Unit = {},
 ) {
     if (isReplyable) {
         Column(
@@ -249,6 +250,7 @@ internal fun ConversationBottomBar(
                 onImageSelected = onImageSelected,
                 onImagePickFromGallery = onImagePickFromGallery,
                 onTakePhoto = onTakePhoto,
+                onVoiceRecorded = onVoiceRecorded,
             )
         }
     } else {

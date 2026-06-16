@@ -258,6 +258,9 @@ fun PulseAppShell(
                         onSend = { body, imageUris ->
                             onSendMessage(activeAddress, body, imageUris, activeSubscriptionId)
                         },
+                        onSendVoice = { uri ->
+                            smsViewModel.sendVoiceMessage(activeAddress, uri)
+                        },
                         onRetrySend = smsViewModel::retrySend,
                         onClearSendState = smsViewModel::clearSendState,
                         onDraftConsumed = { conversationDraftSeed = "" },

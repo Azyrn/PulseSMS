@@ -2,6 +2,7 @@ package com.skeler.pulse.ui
 import android.content.ContentValues
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -93,6 +94,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -145,6 +147,8 @@ import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.OtpCodeExtractor
 import coil.compose.AsyncImage
 import com.skeler.pulse.sms.SystemSms
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Pause
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -269,25 +273,32 @@ internal fun ConversationMessageBubble(
                 ) {
                     Column {
                         if (message.mmsPartUri != null) {
-                            var showImageDialog by remember { mutableStateOf(false) }
-                            AsyncImage(
-                                model = message.mmsPartUri,
-                                contentDescription = stringResource(R.string.mms_body_placeholder),
-                                modifier = Modifier
-                                    .widthIn(max = 200.dp)
-                                    .aspectRatio(1f)
-                                    .clip(bubbleShape)
-                                    .combinedClickable(
-                                        onClick = { showImageDialog = true },
-                                        onLongClick = onLongClickAction,
-                                    ),
-                                contentScale = ContentScale.Crop,
-                            )
-                            if (showImageDialog) {
-                                MmsImageDialog(
+                            if (message.mmsContentType?.startsWith("audio/") == true) {
+                                VoiceMessagePlayer(
                                     uri = message.mmsPartUri,
-                                    onDismiss = { showImageDialog = false },
+                                    isOutbound = isOutbound,
                                 )
+                            } else {
+                                var showImageDialog by remember { mutableStateOf(false) }
+                                AsyncImage(
+                                    model = message.mmsPartUri,
+                                    contentDescription = stringResource(R.string.mms_body_placeholder),
+                                    modifier = Modifier
+                                        .widthIn(max = 200.dp)
+                                        .aspectRatio(1f)
+                                        .clip(bubbleShape)
+                                        .combinedClickable(
+                                            onClick = { showImageDialog = true },
+                                            onLongClick = onLongClickAction,
+                                        ),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                if (showImageDialog) {
+                                    MmsImageDialog(
+                                        uri = message.mmsPartUri,
+                                        onDismiss = { showImageDialog = false },
+                                    )
+                                }
                             }
                         }
                         if (messageText.isNotBlank()) {
@@ -493,6 +504,99 @@ private fun MmsImageDialog(
             }
         }
     }
+}
+
+@Composable
+private fun VoiceMessagePlayer(
+    uri: Uri,
+    isOutbound: Boolean,
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var durationMs by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(uri) {
+        onDispose {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
+    }
+
+    val colors = MaterialTheme.colorScheme
+    val tintColor = if (isOutbound) colors.onPrimaryContainer else colors.onSurface
+
+    Row(
+        modifier = Modifier
+            .widthIn(min = 160.dp, max = 220.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(
+            onClick = {
+                val player = mediaPlayer
+                if (isPlaying) {
+                    player?.pause()
+                    isPlaying = false
+                } else {
+                    if (player == null) {
+                        try {
+                            val newPlayer = MediaPlayer().apply {
+                                setDataSource(context, uri)
+                                prepare()
+                                durationMs = duration
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                    seekTo(0)
+                                }
+                            }
+                            mediaPlayer = newPlayer
+                            newPlayer.start()
+                            isPlaying = true
+                        } catch (e: Exception) {
+                            Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
+                        }
+                    } else {
+                        player.seekTo(0)
+                        player.start()
+                        isPlaying = true
+                    }
+                }
+            },
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = stringResource(
+                    if (isPlaying) R.string.voice_message_stop else R.string.voice_message_play
+                ),
+                tint = tintColor,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.conversation_voice_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = tintColor,
+                maxLines = 1,
+            )
+            if (durationMs > 0) {
+                Text(
+                    text = formatVoiceDuration(durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tintColor.copy(alpha = 0.6f),
+                )
+            }
+        }
+    }
+}
+
+private fun formatVoiceDuration(ms: Int): String {
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
 }
 
 private fun saveMmsImage(context: android.content.Context, uri: Uri): Uri? {

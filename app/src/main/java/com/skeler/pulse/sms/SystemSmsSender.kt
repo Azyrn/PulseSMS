@@ -242,6 +242,108 @@ internal class SystemSmsSender(
         }
     }
 
+    suspend fun sendVoiceMms(address: String, text: String, audioUri: Uri) = withContext(ioDispatcher) {
+        try {
+            val audioBytes = context.contentResolver.openInputStream(audioUri)?.use { it.readBytes() }
+                ?: throw RuntimeException("Cannot read audio file")
+            if (audioBytes.isEmpty()) throw RuntimeException("Empty audio recording")
+            sendVoiceMmsInternal(address, text, audioBytes)
+        } catch (e: Exception) {
+            Log.e("SystemSmsSender", "sendVoiceMms failed", e)
+            throw e
+        }
+    }
+
+    private suspend fun sendVoiceMmsInternal(address: String, text: String, audioBytes: ByteArray) {
+        val threadId = Telephony.Threads.getOrCreateThreadId(context, address)
+        val now = System.currentTimeMillis()
+
+        val parts = mutableListOf<MMSPart>()
+        if (text.isNotBlank()) {
+            parts.add(MMSPart().apply {
+                MimeType = "text/plain"
+                Name = "text.txt"
+                Data = text.toByteArray()
+            })
+        }
+        parts.add(MMSPart().apply {
+            MimeType = "audio/amr"
+            Name = "voice_${now}.amr"
+            Data = audioBytes
+        })
+
+        val myNumber = MyPhoneNumberProvider.detect(context)
+            ?: throw RuntimeException("Cannot detect own phone number. MMS requires a valid SIM.")
+        val messageInfo = Transaction.getBytes(
+            context,
+            false,
+            myNumber,
+            arrayOf(address),
+            parts.toTypedArray(),
+            text.take(40).ifBlank { null },
+        )
+        val pduBytes = messageInfo.bytes ?: throw RuntimeException("PDU generation failed — audio may be too large")
+
+        val messageUri = insertVoiceMmsRecord(threadId, address, text, audioBytes.size, pduBytes.size, now, myNumber, audioBytes)
+
+        suspendCancellableCoroutine<Unit> { cont ->
+            com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+        }
+
+        runCatching {
+            val sp = context.getSharedPreferences(context.packageName + "_preferences", Context.MODE_PRIVATE)
+            val spMmsc = sp.getString("mmsc_url", "")
+            val spProxy = sp.getString("mms_proxy", "")
+            val spPort = sp.getString("mms_port", "")
+            if (!spMmsc.isNullOrBlank() || !spProxy.isNullOrBlank()) {
+                MmsPreferences(context).setMmsProxy(spProxy, spPort, spMmsc)
+            }
+        }
+
+        val mmsPrefs = MmsPreferences(context)
+        var mmsc = mmsPrefs.getMmscUrl()
+        var mmsProxy = mmsPrefs.getMmsProxy()
+        var mmsPort = mmsPrefs.getMmsPort()
+
+        if (mmsc.isNullOrBlank()) {
+            Log.w("SystemSmsSender", "ApnUtils gave no MMSC, querying system APN provider")
+            val subId = try { android.telephony.SubscriptionManager.getDefaultSubscriptionId() } catch (_: Exception) { -1 }
+            if (subId >= 0) {
+                val apnUri = Telephony.Carriers.CONTENT_URI.buildUpon()
+                    .appendPath("subId").appendPath(subId.toString()).build()
+                val cursor = try {
+                    contentResolver.query(apnUri, null, "type LIKE '%mms%'", null, null)
+                } catch (_: Exception) { null }
+                cursor?.use { c ->
+                    while (c.moveToNext()) {
+                        val url = c.getString(c.getColumnIndexOrThrow("mmsc"))
+                        if (!url.isNullOrBlank()) {
+                            mmsc = url
+                            mmsProxy = c.getString(c.getColumnIndexOrThrow("mmsproxy"))
+                            mmsPort = c.getString(c.getColumnIndexOrThrow("mmsport"))
+                            runCatching { mmsPrefs.setMmsProxy(mmsProxy, mmsPort, mmsc) }
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mmsc.isNullOrBlank()) {
+            Log.e("SystemSmsSender", "No MMSC found, cannot send MMS")
+            throw RuntimeException("No MMSC configured")
+        }
+
+        sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
+
+        if (messageUri != null) {
+            contentResolver.update(messageUri, ContentValues().apply {
+                put("st", 128)
+            }, null, null)
+        }
+        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
+    }
+
     private suspend fun sendMmsInternal(address: String, text: String, imageUris: List<Uri>, maxImageSizeKb: Int) {
         val threadId = Telephony.Threads.getOrCreateThreadId(context, address)
         val maxSizeBytes = if (maxImageSizeKb <= 0) -1 else maxImageSizeKb * 1024
@@ -422,6 +524,60 @@ internal class SystemSmsSender(
 
     private fun deliveryCallbackToken(address: String, messageUri: Uri?): String =
         "${java.util.UUID.randomUUID()}_${messageUri?.lastPathSegment.orEmpty()}_${address.hashCode()}"
+
+    private fun insertVoiceMmsRecord(
+        threadId: Long, address: String, text: String, audioSize: Int, pduSize: Int, now: Long, myNumber: String, audioBytes: ByteArray? = null,
+    ): Uri? {
+        val mmsValues = ContentValues().apply {
+            put("thread_id", threadId)
+            put("date", now / 1000L)
+            put("msg_box", Telephony.Mms.MESSAGE_BOX_OUTBOX)
+            put("read", 1)
+            put("sub", text.take(40).ifBlank { null })
+            put("sub_cs", 106)
+            put("ct_t", "application/vnd.wap.multipart.related")
+            put("exp", pduSize)
+            put("m_cls", "personal")
+            put("m_type", 128)
+            put("v", 18)
+            put("pri", 129)
+            put("tr_id", "T${now.toString(16)}")
+            put("resp_st", 128)
+        }
+        val mmsUri = contentResolver.insert(Telephony.Mms.CONTENT_URI, mmsValues) ?: return null
+        val mmsId = mmsUri.lastPathSegment ?: return null
+
+        if (text.isNotBlank()) {
+            contentResolver.insert(Uri.parse("content://mms/$mmsId/part"), ContentValues().apply {
+                put("mid", mmsId)
+                put("ct", "text/plain")
+                put("text", text)
+            })
+        }
+        if (audioBytes != null) {
+            val partUri = Uri.parse("content://mms/$mmsId/part")
+            val insertedPart = contentResolver.insert(partUri, ContentValues().apply {
+                put("mid", mmsId)
+                put("ct", "audio/amr")
+                put("cid", "<${System.currentTimeMillis()}>")
+                put("fn", "voice_${System.currentTimeMillis()}.amr")
+            })
+            if (insertedPart != null) {
+                contentResolver.openOutputStream(insertedPart)?.use { it.write(audioBytes) }
+            }
+        }
+        contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), ContentValues().apply {
+            put("address", myNumber)
+            put("charset", 106)
+            put("type", 137)
+        })
+        contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), ContentValues().apply {
+            put("address", address)
+            put("charset", 106)
+            put("type", 151)
+        })
+        return mmsUri
+    }
 
     private fun compressImageToMaxSize(bytes: ByteArray, maxSizeBytes: Int): ByteArray {
         if (maxSizeBytes <= 0 || bytes.size <= maxSizeBytes) return bytes

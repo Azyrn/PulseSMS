@@ -70,6 +70,7 @@ internal fun RealConversationScreen(
     onBack: () -> Unit,
     onSubscriptionIdChange: (Int?) -> Unit,
     onSend: (String, List<Uri>) -> Unit,
+    onSendVoice: (Uri) -> Unit = {},
     onRetrySend: () -> Unit,
     onClearSendState: () -> Unit,
     onDraftConsumed: () -> Unit,
@@ -372,6 +373,11 @@ internal fun RealConversationScreen(
                     keyboardController?.hide()
                     onSend(message, selectedImageUris)
                     selectedImageUris = emptyList()
+                },
+                onVoiceRecorded = { uri ->
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onSendVoice(uri)
                 },
             )
         },

@@ -15,6 +15,7 @@ internal object MmsPartResolver {
     data class MmsPartsResult(
         val textBody: String?,
         val attachmentUri: Uri?,
+        val attachmentMimeType: String? = null,
     )
 
     fun resolveParts(context: Context, mmsId: Long): MmsPartsResult {
@@ -22,6 +23,7 @@ internal object MmsPartResolver {
 
         var textBody: String? = null
         var attachmentUri: Uri? = null
+        var attachmentMimeType: String? = null
 
         for (entry in parts) {
             when (entry.mimeType) {
@@ -40,12 +42,17 @@ internal object MmsPartResolver {
                     } else {
                         Uri.parse("content://mms/part/${entry.id}")
                     }
+                    attachmentMimeType = entry.mimeType
                     Log.i(TAG, "Attachment URI: $attachmentUri (${entry.mimeType})")
                 }
             }
         }
 
-        return MmsPartsResult(textBody = textBody, attachmentUri = attachmentUri)
+        return MmsPartsResult(
+            textBody = textBody,
+            attachmentUri = attachmentUri,
+            attachmentMimeType = attachmentMimeType,
+        )
     }
 
     fun resolveTextBody(context: Context, mmsId: Long): String? {

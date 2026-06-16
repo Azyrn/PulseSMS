@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -80,7 +81,9 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -112,6 +115,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -179,6 +183,7 @@ internal fun ConversationComposer(
     onImageSelected: (List<Uri>) -> Unit = {},
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
+    onVoiceRecorded: (Uri) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = rememberReducedMotionEnabled()
@@ -546,6 +551,13 @@ internal fun ConversationComposer(
                                 iconOnly = true,
                                 onClick = { selectedAttachmentTab = AttachmentTab.GALLERY },
                             )
+                            AttachmentOption(
+                                icon = Icons.Rounded.Mic,
+                                label = stringResource(R.string.attachment_voice),
+                                selected = selectedAttachmentTab == AttachmentTab.VOICE,
+                                iconOnly = true,
+                                onClick = { selectedAttachmentTab = AttachmentTab.VOICE },
+                            )
                         }
                         // Right: tab content
                         var pendingGallerySelection by remember(showAttachmentMenu) { mutableStateOf(emptySet<Uri>()) }
@@ -555,6 +567,17 @@ internal fun ConversationComposer(
                                     onPhotoTaken = { uri ->
                                         onImageSelected(selectedImageUris + uri)
                                         showAttachmentMenu = false
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(max = 320.dp),
+                                )
+                            }
+                            AttachmentTab.VOICE -> {
+                                VoiceRecordingContent(
+                                    onVoiceRecorded = { uri ->
+                                        showAttachmentMenu = false
+                                        onVoiceRecorded(uri)
                                     },
                                     modifier = Modifier
                                         .weight(1f)
@@ -673,7 +696,7 @@ internal fun ConversationComposer(
     }
 }
 
-private enum class AttachmentTab { CAMERA, GALLERY }
+private enum class AttachmentTab { CAMERA, GALLERY, VOICE }
 
 @Composable
 private fun AttachmentOption(
@@ -832,4 +855,153 @@ private fun createCameraImageFile(context: android.content.Context): java.io.Fil
     val imageDir = java.io.File(context.cacheDir, "camera_photos")
     imageDir.mkdirs()
     return java.io.File(imageDir, "MMS_$timeStamp.jpg")
+}
+
+@Composable
+private fun VoiceRecordingContent(
+    onVoiceRecorded: (Uri) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var isRecording by remember { mutableStateOf(false) }
+    var elapsedMs by remember { mutableLongStateOf(0L) }
+    var audioFile by remember { mutableStateOf<java.io.File?>(null) }
+    val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
+
+    val hasRecordPermission = remember {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+    var recordPermissionGranted by remember { mutableStateOf(hasRecordPermission) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> recordPermissionGranted = granted }
+
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            val startMs = System.currentTimeMillis()
+            while (true) {
+                delay(200)
+                elapsedMs = System.currentTimeMillis() - startMs
+            }
+        } else {
+            elapsedMs = 0L
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isRecording) {
+                recorder.value?.let { rec ->
+                    try { rec.stop() } catch (_: Exception) {}
+                    rec.release()
+                }
+                recorder.value = null
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (!recordPermissionGranted) {
+            Text(
+                text = stringResource(R.string.voice_recording_permission_required),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            FilledTonalButton(
+                onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+            ) {
+                Text(stringResource(R.string.attachment_grant_permission))
+            }
+        } else {
+            Spacer(Modifier.height(16.dp))
+            if (isRecording) {
+                Text(
+                    text = formatRecordingDuration(elapsedMs),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            IconButton(
+                onClick = {
+                    if (isRecording) {
+                        val rec = recorder.value
+                        try { rec?.stop() } catch (_: Exception) {}
+                        rec?.release()
+                        recorder.value = null
+                        isRecording = false
+                        audioFile?.let { file ->
+                            if (file.exists() && file.length() > 0) {
+                                onVoiceRecorded(Uri.fromFile(file))
+                            }
+                        }
+                    } else {
+                        val file = createVoiceFile(context)
+                        audioFile = file
+                        try {
+                            val rec = MediaRecorder().apply {
+                                setAudioSource(MediaRecorder.AudioSource.MIC)
+                                setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
+                                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                setOutputFile(file.absolutePath)
+                                prepare()
+                                start()
+                            }
+                            recorder.value = rec
+                            isRecording = true
+                            elapsedMs = 0L
+                        } catch (e: Exception) {
+                            Log.e("VoiceRecording", "Failed to start recording", e)
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isRecording) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary
+                    ),
+            ) {
+                Icon(
+                    imageVector = if (isRecording) Icons.Rounded.Stop else Icons.Rounded.Mic,
+                    contentDescription = stringResource(
+                        if (isRecording) R.string.voice_recording_stop
+                        else R.string.voice_recording_start
+                    ),
+                    modifier = Modifier.size(36.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(
+                    if (isRecording) R.string.voice_recording_stop
+                    else R.string.voice_recording_start
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+private fun createVoiceFile(context: android.content.Context): java.io.File {
+    val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+    val voiceDir = java.io.File(context.cacheDir, "voice_messages")
+    voiceDir.mkdirs()
+    return java.io.File(voiceDir, "voice_$timeStamp.amr")
+}
+
+private fun formatRecordingDuration(ms: Long): String {
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
 }

@@ -25,6 +25,7 @@ data class SystemSms(
     val threadId: Long,
     val status: Int = Telephony.Sms.STATUS_NONE,
     val mmsPartUri: Uri? = null,
+    val mmsContentType: String? = null,
     val priority: Int? = null,
     val dateSent: Long? = null,
     val fromAddress: String? = null,

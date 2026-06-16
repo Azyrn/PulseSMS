@@ -33,7 +33,14 @@
     <string name="conversation_attach_content_description">Joindre un fichier</string>
     <string name="attachment_gallery">Galerie</string>
     <string name="attachment_camera">Appareil photo</string>
+    <string name="attachment_voice">Message vocal</string>
     <string name="attachment_gallery_add">Ajouter (%d)</string>
+    <string name="conversation_voice_message">Message vocal</string>
+    <string name="voice_message_play">Lire</string>
+    <string name="voice_message_stop">Arrêter</string>
+    <string name="voice_recording_permission_required">Autorisation du microphone requise pour enregistrer un message vocal</string>
+    <string name="voice_recording_start">Démarrer l\'enregistrement</string>
+    <string name="voice_recording_stop">Arrêter l\'enregistrement</string>
     <string name="conversation_send_status_sending_title">Envoi en cours</string>
     <string name="conversation_send_status_sent_title">Message envoyé</string>
     <string name="conversation_send_status_failed_title">Échec d\'envoi</string>

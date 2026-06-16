@@ -267,6 +267,8 @@ class RealSmsViewModel(
         }
     }
 
+    private var pendingVoiceUri: Uri? = null
+
     fun sendMessage(address: String, body: String, imageUris: List<Uri> = emptyList(), subscriptionId: Int? = null) {
         val trimmedBody = body.trim()
         if (trimmedBody.isBlank() && imageUris.isEmpty()) return
@@ -299,6 +301,29 @@ class RealSmsViewModel(
             } catch (_: Exception) {
                 if (sendSequence == seq) {
                     _sendState.value = SendState.Failed(trimmedBody)
+                }
+            }
+        }
+    }
+
+    fun sendVoiceMessage(address: String, audioUri: Uri) {
+        pendingVoiceUri = audioUri
+        sendJob?.cancel()
+        val seq = ++sendSequence
+        _sendState.value = SendState.Sending("")
+        sendJob = viewModelScope.launch {
+            try {
+                smsReader.sendVoiceMms(address, "", audioUri)
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Sent("")
+                }
+            } catch (_: CancellationException) {
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Idle
+                }
+            } catch (_: Exception) {
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Failed("")
                 }
             }
         }
