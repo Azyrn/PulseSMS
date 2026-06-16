@@ -11,6 +11,7 @@ Une application SMS rapide et privée pour Android, construite avec Kotlin.
 - **Appareil photo intégré** — prenez des photos directement depuis le composeur
 - **Sélecteur de photos** — galerie native avec sélection multiple (tapez plusieurs photos, puis confirmez)
 - **Visualiseur d'images MMS** — tapez une image MMS pour la voir en plein écran ; un bouton de téléchargement l'enregistre dans votre galerie et l'ouvre automatiquement
+- **Messages vocaux** — enregistrez et envoyez des messages audio en pièce jointe MMS ; tapez pour lire les messages vocaux reçus
 - **Conversations groupées** — messages regroupés par contact avec filtres (Tous, Personnel, Pro, OTP)
 - **Sélection de SIM** — choisissez quelle carte SIM utiliser pour envoyer (double SIM)
 - **Verrouillage biométrique** — protégez l'application avec empreinte ou mot de passe
