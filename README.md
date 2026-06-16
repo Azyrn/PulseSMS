@@ -1,6 +1,6 @@
 # PulseSMS 💬
 
-A fast, private SMS app for Android built with Kotlin.
+A fast and private SMS app for Android, built with Kotlin, that automatically copies OTP codes to your clipboard without requiring you to open the app.
 
 ## Features
 
