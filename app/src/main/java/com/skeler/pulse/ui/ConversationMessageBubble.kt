@@ -553,7 +553,7 @@ private fun VoiceMessagePlayer(
     Row(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -608,7 +608,7 @@ private fun VoiceMessagePlayer(
                 inactiveColor = waveInactive,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp),
+                    .height(52.dp),
                 targetBars = 56,
                 progress = if (isPlaying || currentPositionMs > 0) progress else null,
             )
@@ -623,12 +623,12 @@ private fun VoiceMessagePlayer(
                         if (isPlaying || currentPositionMs > 0) currentPositionMs else 0
                     ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = tintColor.copy(alpha = 0.6f),
+                    color = tintColor.copy(alpha = 0.8f),
                 )
                 Text(
                     text = formatVoiceDuration(durationMs),
                     style = MaterialTheme.typography.labelSmall,
-                    color = tintColor.copy(alpha = 0.6f),
+                    color = tintColor.copy(alpha = 0.8f),
                 )
             }
         }
