@@ -14,7 +14,11 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
@@ -454,25 +458,67 @@ internal class SystemSmsSender(
     }
 
     private fun sendPduToMmsc(pduBytes: ByteArray, mmsc: String, proxy: String?, port: Int) {
-        val url = URL(mmsc)
-        val connection = if (proxy != null) {
-            url.openConnection(Proxy(Proxy.Type.HTTP, java.net.InetSocketAddress(proxy, port)))
-        } else {
-            url.openConnection()
-        } as HttpURLConnection
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val mmsNetwork = findMmsNetwork(cm)
+        val previousNetwork = if (Build.VERSION.SDK_INT >= 23) {
+            cm.getBoundNetworkForProcess()
+        } else null
 
-        connection.requestMethod = "POST"
-        connection.setRequestProperty("Content-Type", "application/vnd.wap.mms-message")
-        connection.doOutput = true
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 60_000
-        connection.outputStream.use { it.write(pduBytes) }
-        val code = connection.responseCode
-        Log.i("SystemSmsSender", "MMS HTTP response code=$code")
-        if (code !in 200..299) {
-            throw RuntimeException("MMS server returned $code")
+        if (mmsNetwork != null) {
+            if (Build.VERSION.SDK_INT >= 23) {
+                cm.bindProcessToNetwork(mmsNetwork)
+            } else {
+                @Suppress("DEPRECATION")
+                ConnectivityManager.setProcessDefaultNetwork(mmsNetwork)
+            }
         }
-        connection.disconnect()
+
+        try {
+            val url = URL(mmsc)
+            val connection = if (proxy != null) {
+                url.openConnection(Proxy(Proxy.Type.HTTP, java.net.InetSocketAddress(proxy, port)))
+            } else {
+                url.openConnection()
+            } as HttpURLConnection
+
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/vnd.wap.mms-message")
+            connection.doOutput = true
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 60_000
+            connection.outputStream.use { it.write(pduBytes) }
+            val code = connection.responseCode
+            Log.i("SystemSmsSender", "MMS HTTP response code=$code")
+            if (code !in 200..299) {
+                throw RuntimeException("MMS server returned $code")
+            }
+            connection.disconnect()
+        } finally {
+            if (Build.VERSION.SDK_INT >= 23) {
+                cm.bindProcessToNetwork(previousNetwork)
+            } else {
+                @Suppress("DEPRECATION")
+                ConnectivityManager.setProcessDefaultNetwork(previousNetwork)
+            }
+        }
+    }
+
+    private fun findMmsNetwork(cm: ConnectivityManager): Network? {
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS)) {
+                return network
+            }
+        }
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return network
+            }
+        }
+        return null
     }
 
     private fun insertMmsRecord(

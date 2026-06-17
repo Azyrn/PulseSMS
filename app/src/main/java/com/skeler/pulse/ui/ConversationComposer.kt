@@ -656,7 +656,7 @@ internal fun ConversationComposer(
                         }
                     }
 
-                    Row(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .clip(capsuleShape)
@@ -666,105 +666,127 @@ internal fun ConversationComposer(
                                 color = capsuleBorderColor,
                                 shape = capsuleShape,
                             )
-                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
-                            .padding(start = 4.dp, end = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
                     ) {
-                        IconButton(
-                            onClick = {
-                                if (isPlaying) {
-                                    mediaPlayer?.pause()
-                                    isPlaying = false
-                                } else {
-                                    if (mediaPlayer == null) {
-                                        try {
-                                            val newPlayer = MediaPlayer().apply {
-                                                setDataSource(context, previewUri)
-                                                prepare()
-                                                durationMs = duration
-                                                setOnCompletionListener {
-                                                    isPlaying = false
-                                                    currentPositionMs = 0
-                                                    seekTo(0)
-                                                }
-                                            }
-                                            mediaPlayer = newPlayer
-                                            newPlayer.start()
-                                            isPlaying = true
-                                        } catch (e: Exception) {
-                                            Log.e("VoicePreview", "Failed to create MediaPlayer", e)
-                                        }
-                                    } else {
-                                        mediaPlayer?.seekTo(currentPositionMs)
-                                        mediaPlayer?.start()
-                                        isPlaying = true
-                                    }
-                                }
-                            },
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        AudioWaveformPreview(
-                            uri = previewUri,
-                            activeColor = MaterialTheme.colorScheme.primary,
-                            inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            targetBars = 32,
-                            progress = previewProgress,
-                            onSeek = { fraction ->
-                                val newPos = (fraction * durationMs).toInt()
-                                mediaPlayer?.seekTo(newPos)
-                                currentPositionMs = newPos
-                            },
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = {
-                                previewFile.delete()
-                                voiceMode = VoiceMode.Hidden
-                            },
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Delete,
-                                contentDescription = stringResource(R.string.action_cancel),
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(ConversationComposerTokens.sendButtonSize)
-                                .clip(ConversationPillShape)
-                                .background(sendContainerColor),
-                            contentAlignment = Alignment.Center,
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             IconButton(
                                 onClick = {
-                                    mediaPlayer?.release()
-                                    mediaPlayer = null
-                                    onVoiceRecorded(previewUri)
+                                    if (isPlaying) {
+                                        mediaPlayer?.pause()
+                                        isPlaying = false
+                                    } else {
+                                        if (mediaPlayer == null) {
+                                            try {
+                                                val newPlayer = MediaPlayer().apply {
+                                                    setDataSource(context, previewUri)
+                                                    prepare()
+                                                    durationMs = duration
+                                                    setOnCompletionListener {
+                                                        isPlaying = false
+                                                        currentPositionMs = 0
+                                                        seekTo(0)
+                                                    }
+                                                }
+                                                mediaPlayer = newPlayer
+                                                newPlayer.start()
+                                                isPlaying = true
+                                            } catch (e: Exception) {
+                                                Log.e("VoicePreview", "Failed to create MediaPlayer", e)
+                                            }
+                                        } else {
+                                            mediaPlayer?.seekTo(currentPositionMs)
+                                            mediaPlayer?.start()
+                                            isPlaying = true
+                                        }
+                                    }
                                 },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.Send,
-                                    contentDescription = stringResource(R.string.quick_compose_send_action),
-                                    modifier = Modifier
-                                        .size(ConversationComposerTokens.sendIconSize)
-                                        .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
-                                    tint = sendContentColor,
+                                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
                                 )
+                            }
+                            AudioWaveformPreview(
+                                uri = previewUri,
+                                activeColor = MaterialTheme.colorScheme.primary,
+                                inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                targetBars = 32,
+                                progress = previewProgress,
+                                onSeek = { fraction ->
+                                    val newPos = (fraction * durationMs).toInt()
+                                    mediaPlayer?.seekTo(newPos)
+                                    currentPositionMs = newPos
+                                },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 4.dp, end = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = formatVoiceDuration(currentPositionMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                            Text(
+                                text = formatVoiceDuration(durationMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    previewFile.delete()
+                                    voiceMode = VoiceMode.Hidden
+                                },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Delete,
+                                    contentDescription = stringResource(R.string.action_cancel),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(ConversationComposerTokens.sendButtonSize)
+                                    .clip(ConversationPillShape)
+                                    .background(sendContainerColor),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        mediaPlayer?.release()
+                                        mediaPlayer = null
+                                        onVoiceRecorded(previewUri)
+                                        voiceMode = VoiceMode.Hidden
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                                        contentDescription = stringResource(R.string.quick_compose_send_action),
+                                        modifier = Modifier
+                                            .size(ConversationComposerTokens.sendIconSize)
+                                            .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
+                                        tint = sendContentColor,
+                                    )
+                                }
                             }
                         }
                     }

@@ -4,7 +4,11 @@ import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.provider.Telephony
 import android.util.Log
 import com.google.android.mms.pdu_alt.NotificationInd
@@ -97,30 +101,72 @@ class MmsReceiver : BroadcastReceiver() {
                 spHost to spPort
             }
 
-            val connection = if (proxyHost.isNotBlank()) {
-                url.openConnection(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyHost, proxyPort)))
-            } else {
-                url.openConnection()
-            } as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 30_000
-            connection.readTimeout = 30_000
-            connection.doInput = true
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val mmsNetwork = findMmsNetwork(cm)
+            val previousNetwork = if (Build.VERSION.SDK_INT >= 23) {
+                cm.getBoundNetworkForProcess()
+            } else null
 
-            val code = connection.responseCode
-            Log.i(TAG, "MMSC response: $code")
-
-            if (code != HttpURLConnection.HTTP_OK) {
-                Log.e(TAG, "MMSC error: $code")
-                connection.disconnect()
-                return null
+            if (mmsNetwork != null) {
+                if (Build.VERSION.SDK_INT >= 23) {
+                    cm.bindProcessToNetwork(mmsNetwork)
+                } else {
+                    @Suppress("DEPRECATION")
+                    ConnectivityManager.setProcessDefaultNetwork(mmsNetwork)
+                }
             }
 
-            connection.inputStream.use { it.readBytes() }.also { connection.disconnect() }
+            try {
+                val connection = if (proxyHost.isNotBlank()) {
+                    url.openConnection(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyHost, proxyPort)))
+                } else {
+                    url.openConnection()
+                } as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 30_000
+                connection.readTimeout = 30_000
+                connection.doInput = true
+
+                val code = connection.responseCode
+                Log.i(TAG, "MMSC response: $code")
+
+                if (code != HttpURLConnection.HTTP_OK) {
+                    Log.e(TAG, "MMSC error: $code")
+                    connection.disconnect()
+                    return null
+                }
+
+                connection.inputStream.use { it.readBytes() }.also { connection.disconnect() }
+            } finally {
+                if (Build.VERSION.SDK_INT >= 23) {
+                    cm.bindProcessToNetwork(previousNetwork)
+                } else {
+                    @Suppress("DEPRECATION")
+                    ConnectivityManager.setProcessDefaultNetwork(previousNetwork)
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "HTTP download failed", e)
             null
         }
+    }
+
+    private fun findMmsNetwork(cm: ConnectivityManager): Network? {
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS)) {
+                return network
+            }
+        }
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return network
+            }
+        }
+        return null
     }
 
     private suspend fun storeMms(context: Context, conf: RetrieveConf, fromFallback: String) {
