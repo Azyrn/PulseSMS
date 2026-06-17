@@ -861,14 +861,22 @@ private fun createCameraImageFile(context: android.content.Context): java.io.Fil
     return java.io.File(imageDir, "MMS_$timeStamp.jpg")
 }
 
+private sealed interface VoiceRecordingUiState {
+    data object Idle : VoiceRecordingUiState
+    data class Recording(
+        val startMs: Long = System.currentTimeMillis(),
+        val amplitudes: List<Float> = emptyList(),
+    ) : VoiceRecordingUiState
+    data class Preview(val file: java.io.File) : VoiceRecordingUiState
+}
+
 @Composable
 private fun VoiceRecordingContent(
     onVoiceRecorded: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var isRecording by remember { mutableStateOf(false) }
-    var elapsedMs by remember { mutableLongStateOf(0L) }
+    var state by remember { mutableStateOf<VoiceRecordingUiState>(VoiceRecordingUiState.Idle) }
     var audioFile by remember { mutableStateOf<java.io.File?>(null) }
     val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
 
@@ -880,33 +888,32 @@ private fun VoiceRecordingContent(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> recordPermissionGranted = granted }
 
-    var currentAmplitudes by remember { mutableStateOf(listOf<Float>()) }
-
-    LaunchedEffect(isRecording) {
-        if (isRecording) {
-            currentAmplitudes = emptyList()
-            val startMs = System.currentTimeMillis()
+    LaunchedEffect(state) {
+        if (state is VoiceRecordingUiState.Recording) {
+            val s = state as VoiceRecordingUiState.Recording
+            var amps = s.amplitudes
             while (true) {
                 delay(50)
-                elapsedMs = System.currentTimeMillis() - startMs
+                if (state !is VoiceRecordingUiState.Recording) break
                 val amp = recorder.value?.maxAmplitude ?: 0
                 val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
-                currentAmplitudes = (currentAmplitudes + normalized).takeLast(120)
+                amps = (amps + normalized).takeLast(120)
+                state = s.copy(amplitudes = amps)
             }
-        } else {
-            elapsedMs = 0L
-            currentAmplitudes = emptyList()
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            if (isRecording) {
-                recorder.value?.let { rec ->
-                    try { rec.stop() } catch (_: Exception) {}
-                    rec.release()
-                }
-                recorder.value = null
+            val rec = recorder.value
+            if (rec != null) {
+                try { rec.stop() } catch (_: Exception) {}
+                rec.release()
+            }
+            recorder.value = null
+            val s = state
+            if (s is VoiceRecordingUiState.Preview) {
+                s.file.delete()
             }
         }
     }
@@ -916,111 +923,173 @@ private fun VoiceRecordingContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        if (!recordPermissionGranted) {
-            Text(
-                text = stringResource(R.string.voice_recording_permission_required),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(
-                onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-            ) {
-                Text(stringResource(R.string.attachment_grant_permission))
-            }
-        } else if (isRecording) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = formatRecordingDuration(elapsedMs),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.error,
-            )
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp)
-                    .padding(horizontal = 24.dp),
-            ) {
-                LiveRecordingWaveform(
-                    amplitudes = currentAmplitudes,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(
-                    onClick = {
-                        val rec = recorder.value
-                        try { rec?.stop() } catch (_: Exception) {}
-                        rec?.release()
-                        recorder.value = null
-                        isRecording = false
-                        audioFile?.let { file ->
-                            if (file.exists() && file.length() > 0) {
-                                onVoiceRecorded(Uri.fromFile(file))
+        when (val s = state) {
+            is VoiceRecordingUiState.Idle -> {
+                if (!recordPermissionGranted) {
+                    Text(
+                        text = stringResource(R.string.voice_recording_permission_required),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(
+                        onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    ) {
+                        Text(stringResource(R.string.attachment_grant_permission))
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    IconButton(
+                        onClick = {
+                            val file = createVoiceFile(context)
+                            audioFile = file
+                            try {
+                                val rec = MediaRecorder().apply {
+                                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                                    setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
+                                    setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                    setOutputFile(file.absolutePath)
+                                    prepare()
+                                    start()
+                                }
+                                recorder.value = rec
+                                state = VoiceRecordingUiState.Recording()
+                            } catch (e: Exception) {
+                                Log.e("VoiceRecording", "Failed to start recording", e)
+                                file.delete()
+                                audioFile = null
                             }
-                        }
-                    },
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.error),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Stop,
-                        contentDescription = stringResource(R.string.voice_recording_stop),
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        },
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Mic,
+                            contentDescription = stringResource(R.string.voice_recording_start),
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.voice_recording_start),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Spacer(Modifier.height(12.dp))
-        } else {
-            Spacer(Modifier.height(16.dp))
-            IconButton(
-                onClick = {
-                    val file = createVoiceFile(context)
-                    audioFile = file
-                    try {
-                        val rec = MediaRecorder().apply {
-                            setAudioSource(MediaRecorder.AudioSource.MIC)
-                            setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-                            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                            setOutputFile(file.absolutePath)
-                            prepare()
-                            start()
-                        }
-                        recorder.value = rec
-                        isRecording = true
-                        elapsedMs = 0L
-                    } catch (e: Exception) {
-                        Log.e("VoiceRecording", "Failed to start recording", e)
-                    }
-                },
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Mic,
-                    contentDescription = stringResource(R.string.voice_recording_start),
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary,
+
+            is VoiceRecordingUiState.Recording -> {
+                val elapsedMs = System.currentTimeMillis() - s.startMs
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = formatRecordingDuration(elapsedMs),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.error,
                 )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .padding(horizontal = 24.dp),
+                ) {
+                    LiveRecordingWaveform(
+                        amplitudes = s.amplitudes,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = {
+                            val rec = recorder.value
+                            try { rec?.stop() } catch (_: Exception) {}
+                            rec?.release()
+                            recorder.value = null
+                            val file = audioFile
+                            if (file != null && file.exists() && file.length() > 0) {
+                                state = VoiceRecordingUiState.Preview(file)
+                            } else {
+                                audioFile?.delete()
+                                audioFile = null
+                                state = VoiceRecordingUiState.Idle
+                            }
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.voice_recording_stop),
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.voice_recording_start),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
+
+            is VoiceRecordingUiState.Preview -> {
+                val uri = Uri.fromFile(s.file)
+                Spacer(Modifier.height(16.dp))
+                AudioWaveformPreview(
+                    uri = uri,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .padding(horizontal = 24.dp),
+                    targetBars = 56,
+                    activeColor = MaterialTheme.colorScheme.primary,
+                    inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            s.file.delete()
+                            audioFile = null
+                            state = VoiceRecordingUiState.Idle
+                        },
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = stringResource(R.string.action_cancel),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            onVoiceRecorded(uri)
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
+                            contentDescription = stringResource(R.string.quick_compose_send_action),
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
         }
     }
 }
