@@ -151,7 +151,11 @@ class MmsReceiver : BroadcastReceiver() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun findMmsNetwork(cm: ConnectivityManager): Network? {
+        // allNetworks is deprecated in API 33+; the replacement
+        // (NetworkRequest + registerNetworkCallback) is inherently async,
+        // making it unsuited for this synchronous lookup.
         for (network in cm.allNetworks) {
             val caps = cm.getNetworkCapabilities(network) ?: continue
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
