@@ -176,6 +176,15 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
+private sealed interface VoiceMode {
+    data object Hidden : VoiceMode
+    data class Recording(
+        val startMs: Long = System.currentTimeMillis(),
+        val amplitudes: List<Float> = emptyList(),
+        val file: java.io.File,
+    ) : VoiceMode
+    data class Preview(val file: java.io.File) : VoiceMode
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -312,6 +321,38 @@ internal fun ConversationComposer(
             }
         }
         var showAttachmentMenu by remember { mutableStateOf(false) }
+        var voiceMode by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
+        val voiceRecorder = remember { mutableStateOf<MediaRecorder?>(null) }
+
+        LaunchedEffect(voiceMode) {
+            if (voiceMode is VoiceMode.Recording) {
+                val s = voiceMode as VoiceMode.Recording
+                var amps = s.amplitudes
+                while (true) {
+                    delay(50)
+                    if (voiceMode !is VoiceMode.Recording) break
+                    val amp = voiceRecorder.value?.maxAmplitude ?: 0
+                    val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
+                    amps = (amps + normalized).takeLast(120)
+                    voiceMode = s.copy(amplitudes = amps)
+                }
+            }
+        }
+
+        DisposableEffect(Unit) {
+            onDispose {
+                val rec = voiceRecorder.value
+                if (rec != null) {
+                    try { rec.stop() } catch (_: Exception) {}
+                    rec.release()
+                }
+                voiceRecorder.value = null
+                val vm = voiceMode
+                if (vm is VoiceMode.Preview) {
+                    vm.file.delete()
+                }
+            }
+        }
         if (selectedImageUris.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -363,120 +404,370 @@ internal fun ConversationComposer(
                     tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha),
                 )
             }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(capsuleShape)
-                    .background(conversationComposerCapsuleBrush(isFocused))
-                    .border(
-                        width = ConversationComposerTokens.borderWidth,
-                        color = capsuleBorderColor,
-                        shape = capsuleShape,
-                    )
-                    .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
-                    .padding(
-                        horizontal = ConversationComposerTokens.capsuleHorizontalPadding,
-                        vertical = ConversationComposerTokens.capsuleVerticalPadding,
-                    ),
-                horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (simOptions.size > 1) {
-                    ConversationSimSelector(
-                        simOptions = simOptions,
-                        selectedSim = selectedSim,
-                        enabled = !isSending,
-                        onSimOptionClick = onSimOptionClick,
-                    )
-                }
-                CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = onDraftChange,
+            when (voiceMode) {
+                is VoiceMode.Hidden -> {
+                    Row(
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = ConversationComposerTokens.textFieldMinHeight),
-                        enabled = !isSending,
-                        interactionSource = fieldInteractionSource,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = colors.onSurface,
-                        ),
-                        cursorBrush = SolidColor(colors.primary),
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Sentences,
-                            imeAction = ImeAction.Send,
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (canSend) {
-                                    onSend()
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
+                            .padding(
+                                horizontal = ConversationComposerTokens.capsuleHorizontalPadding,
+                                vertical = ConversationComposerTokens.capsuleVerticalPadding,
+                            ),
+                        horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (simOptions.size > 1) {
+                            ConversationSimSelector(
+                                simOptions = simOptions,
+                                selectedSim = selectedSim,
+                                enabled = !isSending,
+                                onSimOptionClick = onSimOptionClick,
+                            )
+                        }
+                        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+                            BasicTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = ConversationComposerTokens.textFieldMinHeight),
+                                enabled = !isSending,
+                                interactionSource = fieldInteractionSource,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = colors.onSurface,
+                                ),
+                                cursorBrush = SolidColor(colors.primary),
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Sentences,
+                                    imeAction = ImeAction.Send,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSend = {
+                                        if (canSend) {
+                                            onSend()
+                                        }
+                                    },
+                                ),
+                                maxLines = 5,
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = ConversationComposerTokens.textFieldHorizontalPadding,
+                                                vertical = ConversationComposerTokens.textFieldVerticalPadding,
+                                            ),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        if (draft.isBlank()) {
+                                            Text(
+                                                text = if (isSending) {
+                                                    stringResource(R.string.conversation_composer_sending)
+                                                } else {
+                                                    stringResource(R.string.conversation_composer_placeholder)
+                                                },
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = colors.onSurfaceVariant.copy(
+                                                    alpha = ConversationComposerTokens.placeholderAlpha,
+                                                ),
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    if (canSend) {
+                        Box(
+                            modifier = Modifier
+                                .size(ConversationComposerTokens.sendButtonSize)
+                                .graphicsLayer {
+                                    scaleX = sendScale
+                                    scaleY = sendScale
+                                }
+                                .clip(ConversationPillShape)
+                                .background(sendContainerColor)
+                                .border(
+                                    width = ConversationComposerTokens.borderWidth,
+                                    color = sendBorderColor,
+                                    shape = ConversationPillShape,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (canSend) {
+                                        onSend()
+                                    }
+                                },
+                                enabled = canSend,
+                                modifier = Modifier.fillMaxSize(),
+                                interactionSource = sendInteractionSource,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                                    contentDescription = stringResource(R.string.conversation_send_message_content_description),
+                                    modifier = Modifier
+                                        .size(ConversationComposerTokens.sendIconSize)
+                                        .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
+                                    tint = sendContentColor,
+                                )
+                            }
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                val file = createVoiceFile(context)
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    val rec = MediaRecorder().apply {
+                                        setAudioSource(MediaRecorder.AudioSource.MIC)
+                                        setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
+                                        setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                                        setOutputFile(file.absolutePath)
+                                        prepare()
+                                        start()
+                                    }
+                                    voiceRecorder.value = rec
+                                    voiceMode = VoiceMode.Recording(file = file)
+                                } catch (e: Exception) {
+                                    Log.e("VoiceRecording", "Failed to start recording", e)
+                                    file.delete()
                                 }
                             },
-                        ),
-                        maxLines = 5,
-                        decorationBox = { innerTextField ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = ConversationComposerTokens.textFieldHorizontalPadding,
-                                        vertical = ConversationComposerTokens.textFieldVerticalPadding,
-                                    ),
-                                contentAlignment = Alignment.CenterStart,
-                            ) {
-                                if (draft.isBlank()) {
-                                    Text(
-                                        text = if (isSending) {
-                                            stringResource(R.string.conversation_composer_sending)
-                                        } else {
-                                            stringResource(R.string.conversation_composer_placeholder)
-                                        },
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = colors.onSurfaceVariant.copy(
-                                            alpha = ConversationComposerTokens.placeholderAlpha,
-                                        ),
-                                    )
-                                }
-                                innerTextField()
+                            modifier = Modifier.size(ConversationComposerTokens.sendButtonSize),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = stringResource(R.string.voice_recording_start),
+                                modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                                tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha),
+                            )
+                        }
+                    }
+                }
+
+                is VoiceMode.Recording -> {
+                    val s = voiceMode as VoiceMode.Recording
+                    val elapsedMs = System.currentTimeMillis() - s.startMs
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = formatRecordingDuration(elapsedMs),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Box(modifier = Modifier.weight(1f).height(40.dp)) {
+                            LiveRecordingWaveform(
+                                amplitudes = s.amplitudes,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = {
+                            val rec = voiceRecorder.value
+                            try { rec?.stop() } catch (_: Exception) {}
+                            rec?.release()
+                            voiceRecorder.value = null
+                            val file = s.file
+                            if (file.exists() && file.length() > 0) {
+                                voiceMode = VoiceMode.Preview(file)
+                            } else {
+                                file.delete()
+                                voiceMode = VoiceMode.Hidden
                             }
                         },
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .size(ConversationComposerTokens.sendButtonSize)
-                    .graphicsLayer {
-                        scaleX = sendScale
-                        scaleY = sendScale
-                    }
-                    .clip(ConversationPillShape)
-                    .background(sendContainerColor)
-                    .border(
-                        width = ConversationComposerTokens.borderWidth,
-                        color = sendBorderColor,
-                        shape = ConversationPillShape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                IconButton(
-                    onClick = {
-                        if (canSend) {
-                            onSend()
-                        }
-                    },
-                    enabled = canSend,
-                    modifier = Modifier.fillMaxSize(),
-                    interactionSource = sendInteractionSource,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = stringResource(R.string.conversation_send_message_content_description),
                         modifier = Modifier
-                            .size(ConversationComposerTokens.sendIconSize)
-                            .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
-                        tint = sendContentColor,
-                    )
+                            .size(ConversationComposerTokens.sendButtonSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.voice_recording_stop),
+                            modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+
+                is VoiceMode.Preview -> {
+                    val previewFile = (voiceMode as VoiceMode.Preview).file
+                    val previewUri = Uri.fromFile(previewFile)
+                    var isPlaying by remember(previewFile) { mutableStateOf(false) }
+                    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+                    var durationMs by remember { mutableIntStateOf(0) }
+                    var currentPositionMs by remember { mutableIntStateOf(0) }
+                    val previewProgress = if (durationMs > 0) {
+                        (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                    } else 0f
+
+                    LaunchedEffect(previewUri) {
+                        try {
+                            val tempPlayer = MediaPlayer().apply {
+                                setDataSource(context, previewUri)
+                                prepare()
+                            }
+                            durationMs = tempPlayer.duration
+                            tempPlayer.release()
+                        } catch (_: Exception) { }
+                    }
+
+                    DisposableEffect(previewUri) {
+                        onDispose {
+                            mediaPlayer?.release()
+                            mediaPlayer = null
+                        }
+                    }
+
+                    LaunchedEffect(isPlaying) {
+                        while (isActive) {
+                            if (isPlaying) {
+                                mediaPlayer?.let { mp ->
+                                    currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
+                                }
+                                delay(33)
+                            } else {
+                                delay(100)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
+                            .padding(start = 4.dp, end = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (isPlaying) {
+                                    mediaPlayer?.pause()
+                                    isPlaying = false
+                                } else {
+                                    if (mediaPlayer == null) {
+                                        try {
+                                            val newPlayer = MediaPlayer().apply {
+                                                setDataSource(context, previewUri)
+                                                prepare()
+                                                durationMs = duration
+                                                setOnCompletionListener {
+                                                    isPlaying = false
+                                                    currentPositionMs = 0
+                                                    seekTo(0)
+                                                }
+                                            }
+                                            mediaPlayer = newPlayer
+                                            newPlayer.start()
+                                            isPlaying = true
+                                        } catch (e: Exception) {
+                                            Log.e("VoicePreview", "Failed to create MediaPlayer", e)
+                                        }
+                                    } else {
+                                        mediaPlayer?.seekTo(currentPositionMs)
+                                        mediaPlayer?.start()
+                                        isPlaying = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        AudioWaveformPreview(
+                            uri = previewUri,
+                            activeColor = MaterialTheme.colorScheme.primary,
+                            inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                            modifier = Modifier.weight(1f).height(40.dp),
+                            targetBars = 32,
+                            progress = previewProgress,
+                            onSeek = { fraction ->
+                                val newPos = (fraction * durationMs).toInt()
+                                mediaPlayer?.seekTo(newPos)
+                                currentPositionMs = newPos
+                            },
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                previewFile.delete()
+                                voiceMode = VoiceMode.Hidden
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = stringResource(R.string.action_cancel),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(ConversationComposerTokens.sendButtonSize)
+                                .clip(ConversationPillShape)
+                                .background(sendContainerColor),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    mediaPlayer?.release()
+                                    mediaPlayer = null
+                                    onVoiceRecorded(previewUri)
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                                    contentDescription = stringResource(R.string.quick_compose_send_action),
+                                    modifier = Modifier
+                                        .size(ConversationComposerTokens.sendIconSize)
+                                        .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
+                                    tint = sendContentColor,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
