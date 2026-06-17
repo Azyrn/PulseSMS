@@ -525,6 +525,17 @@ private fun VoiceMessagePlayer(
         }
     }
 
+    LaunchedEffect(uri) {
+        try {
+            val tempPlayer = MediaPlayer().apply {
+                setDataSource(context, uri)
+                prepare()
+            }
+            durationMs = tempPlayer.duration
+            tempPlayer.release()
+        } catch (_: Exception) { }
+    }
+
     LaunchedEffect(isPlaying, uri) {
         while (isActive) {
             if (isPlaying) {
