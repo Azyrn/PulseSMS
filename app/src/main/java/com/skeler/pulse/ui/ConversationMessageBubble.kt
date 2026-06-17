@@ -151,6 +151,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Pause
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
@@ -515,6 +516,7 @@ private fun VoiceMessagePlayer(
     var isPlaying by remember { mutableStateOf(false) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var durationMs by remember { mutableIntStateOf(0) }
+    var currentPositionMs by remember { mutableIntStateOf(0) }
 
     DisposableEffect(uri) {
         onDispose {
@@ -523,8 +525,28 @@ private fun VoiceMessagePlayer(
         }
     }
 
+    LaunchedEffect(isPlaying, uri) {
+        while (isActive) {
+            if (isPlaying) {
+                mediaPlayer?.let { mp ->
+                    currentPositionMs = try {
+                        mp.currentPosition
+                    } catch (e: Exception) {
+                        0
+                    }
+                }
+                delay(33)
+            } else {
+                delay(100)
+            }
+        }
+    }
+
     val colors = MaterialTheme.colorScheme
     val tintColor = if (isOutbound) colors.onPrimaryContainer else colors.onSurface
+    val progress = if (durationMs > 0) {
+        (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else 0f
 
     Column(
         modifier = Modifier
@@ -538,6 +560,7 @@ private fun VoiceMessagePlayer(
                 .fillMaxWidth()
                 .height(36.dp),
             targetBars = 56,
+            progress = if (isPlaying || currentPositionMs > 0) progress else null,
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -558,6 +581,7 @@ private fun VoiceMessagePlayer(
                                     durationMs = duration
                                     setOnCompletionListener {
                                         isPlaying = false
+                                        currentPositionMs = 0
                                         seekTo(0)
                                     }
                                 }
@@ -569,6 +593,7 @@ private fun VoiceMessagePlayer(
                             }
                         } else {
                             player.seekTo(0)
+                            currentPositionMs = 0
                             player.start()
                             isPlaying = true
                         }
@@ -594,7 +619,9 @@ private fun VoiceMessagePlayer(
             )
             if (durationMs > 0) {
                 Text(
-                    text = formatVoiceDuration(durationMs),
+                    text = formatVoiceDuration(
+                        if (isPlaying || currentPositionMs > 0) currentPositionMs else durationMs
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = tintColor.copy(alpha = 0.6f),
                 )

@@ -42,6 +42,7 @@ internal fun AudioWaveformPreview(
     uri: Uri,
     modifier: Modifier = Modifier,
     targetBars: Int = 56,
+    progress: Float? = null,
 ) {
     val context = LocalContext.current
     var state by remember(uri) { mutableStateOf<WaveformUiState>(WaveformUiState.Loading) }
@@ -78,7 +79,9 @@ internal fun AudioWaveformPreview(
                 WaveformCanvas(
                     amplitudes = amplitudes,
                     modifier = modifier,
-                    color = primary,
+                    activeColor = primary,
+                    inactiveColor = primary.copy(alpha = 0.18f),
+                    progress = progress,
                 )
             }
         }
@@ -92,10 +95,10 @@ internal fun AudioWaveformPreview(
 private fun WaveformCanvas(
     amplitudes: List<Float>,
     modifier: Modifier,
-    color: Color,
+    activeColor: Color,
+    inactiveColor: Color,
+    progress: Float?,
 ) {
-    val containerColor = color.copy(alpha = 0.10f)
-
     Canvas(modifier = modifier.clip(RoundedCornerShape(8.dp))) {
         val barCount = amplitudes.size
         val w = size.width
@@ -108,11 +111,7 @@ private fun WaveformCanvas(
         val drawWidth = (barWidth - gap).coerceAtLeast(1f)
         val radius = CornerRadius(drawWidth / 2f)
 
-        val gradient = Brush.horizontalGradient(
-            colors = listOf(color, color.copy(alpha = 0.60f)),
-            startX = 0f,
-            endX = w,
-        )
+        val progressIndex = if (progress != null) (progress * barCount).toInt().coerceIn(0, barCount) else barCount
 
         for (i in amplitudes.indices) {
             val amp = amplitudes[i].coerceIn(0f, 1f)
@@ -120,9 +119,11 @@ private fun WaveformCanvas(
             if (barHeight < 0.3f) continue
 
             val x = i * barWidth + gap / 2f
+            val isPlayed = i < progressIndex
+            val color = if (isPlayed) activeColor else inactiveColor
 
             drawRoundRect(
-                brush = gradient,
+                color = color,
                 topLeft = Offset(x, midY - barHeight / 2f),
                 size = Size(drawWidth, barHeight),
                 cornerRadius = radius,
