@@ -115,9 +115,7 @@ private fun WaveformCanvas(
 
         for (i in amplitudes.indices) {
             val amp = amplitudes[i].coerceIn(0f, 1f)
-            val barHeight = amp * maxBarHeight
-            if (barHeight < 0.15f) continue
-
+            val barHeight = maxOf(amp * maxBarHeight, 1f)
             val x = i * barWidth + gap / 2f
             val isPlayed = i < progressIndex
             val color = if (isPlayed) activeColor else inactiveColor
