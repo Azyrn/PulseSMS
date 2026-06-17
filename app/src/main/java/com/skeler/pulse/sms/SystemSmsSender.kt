@@ -10,6 +10,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMuxer
 import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -25,6 +29,7 @@ import kotlinx.coroutines.withTimeout
 import java.net.HttpURLConnection
 import java.net.Proxy
 import java.net.URL
+import java.nio.ByteBuffer
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -244,10 +249,12 @@ internal class SystemSmsSender(
 
     suspend fun sendVoiceMms(address: String, text: String, audioUri: Uri) = withContext(ioDispatcher) {
         try {
+            val maxSizeKb = MmsPreferences(context).getMaxImageSizeKb()
             val audioBytes = context.contentResolver.openInputStream(audioUri)?.use { it.readBytes() }
                 ?: throw RuntimeException("Cannot read audio file")
             if (audioBytes.isEmpty()) throw RuntimeException("Empty audio recording")
-            sendVoiceMmsInternal(address, text, audioBytes)
+            val compressed = compressVoiceToMaxSize(audioBytes, maxSizeKb)
+            sendVoiceMmsInternal(address, text, compressed)
         } catch (e: Exception) {
             Log.e("SystemSmsSender", "sendVoiceMms failed", e)
             throw e
@@ -611,6 +618,226 @@ internal class SystemSmsSender(
 
         Log.w("SystemSmsSender", "compress: could not fit in $maxSizeBytes B")
         throw RuntimeException(context.getString(R.string.mms_image_too_large, maxSizeBytes / 1024))
+    }
+
+    private fun compressVoiceToMaxSize(audioBytes: ByteArray, maxSizeKb: Int): ByteArray {
+        val maxSizeBytes = if (maxSizeKb <= 0) -1 else maxSizeKb * 1024
+        if (maxSizeBytes <= 0 || audioBytes.size <= maxSizeBytes) return audioBytes
+
+        val tempDir = java.io.File(context.cacheDir, "voice_compressed")
+        tempDir.mkdirs()
+
+        val amrBitrates = listOf(7950, 5900, 4750)
+
+        for (targetBitrate in amrBitrates) {
+            val outFile = java.io.File(tempDir, "compressed_${targetBitrate}.amr")
+            try {
+                if (transcodeAmr(audioBytes, outFile.absolutePath, targetBitrate)) {
+                    val result = outFile.readBytes()
+                    if (result.size <= maxSizeBytes) {
+                        outFile.delete()
+                        Log.i("SystemSmsSender", "Voice compressed: ${audioBytes.size} -> ${result.size}B (bitrate=$targetBitrate)")
+                        return result
+                    }
+                    outFile.delete()
+                }
+            } catch (e: Exception) {
+                Log.w("SystemSmsSender", "AMR transcode failed at ${targetBitrate}bps", e)
+            }
+        }
+
+        Log.w("SystemSmsSender", "Voice compression could not fit in $maxSizeBytes")
+        throw RuntimeException(context.getString(R.string.mms_image_too_large, maxSizeBytes / 1024))
+    }
+
+    private fun transcodeAmr(inputBytes: ByteArray, outputPath: String, targetBitrate: Int): Boolean {
+        val inputFile = java.io.File(context.cacheDir, "voice_transcode_input.amr")
+        inputFile.writeBytes(inputBytes)
+
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(inputFile.absolutePath)
+        } catch (e: Exception) {
+            return false
+        }
+
+        var audioTrackIndex = -1
+        var sourceFormat: MediaFormat? = null
+        for (i in 0 until extractor.trackCount) {
+            val fmt = extractor.getTrackFormat(i)
+            if (fmt.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                audioTrackIndex = i
+                sourceFormat = fmt
+                break
+            }
+        }
+        if (audioTrackIndex == -1) { extractor.release(); return false }
+
+        val mime = sourceFormat!!.getString(MediaFormat.KEY_MIME) ?: return false
+        val sampleRate = sourceFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE, 8000)
+        val channelCount = sourceFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 1)
+
+        extractor.selectTrack(audioTrackIndex)
+        val decoder = MediaCodec.createDecoderByType(mime)
+        decoder.configure(sourceFormat, null, null, 0)
+        decoder.start()
+
+        val encoder = MediaCodec.createEncoderByType("audio/3gpp")
+        val outputFormat = MediaFormat.createAudioFormat("audio/3gpp", sampleRate, channelCount).apply {
+            setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
+            setInteger(MediaFormat.KEY_AAC_PROFILE, 0) // no profile for AMR
+        }
+        encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        encoder.start()
+
+        val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_3GPP)
+        var muxerStarted = false
+        var encoderTrackIndex = -1
+
+        val bufferInfo = MediaCodec.BufferInfo()
+        var inputDone = false
+        var outputDone = false
+        val timeoutUs = 5000L
+        var sawInputEos = false
+
+        val allDecodedFrames = mutableListOf<Pair<ByteBuffer, MediaCodec.BufferInfo>>()
+
+        // Phase 1: decode all input
+        while (!sawInputEos) {
+            val inputIndex = decoder.dequeueInputBuffer(timeoutUs)
+            if (inputIndex >= 0) {
+                val buf = decoder.getInputBuffer(inputIndex) ?: continue
+                val sampleSize = extractor.readSampleData(buf, 0)
+                if (sampleSize < 0) {
+                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    sawInputEos = true
+                } else {
+                    decoder.queueInputBuffer(inputIndex, 0, sampleSize, extractor.sampleTime, 0)
+                    extractor.advance()
+                }
+            }
+
+            var decodeDone = false
+            while (!decodeDone) {
+                val outputIndex = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                when {
+                    outputIndex >= 0 -> {
+                        if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                            decodeDone = true
+                        }
+                        if (bufferInfo.size > 0) {
+                            val outBuf = decoder.getOutputBuffer(outputIndex) ?: continue
+                            val copy = ByteBuffer.allocate(bufferInfo.size)
+                            outBuf.position(bufferInfo.offset)
+                            outBuf.limit(bufferInfo.offset + bufferInfo.size)
+                            copy.put(outBuf)
+                            copy.flip()
+                            allDecodedFrames.add(copy to MediaCodec.BufferInfo().apply {
+                                size = copy.remaining()
+                                offset = 0
+                                presentationTimeUs = bufferInfo.presentationTimeUs
+                                flags = bufferInfo.flags
+                            })
+                        }
+                        decoder.releaseOutputBuffer(outputIndex, false)
+                    }
+                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { /* continue */ }
+                    outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                        if (sawInputEos && bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                            decodeDone = true
+                        } else {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        decoder.stop()
+        decoder.release()
+        extractor.release()
+
+        if (allDecodedFrames.isEmpty()) return false
+
+        // Phase 2: encode all decoded frames
+        var frameIndex = 0
+        val inputFlags = IntArray(allDecodedFrames.size + 1) { 0 }
+        val inputTimes = LongArray(allDecodedFrames.size) { allDecodedFrames[it].second.presentationTimeUs }
+        var encodedOutputDone = false
+
+        while (!encodedOutputDone) {
+            // Feed input
+            if (!inputDone && frameIndex < allDecodedFrames.size) {
+                val inputIdx = encoder.dequeueInputBuffer(timeoutUs)
+                if (inputIdx >= 0) {
+                    val (buf, info) = allDecodedFrames[frameIndex]
+                    val encBuf = encoder.getInputBuffer(inputIdx) ?: continue
+                    encBuf.clear()
+                    encBuf.put(buf)
+                    buf.rewind()
+                    val flags = if (frameIndex == allDecodedFrames.size - 1) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
+                    encoder.queueInputBuffer(inputIdx, 0, info.size, info.presentationTimeUs, flags)
+                    frameIndex++
+                }
+            } else {
+                inputDone = true
+            }
+
+            if (inputDone && frameIndex >= allDecodedFrames.size) {
+                val inputIdx = encoder.dequeueInputBuffer(timeoutUs)
+                if (inputIdx >= 0) {
+                    encoder.queueInputBuffer(inputIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                }
+            }
+
+            // Collect output
+            val outputIdx = encoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+            when {
+                outputIdx >= 0 -> {
+                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        encodedOutputDone = true
+                    }
+                    if (bufferInfo.size > 0) {
+                        val encBuf = encoder.getOutputBuffer(outputIdx) ?: continue
+                        if (muxerStarted) {
+                            muxer.writeSampleData(encoderTrackIndex, encBuf, bufferInfo)
+                        }
+                    }
+                    encoder.releaseOutputBuffer(outputIdx, false)
+
+                    if (!muxerStarted && bufferInfo.size > 0 && bufferInfo.presentationTimeUs > 0) {
+                        val newFormat = encoder.outputFormat
+                        encoderTrackIndex = muxer.addTrack(newFormat)
+                        muxer.start()
+                        muxerStarted = true
+                        // re-write the first sample
+                        val firstBuf = encoder.getOutputBuffer(outputIdx) ?: continue
+                        if (firstBuf.remaining() > 0) {
+                            muxer.writeSampleData(encoderTrackIndex, firstBuf, bufferInfo)
+                        }
+                    }
+                }
+                outputIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    if (!muxerStarted) {
+                        val newFormat = encoder.outputFormat
+                        encoderTrackIndex = muxer.addTrack(newFormat)
+                        muxer.start()
+                        muxerStarted = true
+                    }
+                }
+                outputIdx == MediaCodec.INFO_TRY_AGAIN_LATER -> { /* wait */ }
+            }
+        }
+
+        encoder.stop()
+        encoder.release()
+
+        if (muxerStarted) {
+            muxer.stop()
+        }
+        muxer.release()
+
+        return muxerStarted
     }
 
     private fun buildCallbackIntents(
