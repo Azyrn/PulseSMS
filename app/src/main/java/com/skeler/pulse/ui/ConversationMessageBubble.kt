@@ -583,8 +583,7 @@ private fun VoiceMessagePlayer(
                             Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
                         }
                     } else {
-                        player.seekTo(0)
-                        currentPositionMs = 0
+                        player.seekTo(currentPositionMs)
                         player.start()
                         isPlaying = true
                     }
