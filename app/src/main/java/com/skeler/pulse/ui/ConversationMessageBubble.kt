@@ -551,7 +551,7 @@ private fun VoiceMessagePlayer(
     Row(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -588,7 +588,7 @@ private fun VoiceMessagePlayer(
                     }
                 }
             },
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(40.dp),
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -603,7 +603,7 @@ private fun VoiceMessagePlayer(
             uri = uri,
             modifier = Modifier
                 .weight(1f)
-                .height(44.dp),
+                .height(64.dp),
             targetBars = 56,
             progress = if (isPlaying || currentPositionMs > 0) progress else null,
         )

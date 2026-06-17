@@ -104,7 +104,7 @@ private fun WaveformCanvas(
         val w = size.width
         val h = size.height
         val midY = h / 2f
-        val maxBarHeight = h * 0.90f
+        val maxBarHeight = h * 0.96f
 
         val barWidth = w / barCount
         val gap = barWidth * 0.22f
@@ -116,7 +116,7 @@ private fun WaveformCanvas(
         for (i in amplitudes.indices) {
             val amp = amplitudes[i].coerceIn(0f, 1f)
             val barHeight = amp * maxBarHeight
-            if (barHeight < 0.3f) continue
+            if (barHeight < 0.15f) continue
 
             val x = i * barWidth + gap / 2f
             val isPlayed = i < progressIndex
