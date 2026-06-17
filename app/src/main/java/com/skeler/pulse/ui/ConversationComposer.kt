@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -83,6 +84,8 @@ import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Block
@@ -169,6 +172,7 @@ import coil.compose.AsyncImage
 import com.skeler.pulse.sms.SystemSms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
@@ -1040,17 +1044,114 @@ private fun VoiceRecordingContent(
 
             is VoiceRecordingUiState.Preview -> {
                 val uri = Uri.fromFile(s.file)
+                var isPlaying by remember { mutableStateOf(false) }
+                var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+                var durationMs by remember { mutableIntStateOf(0) }
+                var currentPositionMs by remember { mutableIntStateOf(0) }
+                val progress = if (durationMs > 0) {
+                    (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                } else 0f
+
+                DisposableEffect(uri) {
+                    onDispose {
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                    }
+                }
+
+                LaunchedEffect(isPlaying) {
+                    while (isActive) {
+                        if (isPlaying) {
+                            mediaPlayer?.let { mp ->
+                                currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
+                            }
+                            delay(33)
+                        } else {
+                            delay(100)
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(16.dp))
-                AudioWaveformPreview(
-                    uri = uri,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp)
                         .padding(horizontal = 24.dp),
-                    targetBars = 56,
-                    activeColor = MaterialTheme.colorScheme.primary,
-                    inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (isPlaying) {
+                                mediaPlayer?.pause()
+                                isPlaying = false
+                            } else {
+                                val player = mediaPlayer
+                                if (player == null) {
+                                    try {
+                                        val newPlayer = MediaPlayer().apply {
+                                            setDataSource(context, uri)
+                                            prepare()
+                                            durationMs = duration
+                                            setOnCompletionListener {
+                                                isPlaying = false
+                                                currentPositionMs = 0
+                                                seekTo(0)
+                                            }
+                                        }
+                                        mediaPlayer = newPlayer
+                                        newPlayer.start()
+                                        isPlaying = true
+                                    } catch (e: Exception) {
+                                        Log.e("VoicePreview", "Failed to create MediaPlayer", e)
+                                    }
+                                } else {
+                                    player.seekTo(0)
+                                    currentPositionMs = 0
+                                    player.start()
+                                    isPlaying = true
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    AudioWaveformPreview(
+                        uri = uri,
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(64.dp),
+                        targetBars = 56,
+                        progress = if (isPlaying || currentPositionMs > 0) progress else null,
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = formatVoiceDuration(
+                            if (isPlaying || currentPositionMs > 0) currentPositionMs else 0
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                    Text(
+                        text = formatVoiceDuration(durationMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1135,6 +1236,13 @@ private fun createVoiceFile(context: android.content.Context): java.io.File {
 }
 
 private fun formatRecordingDuration(ms: Long): String {
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
+}
+
+private fun formatVoiceDuration(ms: Int): String {
     val totalSec = ms / 1000
     val min = totalSec / 60
     val sec = totalSec % 60
