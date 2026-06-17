@@ -601,16 +601,30 @@ private fun VoiceMessagePlayer(
                 tint = tintColor,
             )
         }
-        AudioWaveformPreview(
-            uri = uri,
-            activeColor = waveActive,
-            inactiveColor = waveInactive,
-            modifier = Modifier
-                .weight(1f)
-                .height(64.dp),
-            targetBars = 56,
-            progress = if (isPlaying || currentPositionMs > 0) progress else null,
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            AudioWaveformPreview(
+                uri = uri,
+                activeColor = waveActive,
+                inactiveColor = waveInactive,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                targetBars = 56,
+                progress = if (isPlaying || currentPositionMs > 0) progress else null,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Text(
+                    text = formatVoiceDuration(
+                        if (isPlaying || currentPositionMs > 0) currentPositionMs else durationMs
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tintColor.copy(alpha = 0.6f),
+                )
+            }
+        }
     }
 }
 
