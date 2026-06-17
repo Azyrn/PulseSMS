@@ -948,6 +948,7 @@ private fun VoiceRecordingContent(
                             val file = createVoiceFile(context)
                             audioFile = file
                             try {
+                                @Suppress("DEPRECATION")
                                 val rec = MediaRecorder().apply {
                                     setAudioSource(MediaRecorder.AudioSource.MIC)
                                     setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
