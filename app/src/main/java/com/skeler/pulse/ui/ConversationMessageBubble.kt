@@ -526,60 +526,71 @@ private fun VoiceMessagePlayer(
     val colors = MaterialTheme.colorScheme
     val tintColor = if (isOutbound) colors.onPrimaryContainer else colors.onSurface
 
-    Row(
+    Column(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        IconButton(
-            onClick = {
-                val player = mediaPlayer
-                if (isPlaying) {
-                    player?.pause()
-                    isPlaying = false
-                } else {
-                    if (player == null) {
-                        try {
-                            val newPlayer = MediaPlayer().apply {
-                                setDataSource(context, uri)
-                                prepare()
-                                durationMs = duration
-                                setOnCompletionListener {
-                                    isPlaying = false
-                                    seekTo(0)
-                                }
-                            }
-                            mediaPlayer = newPlayer
-                            newPlayer.start()
-                            isPlaying = true
-                        } catch (e: Exception) {
-                            Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
-                        }
-                    } else {
-                        player.seekTo(0)
-                        player.start()
-                        isPlaying = true
-                    }
-                }
-            },
-            modifier = Modifier.size(40.dp),
+        AudioWaveformPreview(
+            uri = uri,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            targetBars = 56,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = stringResource(
-                    if (isPlaying) R.string.voice_message_stop else R.string.voice_message_play
-                ),
-                tint = tintColor,
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
+            IconButton(
+                onClick = {
+                    val player = mediaPlayer
+                    if (isPlaying) {
+                        player?.pause()
+                        isPlaying = false
+                    } else {
+                        if (player == null) {
+                            try {
+                                val newPlayer = MediaPlayer().apply {
+                                    setDataSource(context, uri)
+                                    prepare()
+                                    durationMs = duration
+                                    setOnCompletionListener {
+                                        isPlaying = false
+                                        seekTo(0)
+                                    }
+                                }
+                                mediaPlayer = newPlayer
+                                newPlayer.start()
+                                isPlaying = true
+                            } catch (e: Exception) {
+                                Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
+                            }
+                        } else {
+                            player.seekTo(0)
+                            player.start()
+                            isPlaying = true
+                        }
+                    }
+                },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(
+                        if (isPlaying) R.string.voice_message_stop else R.string.voice_message_play
+                    ),
+                    modifier = Modifier.size(20.dp),
+                    tint = tintColor,
+                )
+            }
             Text(
                 text = stringResource(R.string.conversation_voice_message),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = tintColor,
                 maxLines = 1,
+                modifier = Modifier.weight(1f),
             )
             if (durationMs > 0) {
                 Text(
