@@ -548,85 +548,65 @@ private fun VoiceMessagePlayer(
         (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
     } else 0f
 
-    Column(
+    Row(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        IconButton(
+            onClick = {
+                val player = mediaPlayer
+                if (isPlaying) {
+                    player?.pause()
+                    isPlaying = false
+                } else {
+                    if (player == null) {
+                        try {
+                            val newPlayer = MediaPlayer().apply {
+                                setDataSource(context, uri)
+                                prepare()
+                                durationMs = duration
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                    currentPositionMs = 0
+                                    seekTo(0)
+                                }
+                            }
+                            mediaPlayer = newPlayer
+                            newPlayer.start()
+                            isPlaying = true
+                        } catch (e: Exception) {
+                            Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
+                        }
+                    } else {
+                        player.seekTo(0)
+                        currentPositionMs = 0
+                        player.start()
+                        isPlaying = true
+                    }
+                }
+            },
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = stringResource(
+                    if (isPlaying) R.string.voice_message_stop else R.string.voice_message_play
+                ),
+                modifier = Modifier.size(22.dp),
+                tint = tintColor,
+            )
+        }
         AudioWaveformPreview(
             uri = uri,
             modifier = Modifier
-                .fillMaxWidth()
-                .height(36.dp),
+                .weight(1f)
+                .height(44.dp),
             targetBars = 56,
             progress = if (isPlaying || currentPositionMs > 0) progress else null,
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(
-                onClick = {
-                    val player = mediaPlayer
-                    if (isPlaying) {
-                        player?.pause()
-                        isPlaying = false
-                    } else {
-                        if (player == null) {
-                            try {
-                                val newPlayer = MediaPlayer().apply {
-                                    setDataSource(context, uri)
-                                    prepare()
-                                    durationMs = duration
-                                    setOnCompletionListener {
-                                        isPlaying = false
-                                        currentPositionMs = 0
-                                        seekTo(0)
-                                    }
-                                }
-                                mediaPlayer = newPlayer
-                                newPlayer.start()
-                                isPlaying = true
-                            } catch (e: Exception) {
-                                Log.e("VoiceMessagePlayer", "Failed to create MediaPlayer", e)
-                            }
-                        } else {
-                            player.seekTo(0)
-                            currentPositionMs = 0
-                            player.start()
-                            isPlaying = true
-                        }
-                    }
-                },
-                modifier = Modifier.size(32.dp),
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = stringResource(
-                        if (isPlaying) R.string.voice_message_stop else R.string.voice_message_play
-                    ),
-                    modifier = Modifier.size(20.dp),
-                    tint = tintColor,
-                )
-            }
-            Text(
-                text = stringResource(R.string.conversation_voice_message),
-                style = MaterialTheme.typography.bodySmall,
-                color = tintColor,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            if (durationMs > 0) {
-                Text(
-                    text = formatVoiceDuration(
-                        if (isPlaying || currentPositionMs > 0) currentPositionMs else durationMs
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = tintColor.copy(alpha = 0.6f),
-                )
-            }
-        }
     }
 }
 
