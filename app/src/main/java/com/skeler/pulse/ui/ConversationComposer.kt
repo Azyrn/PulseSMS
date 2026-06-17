@@ -1131,7 +1131,12 @@ private fun VoiceRecordingContent(
                             .weight(1f)
                             .height(64.dp),
                         targetBars = 56,
-                        progress = if (isPlaying || currentPositionMs > 0) progress else null,
+                        progress = progress,
+                        onSeek = { fraction ->
+                            val newPos = (fraction * durationMs).toInt()
+                            mediaPlayer?.seekTo(newPos)
+                            currentPositionMs = newPos
+                        },
                     )
                 }
                 Row(

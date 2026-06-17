@@ -610,7 +610,12 @@ private fun VoiceMessagePlayer(
                     .fillMaxWidth()
                     .height(52.dp),
                 targetBars = 56,
-                progress = if (isPlaying || currentPositionMs > 0) progress else null,
+                progress = progress,
+                onSeek = { fraction ->
+                    val newPos = (fraction * durationMs).toInt()
+                    mediaPlayer?.seekTo(newPos)
+                    currentPositionMs = newPos
+                },
             )
             Row(
                 modifier = Modifier

@@ -3,6 +3,8 @@ package com.skeler.pulse.ui
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -43,6 +47,7 @@ internal fun AudioWaveformPreview(
     modifier: Modifier = Modifier,
     targetBars: Int = 56,
     progress: Float? = null,
+    onSeek: ((Float) -> Unit)? = null,
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = activeColor.copy(alpha = 0.18f),
 ) {
@@ -82,6 +87,7 @@ internal fun AudioWaveformPreview(
                     activeColor = activeColor,
                     inactiveColor = inactiveColor,
                     progress = progress,
+                    onSeek = onSeek,
                 )
             }
         }
@@ -98,8 +104,32 @@ private fun WaveformCanvas(
     activeColor: Color,
     inactiveColor: Color,
     progress: Float?,
+    onSeek: ((Float) -> Unit)? = null,
 ) {
-    Canvas(modifier = modifier.clip(RoundedCornerShape(8.dp))) {
+    val currentOnSeek = rememberUpdatedState(onSeek)
+    Canvas(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (onSeek != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectDragGestures { change, _ ->
+                            change.consume()
+                            val w = this.size.width.toFloat()
+                            val x = change.position.x.coerceIn(0f, w)
+                            currentOnSeek.value?.invoke(x / w)
+                        }
+                    }.then(
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val w = this.size.width.toFloat()
+                                currentOnSeek.value?.invoke(offset.x / w)
+                            }
+                        }
+                    )
+                } else Modifier
+            )
+    ) {
         val barCount = amplitudes.size
         val w = size.width
         val h = size.height
@@ -125,6 +155,17 @@ private fun WaveformCanvas(
                 topLeft = Offset(x, midY - barHeight / 2f),
                 size = Size(drawWidth, barHeight),
                 cornerRadius = radius,
+            )
+        }
+
+        if (progress != null) {
+            val cursorX = progress * w
+            val cursorWidth = 2.dp.toPx()
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(cursorX - cursorWidth / 2f, 0f),
+                size = Size(cursorWidth, h),
+                cornerRadius = CornerRadius(cursorWidth / 2f),
             )
         }
     }
