@@ -3,8 +3,8 @@ package com.skeler.pulse.ui
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -113,20 +113,26 @@ private fun WaveformCanvas(
             .then(
                 if (onSeek != null) {
                     Modifier.pointerInput(Unit) {
-                        detectDragGestures { change, _ ->
-                            change.consume()
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
                             val w = this.size.width.toFloat()
-                            val x = change.position.x.coerceIn(0f, w)
-                            currentOnSeek.value?.invoke(x / w)
+                            val startX = down.position.x.coerceIn(0f, w)
+                            currentOnSeek.value?.invoke(startX / w)
+                            var lastX = startX
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (change.pressed) {
+                                    change.consume()
+                                    lastX = change.position.x.coerceIn(0f, w)
+                                    currentOnSeek.value?.invoke(lastX / w)
+                                } else {
+                                    break
+                                }
+                            } while (true)
                         }
-                    }.then(
-                        Modifier.pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                val w = this.size.width.toFloat()
-                                currentOnSeek.value?.invoke(offset.x / w)
-                            }
-                        }
-                    )
+                    }
                 } else Modifier
             )
     ) {
