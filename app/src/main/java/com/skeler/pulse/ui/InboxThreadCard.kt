@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.MarkunreadMailbox
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -249,14 +250,31 @@ internal fun SmsThreadCard(
                         )
                     }
                     if (thread.lastMmsPartUri != null) {
-                        AsyncImage(
-                            model = thread.lastMmsPartUri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
+                        if (thread.lastMmsContentType?.startsWith("audio/") == true) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Mic,
+                                    contentDescription = stringResource(R.string.attachment_voice),
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                            }
+                        } else {
+                            AsyncImage(
+                                model = thread.lastMmsPartUri,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
                     } else {
                         Text(
                             text = thread.snippet,

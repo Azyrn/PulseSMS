@@ -187,13 +187,14 @@ class SystemSmsReader(
                         } catch (e: SecurityException) {
                             "Unknown"
                         }
-                        val partUri = MmsPartResolver.resolveFirstAttachmentUri(context, mmsId)
+                        val (partUri, partContentType) = MmsPartResolver.resolveFirstAttachmentInfo(context, mmsId)?.let { it.first to it.second } ?: (null to null)
                         MutableThreadAccumulator(
                             threadId = providerThreadId,
                             address = addr.normalizeAddressForDisplay(),
                             snippet = if (partUri != null) "" else context.getString(R.string.mms_body_placeholder),
                             date = dateMs,
                             lastMmsPartUri = partUri,
+                            lastMmsContentType = partContentType,
                         )
                     }
                     accumulator.messageCount += 1
@@ -201,9 +202,10 @@ class SystemSmsReader(
                     if (!isRead && isInbound) accumulator.unreadCount += 1
                     if (dateMs > accumulator.date) {
                         accumulator.date = dateMs
-                        val newPartUri = MmsPartResolver.resolveFirstAttachmentUri(context, mmsId)
+                        val (newPartUri, newPartContentType) = MmsPartResolver.resolveFirstAttachmentInfo(context, mmsId)?.let { it.first to it.second } ?: (null to null)
                         accumulator.snippet = if (newPartUri != null) "" else context.getString(R.string.mms_body_placeholder)
                         accumulator.lastMmsPartUri = newPartUri
+                        accumulator.lastMmsContentType = newPartContentType
                     }
                 }
             }
@@ -225,6 +227,7 @@ class SystemSmsReader(
                     messageCount = group.sumOf { it.messageCount },
                     unreadCount = group.sumOf { it.unreadCount },
                     lastMmsPartUri = latest.lastMmsPartUri,
+                    lastMmsContentType = latest.lastMmsContentType,
                 )
             }
             .sortedByDescending { it.date }

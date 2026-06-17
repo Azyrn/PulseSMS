@@ -49,6 +49,7 @@ data class SmsThread(
     val messageCount: Int,
     val unreadCount: Int,
     val lastMmsPartUri: Uri? = null,
+    val lastMmsContentType: String? = null,
 ) {
     val timestamp: Instant get() = Instant.ofEpochMilli(date)
 }

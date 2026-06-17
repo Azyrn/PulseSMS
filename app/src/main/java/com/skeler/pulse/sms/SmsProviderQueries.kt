@@ -102,4 +102,5 @@ internal class MutableThreadAccumulator(
     var messageCount: Int = 0,
     var unreadCount: Int = 0,
     var lastMmsPartUri: Uri? = null,
+    var lastMmsContentType: String? = null,
 )

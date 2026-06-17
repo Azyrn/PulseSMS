@@ -64,7 +64,10 @@ internal object MmsPartResolver {
         }
     }
 
-    fun resolveFirstAttachmentUri(context: Context, mmsId: Long): Uri? {
+    fun resolveFirstAttachmentUri(context: Context, mmsId: Long): Uri? =
+        resolveFirstAttachmentInfo(context, mmsId)?.first
+
+    fun resolveFirstAttachmentInfo(context: Context, mmsId: Long): Pair<Uri, String>? {
         val parts = queryParts(context, mmsId) ?: return null
         val entry = parts.firstOrNull { entry ->
             entry.mimeType != TEXT_PLAIN &&
@@ -72,19 +75,24 @@ internal object MmsPartResolver {
                 entry.mimeType != "application/smil"
         } ?: return null
 
-        val cacheFile = File(context.cacheDir, "mms_parts/${entry.id}")
-        if (cacheFile.exists()) {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.mmsfileprovider",
-                cacheFile,
-            )
-            Log.i(TAG, "Attachment URI (cached): $uri (${entry.mimeType})")
-            return uri
+        val uri = run {
+            val cacheFile = File(context.cacheDir, "mms_parts/${entry.id}")
+            if (cacheFile.exists()) {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.mmsfileprovider",
+                    cacheFile,
+                ).also {
+                    Log.i(TAG, "Attachment URI (cached): $it (${entry.mimeType})")
+                }
+            } else {
+                Uri.parse("content://mms/part/${entry.id}").also {
+                    Log.i(TAG, "Attachment URI (mms provider): $it (${entry.mimeType})")
+                }
+            }
         }
 
-        Log.i(TAG, "Attachment URI (mms provider): content://mms/part/${entry.id} (${entry.mimeType})")
-        return Uri.parse("content://mms/part/${entry.id}")
+        return uri to entry.mimeType
     }
 
     private fun queryParts(context: Context, mmsId: Long): List<PartEntry>? {
