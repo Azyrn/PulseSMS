@@ -613,13 +613,20 @@ private fun VoiceMessagePlayer(
                 progress = if (isPlaying || currentPositionMs > 0) progress else null,
             )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = formatVoiceDuration(
-                        if (isPlaying || currentPositionMs > 0) currentPositionMs else durationMs
+                        if (isPlaying || currentPositionMs > 0) currentPositionMs else 0
                     ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tintColor.copy(alpha = 0.6f),
+                )
+                Text(
+                    text = formatVoiceDuration(durationMs),
                     style = MaterialTheme.typography.labelSmall,
                     color = tintColor.copy(alpha = 0.6f),
                 )
