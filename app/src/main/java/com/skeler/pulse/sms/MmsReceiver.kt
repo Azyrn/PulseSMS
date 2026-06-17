@@ -102,7 +102,13 @@ class MmsReceiver : BroadcastReceiver() {
             }
 
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val mmsNetwork = findMmsNetwork(cm)
+            val mmsNetwork = cm.awaitNetwork(
+                NetworkCapabilities.TRANSPORT_CELLULAR,
+                NetworkCapabilities.NET_CAPABILITY_MMS,
+            ) ?: cm.awaitNetwork(
+                NetworkCapabilities.TRANSPORT_CELLULAR,
+                NetworkCapabilities.NET_CAPABILITY_INTERNET,
+            )
             val previousNetwork = if (Build.VERSION.SDK_INT >= 23) {
                 cm.getBoundNetworkForProcess()
             } else null
@@ -149,28 +155,6 @@ class MmsReceiver : BroadcastReceiver() {
             Log.e(TAG, "HTTP download failed", e)
             null
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun findMmsNetwork(cm: ConnectivityManager): Network? {
-        // allNetworks is deprecated in API 33+; the replacement
-        // (NetworkRequest + registerNetworkCallback) is inherently async,
-        // making it unsuited for this synchronous lookup.
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS)) {
-                return network
-            }
-        }
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                return network
-            }
-        }
-        return null
     }
 
     private suspend fun storeMms(context: Context, conf: RetrieveConf, fromFallback: String) {

@@ -457,9 +457,15 @@ internal class SystemSmsSender(
         context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
     }
 
-    private fun sendPduToMmsc(pduBytes: ByteArray, mmsc: String, proxy: String?, port: Int) {
+    private suspend fun sendPduToMmsc(pduBytes: ByteArray, mmsc: String, proxy: String?, port: Int) {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val mmsNetwork = findMmsNetwork(cm)
+        val mmsNetwork = cm.awaitNetwork(
+            NetworkCapabilities.TRANSPORT_CELLULAR,
+            NetworkCapabilities.NET_CAPABILITY_MMS,
+        ) ?: cm.awaitNetwork(
+            NetworkCapabilities.TRANSPORT_CELLULAR,
+            NetworkCapabilities.NET_CAPABILITY_INTERNET,
+        )
         val previousNetwork = if (Build.VERSION.SDK_INT >= 23) {
             cm.getBoundNetworkForProcess()
         } else null
@@ -501,28 +507,6 @@ internal class SystemSmsSender(
                 ConnectivityManager.setProcessDefaultNetwork(previousNetwork)
             }
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun findMmsNetwork(cm: ConnectivityManager): Network? {
-        // allNetworks is deprecated in API 33+; the replacement
-        // (NetworkRequest + registerNetworkCallback) is inherently async,
-        // making it unsuited for this synchronous lookup.
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS)) {
-                return network
-            }
-        }
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                return network
-            }
-        }
-        return null
     }
 
     private fun insertMmsRecord(
