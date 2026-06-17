@@ -530,7 +530,7 @@ internal fun ConversationComposer(
                                 try {
                                     @Suppress("DEPRECATION")
                                     val rec = MediaRecorder().apply {
-                                        setAudioSource(MediaRecorder.AudioSource.MIC)
+                                        setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                                         setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
                                         setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
                                         setOutputFile(file.absolutePath)
@@ -1263,7 +1263,7 @@ private fun VoiceRecordingContent(
                             try {
                                 @Suppress("DEPRECATION")
                                 val rec = MediaRecorder().apply {
-                                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                                    setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                                     setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
                                     setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
                                     setOutputFile(file.absolutePath)
