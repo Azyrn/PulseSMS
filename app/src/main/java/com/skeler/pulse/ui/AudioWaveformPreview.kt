@@ -43,6 +43,8 @@ internal fun AudioWaveformPreview(
     modifier: Modifier = Modifier,
     targetBars: Int = 56,
     progress: Float? = null,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    inactiveColor: Color = activeColor.copy(alpha = 0.18f),
 ) {
     val context = LocalContext.current
     var state by remember(uri) { mutableStateOf<WaveformUiState>(WaveformUiState.Loading) }
@@ -52,9 +54,7 @@ internal fun AudioWaveformPreview(
         state = if (data != null) WaveformUiState.Ready(data) else WaveformUiState.Error
     }
 
-    val primary = MaterialTheme.colorScheme.primary
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
 
     when (val s = state) {
         is WaveformUiState.Loading -> {
@@ -67,26 +67,26 @@ internal fun AudioWaveformPreview(
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
-                    color = onSurfaceVariant,
+                    color = inactiveColor,
                 )
             }
         }
         is WaveformUiState.Ready -> {
             val amplitudes = s.amplitudes
             if (amplitudes.isEmpty()) {
-                MicFallback(modifier, primary, surfaceVariant)
+                MicFallback(modifier, activeColor, surfaceVariant)
             } else {
                 WaveformCanvas(
                     amplitudes = amplitudes,
                     modifier = modifier,
-                    activeColor = primary,
-                    inactiveColor = primary.copy(alpha = 0.18f),
+                    activeColor = activeColor,
+                    inactiveColor = inactiveColor,
                     progress = progress,
                 )
             }
         }
         is WaveformUiState.Error -> {
-            MicFallback(modifier, primary, surfaceVariant)
+            MicFallback(modifier, activeColor, surfaceVariant)
         }
     }
 }

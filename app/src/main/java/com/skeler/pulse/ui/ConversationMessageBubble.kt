@@ -544,6 +544,8 @@ private fun VoiceMessagePlayer(
 
     val colors = MaterialTheme.colorScheme
     val tintColor = if (isOutbound) colors.onPrimaryContainer else colors.onSurface
+    val waveActive = if (isOutbound) colors.onPrimaryContainer else colors.primary
+    val waveInactive = if (isOutbound) colors.onPrimaryContainer.copy(alpha = 0.20f) else colors.primary.copy(alpha = 0.18f)
     val progress = if (durationMs > 0) {
         (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
     } else 0f
@@ -551,7 +553,7 @@ private fun VoiceMessagePlayer(
     Row(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -601,6 +603,8 @@ private fun VoiceMessagePlayer(
         }
         AudioWaveformPreview(
             uri = uri,
+            activeColor = waveActive,
+            inactiveColor = waveInactive,
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp),
