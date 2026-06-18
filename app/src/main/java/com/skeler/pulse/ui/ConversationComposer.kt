@@ -122,6 +122,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -1102,6 +1103,8 @@ private fun CameraPreviewContent(
     }
 
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var useFrontCamera by remember { mutableStateOf(false) }
+    val cameraSelector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
 
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -1109,32 +1112,35 @@ private fun CameraPreviewContent(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    val previewView = PreviewView(ctx)
-                    val cameraProvider = ProcessCameraProvider.getInstance(ctx).get()
+            key(cameraSelector) {
+                AndroidView(
+                    factory = { ctx ->
+                        val previewView = PreviewView(ctx)
+                        val cameraProvider = ProcessCameraProvider.getInstance(ctx).get()
 
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
+                        val preview = Preview.Builder().build().also {
+                            it.surfaceProvider = previewView.surfaceProvider
+                        }
 
-                    val capture = ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                        .build()
-                    imageCapture = capture
+                        val capture = ImageCapture.Builder()
+                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                            .build()
+                        imageCapture = capture
 
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        capture,
-                    )
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            capture,
+                        )
 
-                    previewView
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+                        previewView
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
             IconButton(
                 onClick = {
                     val capture = imageCapture ?: return@IconButton
@@ -1165,6 +1171,21 @@ private fun CameraPreviewContent(
                     contentDescription = stringResource(R.string.attachment_take_photo),
                     modifier = Modifier.size(28.dp),
                     tint = Color.Black,
+                )
+            }
+
+            IconButton(
+                onClick = { useFrontCamera = !useFrontCamera },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = "Switch camera",
+                    tint = Color.White,
                 )
             }
         }
