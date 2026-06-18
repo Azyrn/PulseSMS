@@ -159,8 +159,14 @@ internal fun RealConversationScreen(
             draft = nextDraft
         }
         when (sendState) {
+            is SendState.Sending -> {
+                delay(100)
+                listState.scrollToItemSmoothly(0)
+            }
             is SendState.Sent -> {
-                delay(1200)
+                delay(200)
+                listState.scrollToItemSmoothly(0)
+                delay(1000)
                 onClearSendState()
             }
             is SendState.Failed -> {
