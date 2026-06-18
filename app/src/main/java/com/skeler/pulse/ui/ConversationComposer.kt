@@ -132,6 +132,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -387,13 +388,18 @@ internal fun ConversationComposer(
                 }
             }
         }
+        val keyboardController = LocalSoftwareKeyboardController.current
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
             verticalAlignment = Alignment.Bottom,
         ) {
             IconButton(
-                onClick = { showAttachmentMenu = !showAttachmentMenu },
+                onClick = {
+                    showAttachmentMenu = !showAttachmentMenu
+                    if (showAttachmentMenu) keyboardController?.hide()
+                },
                 enabled = !isSending,
                 modifier = Modifier
                     .size(ConversationComposerTokens.attachmentButtonSize),
@@ -1107,7 +1113,8 @@ private fun CameraPreviewContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .clipToBounds(),
         ) {
             key(cameraSelector) {
                 AndroidView(
