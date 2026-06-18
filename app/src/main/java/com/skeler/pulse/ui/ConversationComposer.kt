@@ -31,8 +31,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -105,8 +107,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -393,13 +393,13 @@ internal fun ConversationComposer(
             verticalAlignment = Alignment.Bottom,
         ) {
             IconButton(
-                onClick = { showAttachmentMenu = true },
+                onClick = { showAttachmentMenu = !showAttachmentMenu },
                 enabled = !isSending,
                 modifier = Modifier
                     .size(ConversationComposerTokens.attachmentButtonSize),
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Add,
+                    imageVector = if (showAttachmentMenu) Icons.Rounded.Close else Icons.Rounded.Add,
                     contentDescription = stringResource(R.string.conversation_attach_content_description),
                     modifier = Modifier.size(ConversationComposerTokens.attachmentIconSize),
                     tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha),
@@ -794,8 +794,8 @@ internal fun ConversationComposer(
                 }
             }
         }
-        if (showAttachmentMenu) {
-            var selectedAttachmentTab by remember { mutableStateOf(AttachmentTab.GALLERY) }
+        AnimatedVisibility(visible = showAttachmentMenu, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            val selectedAttachmentTab = rememberSaveable { mutableStateOf(AttachmentTab.GALLERY) }
             val mediaPermission = if (Build.VERSION.SDK_INT >= 33) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
@@ -837,178 +837,175 @@ internal fun ConversationComposer(
                     uris
                 }
             }
-            ModalBottomSheet(
-                onDismissRequest = { showAttachmentMenu = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(16.dp),
+                    ),
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 32.dp),
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.Top,
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 12.dp),
                     ) {
-                        // Left: tab buttons
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(top = 12.dp),
-                        ) {
-                            AttachmentOption(
-                                icon = Icons.Rounded.CameraAlt,
-                                label = stringResource(R.string.attachment_camera),
-                                selected = selectedAttachmentTab == AttachmentTab.CAMERA,
-                                iconOnly = true,
-                                onClick = { selectedAttachmentTab = AttachmentTab.CAMERA },
-                            )
-                            AttachmentOption(
-                                icon = Icons.Rounded.Photo,
-                                label = stringResource(R.string.attachment_gallery),
-                                selected = selectedAttachmentTab == AttachmentTab.GALLERY,
-                                iconOnly = true,
-                                onClick = { selectedAttachmentTab = AttachmentTab.GALLERY },
-                            )
-                            AttachmentOption(
-                                icon = Icons.Rounded.Mic,
-                                label = stringResource(R.string.attachment_voice),
-                                selected = selectedAttachmentTab == AttachmentTab.VOICE,
-                                iconOnly = true,
-                                onClick = { selectedAttachmentTab = AttachmentTab.VOICE },
+                        AttachmentOption(
+                            icon = Icons.Rounded.CameraAlt,
+                            label = stringResource(R.string.attachment_camera),
+                            selected = selectedAttachmentTab.value == AttachmentTab.CAMERA,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.CAMERA },
+                        )
+                        AttachmentOption(
+                            icon = Icons.Rounded.Photo,
+                            label = stringResource(R.string.attachment_gallery),
+                            selected = selectedAttachmentTab.value == AttachmentTab.GALLERY,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.GALLERY },
+                        )
+                        AttachmentOption(
+                            icon = Icons.Rounded.Mic,
+                            label = stringResource(R.string.attachment_voice),
+                            selected = selectedAttachmentTab.value == AttachmentTab.VOICE,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.VOICE },
+                        )
+                    }
+                    var pendingGallerySelection by remember(showAttachmentMenu) { mutableStateOf(emptySet<Uri>()) }
+                    when (selectedAttachmentTab.value) {
+                        AttachmentTab.CAMERA -> {
+                            CameraPreviewContent(
+                                onPhotoTaken = { uri ->
+                                    onImageSelected(selectedImageUris + uri)
+                                    showAttachmentMenu = false
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(max = 320.dp),
                             )
                         }
-                        // Right: tab content
-                        var pendingGallerySelection by remember(showAttachmentMenu) { mutableStateOf(emptySet<Uri>()) }
-                        when (selectedAttachmentTab) {
-                            AttachmentTab.CAMERA -> {
-                                CameraPreviewContent(
-                                    onPhotoTaken = { uri ->
-                                        onImageSelected(selectedImageUris + uri)
-                                        showAttachmentMenu = false
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(max = 320.dp),
-                                )
-                            }
-                            AttachmentTab.VOICE -> {
-                                VoiceRecordingContent(
-                                    onVoiceRecorded = { uri ->
-                                        showAttachmentMenu = false
-                                        onVoiceRecorded(uri)
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(max = 320.dp),
-                                )
-                            }
-                            AttachmentTab.GALLERY -> {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    if (!mediaPermissionGranted) {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(16.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center,
+                        AttachmentTab.VOICE -> {
+                            VoiceRecordingContent(
+                                onVoiceRecorded = { uri ->
+                                    showAttachmentMenu = false
+                                    onVoiceRecorded(uri)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(max = 320.dp),
+                            )
+                        }
+                        AttachmentTab.GALLERY -> {
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (!mediaPermissionGranted) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.attachment_allow_access),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        FilledTonalButton(
+                                            onClick = { mediaPermissionLauncher.launch(mediaPermission) },
                                         ) {
-                                                Text(
-                                                    text = stringResource(R.string.attachment_allow_access),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                                Spacer(Modifier.height(8.dp))
-                                                FilledTonalButton(
-                                                    onClick = { mediaPermissionLauncher.launch(mediaPermission) },
-                                                ) {
-                                                    Text(stringResource(R.string.attachment_grant_permission))
-                                                }
+                                            Text(stringResource(R.string.attachment_grant_permission))
                                         }
-                                    } else if (recentPhotos.isNotEmpty()) {
-                                        LazyVerticalGrid(
-                                            columns = GridCells.Fixed(3),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(max = 240.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            recentPhotos.forEach { uri ->
-                                                item(key = uri.toString()) {
-                                                    Box(modifier = Modifier.aspectRatio(1f)) {
-                                                        AsyncImage(
-                                                            model = uri,
-                                                            contentDescription = null,
+                                    }
+                                } else if (recentPhotos.isNotEmpty()) {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(3),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 240.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        recentPhotos.forEach { uri ->
+                                            item(key = uri.toString()) {
+                                                Box(modifier = Modifier.aspectRatio(1f)) {
+                                                    AsyncImage(
+                                                        model = uri,
+                                                        contentDescription = null,
+                                                        modifier = Modifier
+                                                            .matchParentSize()
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                pendingGallerySelection = if (uri in pendingGallerySelection) {
+                                                                    pendingGallerySelection - uri
+                                                                } else {
+                                                                    pendingGallerySelection + uri
+                                                                }
+                                                            },
+                                                        contentScale = ContentScale.Crop,
+                                                    )
+                                                    if (uri in pendingGallerySelection) {
+                                                        Box(
                                                             modifier = Modifier
                                                                 .matchParentSize()
-                                                                .clip(RoundedCornerShape(4.dp))
-                                                                .clickable {
-                                                                    pendingGallerySelection = if (uri in pendingGallerySelection) {
-                                                                        pendingGallerySelection - uri
-                                                                    } else {
-                                                                        pendingGallerySelection + uri
-                                                                    }
-                                                                },
-                                                            contentScale = ContentScale.Crop,
-                                                        )
-                                                        if (uri in pendingGallerySelection) {
-                                                            Box(
+                                                                .background(Color.Black.copy(alpha = 0.3f))
+                                                                .clip(RoundedCornerShape(4.dp)),
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.CheckCircle,
+                                                                contentDescription = stringResource(R.string.attachment_selected),
                                                                 modifier = Modifier
-                                                                    .matchParentSize()
-                                                                    .background(Color.Black.copy(alpha = 0.3f))
-                                                                    .clip(RoundedCornerShape(4.dp)),
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Rounded.CheckCircle,
-                                                                    contentDescription = stringResource(R.string.attachment_selected),
-                                                                    modifier = Modifier
-                                                                        .align(Alignment.TopEnd)
-                                                                        .padding(3.dp)
-                                                                        .size(20.dp),
-                                                                    tint = MaterialTheme.colorScheme.primary,
-                                                                )
-                                                            }
+                                                                    .align(Alignment.TopEnd)
+                                                                    .padding(3.dp)
+                                                                    .size(20.dp),
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                            )
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 100.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.attachment_no_recent_photos),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
                                     }
-                                    if (pendingGallerySelection.isNotEmpty()) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                            horizontalArrangement = Arrangement.Center,
-                                        ) {
-                                            FilledTonalButton(
-                                                onClick = {
-                                                    onImageSelected(selectedImageUris + pendingGallerySelection.toList())
-                                                    showAttachmentMenu = false
-                                                },
-                                            ) {
-                                                Text(stringResource(R.string.attachment_gallery_add, pendingGallerySelection.size))
-                                            }
-                                        }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 100.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.attachment_no_recent_photos),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
-                                    Spacer(Modifier.height(8.dp))
                                 }
+                                if (pendingGallerySelection.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                onImageSelected(selectedImageUris + pendingGallerySelection.toList())
+                                                showAttachmentMenu = false
+                                            },
+                                        ) {
+                                            Text(stringResource(R.string.attachment_gallery_add, pendingGallerySelection.size))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
                             }
                         }
                     }
