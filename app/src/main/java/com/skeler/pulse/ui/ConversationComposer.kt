@@ -326,6 +326,9 @@ internal fun ConversationComposer(
         var voiceMode by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
         val voiceRecorder = remember { mutableStateOf<MediaRecorder?>(null) }
 
+        LaunchedEffect(isFocused) {
+            if (isFocused) showAttachmentMenu = false
+        }
         LaunchedEffect(voiceMode) {
             if (voiceMode is VoiceMode.Recording) {
                 val s = voiceMode as VoiceMode.Recording
