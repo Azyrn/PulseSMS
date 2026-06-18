@@ -279,35 +279,6 @@ internal fun LazyListScope.conversationTimelineItems(
     loadingMore: Boolean = false,
     onLoadMoreMessages: () -> Unit = {},
 ) {
-    item(
-        key = "conversation_header",
-        contentType = ConversationHeaderContentType,
-    ) {
-        ConversationOverviewCard(
-            title = title,
-            address = address,
-            messageCount = messages.size,
-            unreadCount = unreadCount,
-            importantCount = importantCount,
-            latestTimestamp = latestTimestamp,
-            avatarColors = avatarColors,
-            modifier = rememberEntranceModifier("conversation_header_$address", reducedMotion),
-        )
-    }
-
-    if (hasMoreMessages && !loading) {
-        item(
-            key = "conversation_load_more",
-            contentType = ConversationLoadMoreContentType,
-        ) {
-            ConversationLoadMoreItem(
-                loadingMore = loadingMore,
-                onLoadMore = onLoadMoreMessages,
-                modifier = rememberEntranceModifier("conversation_load_more_$address", reducedMotion),
-            )
-        }
-    }
-
     when {
         loading -> item(key = "conversation_loading", contentType = ConversationLoadingContentType) {
             ConversationLoadingSkeleton(
@@ -323,7 +294,7 @@ internal fun LazyListScope.conversationTimelineItems(
         }
 
         else -> items(
-            items = timelineItems,
+            items = timelineItems.asReversed(),
             key = ConversationTimelineItem::key,
             contentType = ConversationTimelineItem::contentType,
         ) { item ->
@@ -351,6 +322,35 @@ internal fun LazyListScope.conversationTimelineItems(
                 )
             }
         }
+    }
+
+    if (hasMoreMessages && !loading) {
+        item(
+            key = "conversation_load_more",
+            contentType = ConversationLoadMoreContentType,
+        ) {
+            ConversationLoadMoreItem(
+                loadingMore = loadingMore,
+                onLoadMore = onLoadMoreMessages,
+                modifier = rememberEntranceModifier("conversation_load_more_$address", reducedMotion),
+            )
+        }
+    }
+
+    item(
+        key = "conversation_header",
+        contentType = ConversationHeaderContentType,
+    ) {
+        ConversationOverviewCard(
+            title = title,
+            address = address,
+            messageCount = messages.size,
+            unreadCount = unreadCount,
+            importantCount = importantCount,
+            latestTimestamp = latestTimestamp,
+            avatarColors = avatarColors,
+            modifier = rememberEntranceModifier("conversation_header_$address", reducedMotion),
+        )
     }
 }
 

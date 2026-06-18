@@ -43,7 +43,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.R
 import com.skeler.pulse.design.util.elasticOverscroll
-import com.skeler.pulse.design.util.isNearListEnd
 import com.skeler.pulse.design.util.rememberReducedMotionEnabled
 import com.skeler.pulse.design.util.rememberSmoothFlingBehavior
 import com.skeler.pulse.design.util.scrollToItemSmoothly
@@ -195,7 +194,12 @@ internal fun RealConversationScreen(
         context.getSystemService(ClipboardManager::class.java)
     }
     val isNearEnd by remember(listState) {
-        derivedStateOf { listState.isNearListEnd() }
+        derivedStateOf {
+            val info = listState.layoutInfo
+            if (info.totalItemsCount == 0) return@derivedStateOf true
+            val firstVisibleIndex = info.visibleItemsInfo.firstOrNull()?.index ?: return@derivedStateOf true
+            firstVisibleIndex <= 2
+        }
     }
     var hasPositionedInitialMessages by remember(address) { mutableStateOf(false) }
 
@@ -224,7 +228,7 @@ internal fun RealConversationScreen(
 
     LaunchedEffect(address, loading, timelineItems.size) {
         if (!loading && !hasPositionedInitialMessages && timelineItems.isNotEmpty()) {
-            listState.scrollToItem(conversationTimelineLazyListIndex(timelineItems.lastIndex, hasMoreMessages))
+            listState.scrollToItem(0)
             previousMessageCount = messages.size
             hasPositionedInitialMessages = true
         }
@@ -238,7 +242,7 @@ internal fun RealConversationScreen(
 
         val listGrew = messages.size > previousMessageCount
         if (hasPositionedInitialMessages && listGrew && isNearEnd) {
-            listState.scrollToItemSmoothly(conversationTimelineLazyListIndex(timelineItems.lastIndex, hasMoreMessages))
+            listState.scrollToItemSmoothly(0)
         }
         previousMessageCount = messages.size
     }
@@ -247,7 +251,7 @@ internal fun RealConversationScreen(
     val isKeyboardVisible = WindowInsets.isImeVisible
     LaunchedEffect(isKeyboardVisible, timelineItems.size) {
         if (isKeyboardVisible && timelineItems.isNotEmpty()) {
-            listState.scrollToItemSmoothly(conversationTimelineLazyListIndex(timelineItems.lastIndex, hasMoreMessages))
+            listState.scrollToItemSmoothly(0)
         }
     }
 
@@ -390,6 +394,7 @@ internal fun RealConversationScreen(
             LazyColumn(
                 state = listState,
                 flingBehavior = listFlingBehavior,
+                reverseLayout = true,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
@@ -397,6 +402,7 @@ internal fun RealConversationScreen(
                     .elasticOverscroll(
                         enabled = !reducedMotion,
                         state = listState,
+                        reverseLayout = true,
                 ),
                 contentPadding = PaddingValues(
                     horizontal = ConversationVisualTokens.timelineHorizontalPadding,
