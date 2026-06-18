@@ -28,7 +28,7 @@ internal object MmsPartResolver {
         for (entry in parts) {
             when (entry.mimeType) {
                 TEXT_PLAIN, TEXT_HTML -> if (textBody == null) {
-                    textBody = readPartContent(context, entry.id)
+                    textBody = readPartContent(context, entry.id, entry.text)
                 }
                 "application/smil" -> { /* skip SMIL manifest */ }
                 else -> if (attachmentUri == null) {
@@ -60,7 +60,7 @@ internal object MmsPartResolver {
         return parts.firstOrNull { entry ->
             entry.mimeType == TEXT_PLAIN || entry.mimeType == TEXT_HTML
         }?.let { entry ->
-            readPartContent(context, entry.id)
+            readPartContent(context, entry.id, entry.text)
         }
     }
 
@@ -100,7 +100,7 @@ internal object MmsPartResolver {
         Log.i(TAG, "Querying parts from $uri")
         val cursor = context.contentResolver.query(
             uri,
-            arrayOf("_id", "ct", "name"),
+            arrayOf("_id", "ct", "name", "text"),
             null,
             null,
             null,
@@ -111,15 +111,17 @@ internal object MmsPartResolver {
             while (c.moveToNext()) {
                 val id = c.getLong(c.getColumnIndexOrThrow("_id"))
                 val mimeType = c.getString(c.getColumnIndexOrThrow("ct")) ?: ""
-                Log.i(TAG, "Found part: id=$id ct=$mimeType for mmsId=$mmsId")
-                entries.add(PartEntry(id, mimeType))
+                val textCol = c.getString(c.getColumnIndexOrThrow("text"))
+                Log.i(TAG, "Found part: id=$id ct=$mimeType text=${textCol?.take(50)} for mmsId=$mmsId")
+                entries.add(PartEntry(id, mimeType, textCol))
             }
             if (entries.isEmpty()) Log.w(TAG, "No entries found for mmsId=$mmsId")
             entries
         }
     }
 
-    private fun readPartContent(context: Context, partId: Long): String? {
+    private fun readPartContent(context: Context, partId: Long, storedText: String?): String? {
+        if (!storedText.isNullOrBlank()) return storedText
         val uri = Uri.parse("content://mms/part/$partId")
         return try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -133,5 +135,6 @@ internal object MmsPartResolver {
     private data class PartEntry(
         val id: Long,
         val mimeType: String,
+        val text: String? = null,
     )
 }
