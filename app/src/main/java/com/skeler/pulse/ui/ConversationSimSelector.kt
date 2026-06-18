@@ -157,7 +157,7 @@ internal fun ConversationSimSelector(
     val contentColor = if (canToggleSim) {
         colors.onSurface
     } else {
-        colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha)
+        colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA)
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {

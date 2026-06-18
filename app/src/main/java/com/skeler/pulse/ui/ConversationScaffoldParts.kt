@@ -182,7 +182,7 @@ internal fun ConversationTopBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = topBarChromeContainerColor,
             scrolledContainerColor = colors.surface.copy(
-                alpha = ConversationVisualTokens.topBarSurfaceAlpha,
+                alpha = ConversationVisualTokens.TOP_BAR_SURFACE_ALPHA,
             ),
             navigationIconContentColor = topBarContentColor,
             titleContentColor = topBarContentColor,

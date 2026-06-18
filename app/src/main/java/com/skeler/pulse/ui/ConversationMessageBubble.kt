@@ -138,7 +138,7 @@ import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
 import com.skeler.pulse.design.component.StatusPill
 import com.skeler.pulse.design.util.elasticOverscroll
-import com.skeler.pulse.design.util.isNearListEnd
+
 import com.skeler.pulse.design.util.motionAnimateItemModifier
 import com.skeler.pulse.design.util.rememberEntranceModifier
 import com.skeler.pulse.design.util.rememberReducedMotionEnabled
@@ -153,6 +153,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import java.time.Instant
 
 
@@ -193,9 +194,9 @@ internal fun ConversationMessageBubble(
     val bubbleOutlineColor by animateColorAsState(
         targetValue = when {
             isSelected -> colors.primary.copy(alpha = 0.8f)
-            hasFailedDelivery -> colors.error.copy(alpha = ConversationVisualTokens.failedBubbleOutlineAlpha)
-            isPressed -> colors.primary.copy(alpha = ConversationVisualTokens.pressedBubbleOutlineAlpha)
-            isUnread -> colors.tertiary.copy(alpha = ConversationVisualTokens.unreadBubbleOutlineAlpha)
+            hasFailedDelivery -> colors.error.copy(alpha = ConversationVisualTokens.FAILED_BUBBLE_OUTLINE_ALPHA)
+            isPressed -> colors.primary.copy(alpha = ConversationVisualTokens.PRESSED_BUBBLE_OUTLINE_ALPHA)
+            isUnread -> colors.tertiary.copy(alpha = ConversationVisualTokens.UNREAD_BUBBLE_OUTLINE_ALPHA)
             else -> conversationRestingBubbleOutlineColor(colors, isOutbound)
         },
         label = "message_bubble_press_outline",
@@ -546,9 +547,9 @@ private fun VoiceMessagePlayer(
                         0
                     }
                 }
-                delay(33)
+                delay(33.milliseconds)
             } else {
-                delay(100)
+                delay(100.milliseconds)
             }
         }
     }

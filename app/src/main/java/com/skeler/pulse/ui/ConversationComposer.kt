@@ -176,6 +176,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import java.time.Instant
 
 private sealed interface VoiceMode {
@@ -257,7 +258,7 @@ internal fun ConversationComposer(
         targetValue = if (canSend) {
             colors.primary
         } else {
-            colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.surfaceAlpha)
+            colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.SURFACE_ALPHA)
         },
         animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
         label = "send_container",
@@ -275,7 +276,7 @@ internal fun ConversationComposer(
         targetValue = if (canSend) {
             colors.onPrimary
         } else {
-            colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.disabledSendIconAlpha)
+            colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.DISABLED_SEND_ICON_ALPHA)
         },
         animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
         label = "send_content",
@@ -411,7 +412,7 @@ internal fun ConversationComposer(
                     imageVector = if (showAttachmentMenu) Icons.Rounded.Close else Icons.Rounded.Add,
                     contentDescription = stringResource(R.string.conversation_attach_content_description),
                     modifier = Modifier.size(ConversationComposerTokens.attachmentIconSize),
-                    tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha),
+                    tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
                 )
             }
             when (voiceMode) {
@@ -486,7 +487,7 @@ internal fun ConversationComposer(
                                                 },
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 color = colors.onSurfaceVariant.copy(
-                                                    alpha = ConversationComposerTokens.placeholderAlpha,
+                                                    alpha = ConversationComposerTokens.PLACEHOLDER_ALPHA,
                                                 ),
                                             )
                                         }
@@ -514,12 +515,7 @@ internal fun ConversationComposer(
                             contentAlignment = Alignment.Center,
                         ) {
                             IconButton(
-                                onClick = {
-                                    if (canSend) {
-                                        onSend()
-                                    }
-                                },
-                                enabled = canSend,
+                                onClick = onSend,
                                 modifier = Modifier.fillMaxSize(),
                                 interactionSource = sendInteractionSource,
                             ) {
@@ -560,7 +556,7 @@ internal fun ConversationComposer(
                                 imageVector = Icons.Rounded.Mic,
                                 contentDescription = stringResource(R.string.voice_recording_start),
                                 modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
-                                tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.inactiveAlpha),
+                                tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
                             )
                         }
                     }
@@ -659,9 +655,9 @@ internal fun ConversationComposer(
                                 mediaPlayer?.let { mp ->
                                     currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
                                 }
-                                delay(33)
+                                delay(33.milliseconds)
                             } else {
-                                delay(100)
+                                delay(100.milliseconds)
                             }
                         }
                     }
