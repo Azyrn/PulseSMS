@@ -21,6 +21,7 @@ class QuickComposeReceiver : BroadcastReceiver() {
         when (intent.action) {
             ACTION_SET_CONTACT -> handleSetContact(context, intent)
             ACTION_SEND_MESSAGE -> handleSendMessage(context, intent)
+            ACTION_DISMISSED -> handleDismissed(context)
         }
     }
 
@@ -112,9 +113,25 @@ class QuickComposeReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun handleDismissed(context: Context) {
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (NotificationPreferences(context).isQuickComposeEnabled()) {
+                    QuickComposeNotificationManager.show(context)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to re-show quick compose notification after dismiss", e)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "QuickComposeReceiver"
         const val ACTION_SET_CONTACT = "com.skeler.pulse.action.QUICK_COMPOSE_SET_CONTACT"
         const val ACTION_SEND_MESSAGE = "com.skeler.pulse.action.QUICK_COMPOSE_SEND_MESSAGE"
+        const val ACTION_DISMISSED = "com.skeler.pulse.action.QUICK_COMPOSE_DISMISSED"
     }
 }

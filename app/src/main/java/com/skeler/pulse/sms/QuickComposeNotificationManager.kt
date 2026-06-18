@@ -21,6 +21,7 @@ object QuickComposeNotificationManager {
     private const val REQUEST_CODE_CONTACT = 900101
     private const val REQUEST_CODE_SEND = 900102
     private const val REQUEST_CODE_OPEN = 900103
+    private const val REQUEST_CODE_DISMISS = 900104
     const val CHANNEL_ID = "quick_compose_channel"
     private const val PREFS_NAME = "quick_compose"
     private const val KEY_TARGET_NUMBER = "target_number"
@@ -96,6 +97,13 @@ object QuickComposeNotificationManager {
             context, REQUEST_CODE_OPEN, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val dismissIntent = Intent(context, QuickComposeReceiver::class.java).apply {
+            action = QuickComposeReceiver.ACTION_DISMISSED
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            context, REQUEST_CODE_DISMISS, dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(R.string.quick_compose_title))
@@ -104,6 +112,7 @@ object QuickComposeNotificationManager {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setDeleteIntent(dismissPendingIntent)
             .addAction(contactAction)
             .addAction(sendAction)
             .build()
