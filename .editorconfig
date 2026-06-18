@@ -4,5 +4,5 @@ root = true
 indent_style = space
 indent_size = 4
 
-[*.kt]
+[*.{kt,kts}]
 ktlint_function_naming_ignore_when_annotated_with = Composable
