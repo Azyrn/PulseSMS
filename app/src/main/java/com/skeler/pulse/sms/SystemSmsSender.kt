@@ -462,9 +462,15 @@ internal class SystemSmsSender(
         val mmsNetwork = cm.awaitNetwork(
             NetworkCapabilities.TRANSPORT_CELLULAR,
             NetworkCapabilities.NET_CAPABILITY_MMS,
+            timeoutMs = 20_000,
         ) ?: cm.awaitNetwork(
             NetworkCapabilities.TRANSPORT_CELLULAR,
             NetworkCapabilities.NET_CAPABILITY_INTERNET,
+            timeoutMs = 10_000,
+        ) ?: cm.awaitNetwork(
+            NetworkCapabilities.TRANSPORT_WIFI,
+            NetworkCapabilities.NET_CAPABILITY_INTERNET,
+            timeoutMs = 5_000,
         )
         val previousNetwork = if (Build.VERSION.SDK_INT >= 23) {
             cm.getBoundNetworkForProcess()

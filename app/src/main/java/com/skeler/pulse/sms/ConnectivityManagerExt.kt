@@ -36,7 +36,11 @@ suspend fun ConnectivityManager.awaitNetwork(
 
         val handler = Handler(Looper.getMainLooper())
         if (Build.VERSION.SDK_INT >= 31) {
-            requestNetwork(request, callback, handler, timeoutMs.toInt())
+            try {
+                requestNetwork(request, callback, handler, timeoutMs.toInt())
+            } catch (_: SecurityException) {
+                requestNetwork(request, callback, handler)
+            }
         } else {
             requestNetwork(request, callback, handler)
         }
