@@ -49,7 +49,11 @@ help:
 	@printf "  $(GREEN)run$(NC)          - Lance l'application\n"
 	@printf "  $(GREEN)uninstall$(NC)    - Désinstalle l'application\n"
 	@printf "  $(GREEN)rebuild$(NC)      - Nettoie, compile, installe et lance\n"
-	@printf "  $(GREEN)logs$(NC)         - Affiche les logs filtrés pour cette app\n"
+	@printf "  $(GREEN)logs$(NC)         - Affiche les logs filtrés pour cette app (via PID)\n"
+	@printf "  $(GREEN)logs-grep$(NC)    - Affiche les logs filtrés par nom de package (grep)\n"
+	@printf "  $(GREEN)logs-raw$(NC)     - Affiche tous les logs sans filtre\n"
+	@printf "  $(GREEN)logs-clear$(NC)   - Efface le buffer de logs puis affiche les logs\n"
+	@printf "  $(GREEN)logs-error$(NC)   - Affiche uniquement les erreurs (E) et fatals (F)\n"
 	@printf "  $(GREEN)devices$(NC)      - Liste les appareils connectés\n"
 	@printf "  $(GREEN)check-adb$(NC)    - Vérifie qu'un appareil est connecté\n"
 	@printf "  $(GREEN)help$(NC)         - Affiche cette aide\n"
@@ -102,8 +106,53 @@ uninstall: check-adb
 # --- Logs ---
 .PHONY: logs
 logs: check-adb
-	@printf "$(YELLOW)Affichage des logs (Ctrl+C pour arreter)...$(NC)\n"
-	$(ADB) logcat | grep -E "$(PACKAGE_NAME)|$(shell echo $(PACKAGE_NAME) | tr '.' '/')"
+	@printf "$(YELLOW)Affichage des logs via PID (Ctrl+C pour arreter)...$(NC)\n"
+	@PID=$$($(ADB) shell pidof $(PACKAGE_NAME)); \
+	if [ -z "$$PID" ]; then \
+		printf "$(RED)Erreur : L'application $(PACKAGE_NAME) n'est pas en cours d'execution.$(NC)\n"; \
+		printf "   -> Lancez d'abord l'app avec : $(BOLD)make run$(NC)\n"; \
+		exit 1; \
+	fi; \
+	printf "$(CYAN)PID detecte : $$PID$(NC)\n"; \
+	$(ADB) logcat --pid=$$PID
+
+# --- Logs via grep (fonctionne même si l'app n'est pas lancée) ---
+.PHONY: logs-grep
+logs-grep: check-adb
+	@printf "$(YELLOW)Affichage des logs filtrés par '$(PACKAGE_NAME)' (Ctrl+C pour arreter)...$(NC)\n"
+	$(ADB) logcat | grep -E "$(PACKAGE_NAME)|AndroidRuntime|System\.err"
+
+# --- Logs bruts (sans filtre) ---
+.PHONY: logs-raw
+logs-raw: check-adb
+	@printf "$(YELLOW)Affichage de tous les logs (Ctrl+C pour arreter)...$(NC)\n"
+	$(ADB) logcat
+
+# --- Logs avec effacement préalable du buffer ---
+.PHONY: logs-clear
+logs-clear: check-adb
+	@printf "$(YELLOW)Effacement du buffer de logs...$(NC)\n"
+	@$(ADB) logcat -c
+	@printf "$(GREEN)Buffer efface. Lancement des logs...$(NC)\n"
+	@PID=$$($(ADB) shell pidof $(PACKAGE_NAME)); \
+	if [ -z "$$PID" ]; then \
+		printf "$(RED)App non lancee, utilisation du filtre grep...$(NC)\n"; \
+		$(ADB) logcat | grep -E "$(PACKAGE_NAME)|AndroidRuntime|System\.err"; \
+	else \
+		printf "$(CYAN)PID detecte : $$PID$(NC)\n"; \
+		$(ADB) logcat --pid=$$PID; \
+	fi
+
+# --- Logs erreurs uniquement ---
+.PHONY: logs-error
+logs-error: check-adb
+	@printf "$(YELLOW)Affichage des erreurs et fatals uniquement (Ctrl+C pour arreter)...$(NC)\n"
+	@PID=$$($(ADB) shell pidof $(PACKAGE_NAME)); \
+	if [ -n "$$PID" ]; then \
+		$(ADB) logcat --pid=$$PID *:E; \
+	else \
+		$(ADB) logcat *:E | grep -E "$(PACKAGE_NAME)|AndroidRuntime|System\.err"; \
+	fi
 
 # --- Appareils connectes ---
 .PHONY: devices
