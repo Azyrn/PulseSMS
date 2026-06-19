@@ -117,7 +117,7 @@ install: check-adb build
 	@if $(ADB) shell pm list packages | grep -q $(PACKAGE_NAME); then \
 		printf "$(CYAN)App deja installee, tentative de mise a jour...$(NC)\n"; \
 	fi
-	$(ADB) install -r -t -d $(APK_DEBUG_PATH) || { \
+	@$(ADB) install -r -t -d $(APK_DEBUG_PATH) || { \
 		printf "$(RED)Echec de l'installation.$(NC)\n"; \
 		printf "   -> Essayez : $(BOLD)make reinstall$(NC) (desinstalle puis reinstalle)\n"; \
 		printf "   -> Ou verifiez : $(BOLD)adb logcat$(NC) pour l'erreur detaillee\n"; \
