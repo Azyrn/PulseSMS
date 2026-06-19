@@ -289,7 +289,7 @@ class RealSmsViewModel(
                 if (imageUris.isNotEmpty()) {
                     smsReader.sendMms(address, trimmedBody, imageUris)
                 } else {
-                    smsReader.sendSms(address, trimmedBody, subscriptionId)
+                    smsReader.sendSms(address, trimmedBody, subscriptionId, waitForDelivery = false)
                 }
                 if (sendSequence == seq) {
                     _sendState.value = SendState.Sent(trimmedBody)

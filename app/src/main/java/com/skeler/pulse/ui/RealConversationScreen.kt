@@ -164,8 +164,6 @@ internal fun RealConversationScreen(
             is SendState.Sending -> {
                 delay(100.milliseconds)
                 listState.scrollToItemSmoothly(0)
-                delay(10000.milliseconds)
-                onClearSendState()
             }
             is SendState.Sent -> {
                 delay(200.milliseconds)
