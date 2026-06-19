@@ -312,12 +312,16 @@ class RealSmsViewModel(
         if (emoji != null && message != null && message.body.isNotBlank()) {
             val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
             viewModelScope.launch {
-                smsReader.sendSms(
-                    address = conversationState.address,
-                    body = reactionText,
-                    subscriptionId = null,
-                    waitForDelivery = false,
-                )
+                try {
+                    smsReader.sendSms(
+                        address = conversationState.address,
+                        body = reactionText,
+                        subscriptionId = null,
+                        waitForDelivery = false,
+                    )
+                } catch (_: Exception) {
+                    // send failed silently — reaction is still stored locally
+                }
             }
         }
         viewModelScope.launch {
