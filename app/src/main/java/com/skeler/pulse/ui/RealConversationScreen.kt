@@ -47,6 +47,7 @@ import com.skeler.pulse.design.util.rememberReducedMotionEnabled
 import com.skeler.pulse.design.util.rememberSmoothFlingBehavior
 import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.SystemSms
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -91,6 +92,7 @@ internal fun RealConversationScreen(
     var shouldShowDiscardDraftDialog by rememberSaveable(address) { mutableStateOf(false) }
     var previousMessageCount by remember(address) { mutableIntStateOf(0) }
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var showAttachmentMenu by remember { mutableStateOf(false) }
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents(),
     ) { uris -> selectedImageUris = selectedImageUris + uris }
@@ -160,13 +162,15 @@ internal fun RealConversationScreen(
         }
         when (sendState) {
             is SendState.Sending -> {
-                delay(100)
+                delay(100.milliseconds)
                 listState.scrollToItemSmoothly(0)
+                delay(10000.milliseconds)
+                onClearSendState()
             }
             is SendState.Sent -> {
-                delay(200)
+                delay(200.milliseconds)
                 listState.scrollToItemSmoothly(0)
-                delay(1000)
+                delay(1000.milliseconds)
                 onClearSendState()
             }
             is SendState.Failed -> {
@@ -223,7 +227,9 @@ internal fun RealConversationScreen(
     }
 
     BackHandler {
-        if (selectedMessages.isNotEmpty()) {
+        if (showAttachmentMenu) {
+            showAttachmentMenu = false
+        } else if (selectedMessages.isNotEmpty()) {
             selectedMessages = emptySet()
         } else if (shouldShowDiscardDraftDialog) {
             shouldShowDiscardDraftDialog = false
@@ -324,6 +330,7 @@ internal fun RealConversationScreen(
                         val selectedTextMessages = messages.filter { it in selectedMessages }
                         val text = selectedTextMessages.joinToString("\n\n") { it.body }
                         if (text.isNotEmpty()) {
+                            @Suppress("UseOfSetterInsteadOfPropertyAccess")
                             clipboardManager?.setPrimaryClip(
                                 ClipData.newPlainText(clipboardMessageLabel, text)
                             )
@@ -389,6 +396,8 @@ internal fun RealConversationScreen(
                     keyboardController?.hide()
                     onSendVoice(uri)
                 },
+                showAttachmentMenu = showAttachmentMenu,
+                onAttachmentMenuVisibilityChange = { showAttachmentMenu = it },
             )
         },
     ) { innerPadding ->
@@ -433,6 +442,7 @@ internal fun RealConversationScreen(
                     loadingMore = loadingMore,
                     onLoadMoreMessages = onLoadMoreMessages,
                     onCopyCode = { code ->
+                        @Suppress("UseOfSetterInsteadOfPropertyAccess")
                         clipboardManager?.setPrimaryClip(ClipData.newPlainText(clipboardCodeLabel, code))
                     },
                     onToggleMessageSelection = { message ->

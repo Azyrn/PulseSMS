@@ -11,7 +11,6 @@ import android.os.Build
 import android.provider.MediaStore
 import android.provider.Telephony
 import android.util.Log
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -204,6 +203,8 @@ internal fun ConversationComposer(
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
     onVoiceRecorded: (Uri) -> Unit = {},
+    showAttachmentMenu: Boolean = false,
+    onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = rememberReducedMotionEnabled()
@@ -323,19 +324,18 @@ internal fun ConversationComposer(
                 )
             }
         }
-        var showAttachmentMenu by remember { mutableStateOf(false) }
         var voiceMode by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
         val voiceRecorder = remember { mutableStateOf<MediaRecorder?>(null) }
 
         LaunchedEffect(isFocused) {
-            if (isFocused) showAttachmentMenu = false
+            if (isFocused) onAttachmentMenuVisibilityChange(false)
         }
         LaunchedEffect(voiceMode) {
             if (voiceMode is VoiceMode.Recording) {
                 val s = voiceMode as VoiceMode.Recording
                 var amps = s.amplitudes
                 while (true) {
-                    delay(50)
+                    delay(50.milliseconds)
                     if (voiceMode !is VoiceMode.Recording) break
                     val amp = voiceRecorder.value?.maxAmplitude ?: 0
                     val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
@@ -401,8 +401,8 @@ internal fun ConversationComposer(
         ) {
             IconButton(
                 onClick = {
-                    showAttachmentMenu = !showAttachmentMenu
-                    if (showAttachmentMenu) keyboardController?.hide()
+                    onAttachmentMenuVisibilityChange(!showAttachmentMenu)
+                    if (!showAttachmentMenu) keyboardController?.hide()
                 },
                 enabled = !isSending,
                 modifier = Modifier
@@ -891,7 +891,7 @@ internal fun ConversationComposer(
                             CameraPreviewContent(
                                 onPhotoTaken = { uri ->
                                     onImageSelected(selectedImageUris + uri)
-                                    showAttachmentMenu = false
+                                    onAttachmentMenuVisibilityChange(false)
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -901,7 +901,7 @@ internal fun ConversationComposer(
                         AttachmentTab.VOICE -> {
                             VoiceRecordingContent(
                                 onVoiceRecorded = { uri ->
-                                    showAttachmentMenu = false
+                                    onAttachmentMenuVisibilityChange(false)
                                     onVoiceRecorded(uri)
                                 },
                                 modifier = Modifier
@@ -1003,7 +1003,7 @@ internal fun ConversationComposer(
                                         FilledTonalButton(
                                             onClick = {
                                                 onImageSelected(selectedImageUris + pendingGallerySelection.toList())
-                                                showAttachmentMenu = false
+                                                onAttachmentMenuVisibilityChange(false)
                                             },
                                         ) {
                                             Text(stringResource(R.string.attachment_gallery_add, pendingGallerySelection.size))
@@ -1234,7 +1234,7 @@ private fun VoiceRecordingContent(
             val s = state as VoiceRecordingUiState.Recording
             var amps = s.amplitudes
             while (true) {
-                delay(50)
+                delay(50.milliseconds)
                 if (state !is VoiceRecordingUiState.Recording) break
                 val amp = recorder.value?.maxAmplitude ?: 0
                 val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
@@ -1414,9 +1414,9 @@ private fun VoiceRecordingContent(
                             mediaPlayer?.let { mp ->
                                 currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
                             }
-                            delay(33)
+                            delay(33.milliseconds)
                         } else {
-                            delay(100)
+                            delay(100.milliseconds)
                         }
                     }
                 }

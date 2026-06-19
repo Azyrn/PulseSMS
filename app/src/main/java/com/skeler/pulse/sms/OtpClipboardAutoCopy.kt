@@ -21,6 +21,7 @@ internal object OtpClipboardAutoCopy {
         val clipboardManager = appContext.getSystemService(ClipboardManager::class.java) ?: return false
 
         return runCatching {
+            @Suppress("UseOfSetterInsteadOfPropertyAccess")
             clipboardManager.setPrimaryClip(ClipData.newPlainText(CLIPBOARD_LABEL, code))
             true
         }.getOrElse { error ->

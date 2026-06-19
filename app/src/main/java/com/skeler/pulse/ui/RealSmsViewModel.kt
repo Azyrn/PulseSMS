@@ -341,9 +341,7 @@ class RealSmsViewModel(
     }
 
     fun clearSendState() {
-        if (_sendState.value !is SendState.Sending) {
-            _sendState.value = SendState.Idle
-        }
+        _sendState.value = SendState.Idle
     }
 
     fun toggleThreadPinned(threadId: Long) {

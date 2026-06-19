@@ -222,6 +222,8 @@ internal fun ConversationBottomBar(
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
     onVoiceRecorded: (Uri) -> Unit = {},
+    showAttachmentMenu: Boolean = false,
+    onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
 ) {
     if (isReplyable) {
         Column(
@@ -251,6 +253,8 @@ internal fun ConversationBottomBar(
                 onImagePickFromGallery = onImagePickFromGallery,
                 onTakePhoto = onTakePhoto,
                 onVoiceRecorded = onVoiceRecorded,
+                showAttachmentMenu = showAttachmentMenu,
+                onAttachmentMenuVisibilityChange = onAttachmentMenuVisibilityChange,
             )
         }
     } else {
