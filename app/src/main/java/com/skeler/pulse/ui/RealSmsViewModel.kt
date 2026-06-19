@@ -8,6 +8,8 @@ import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.InboxThreadPreferences
+import com.skeler.pulse.sms.MessageReactionPreferences
+import com.skeler.pulse.sms.ReactionParser
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
 import com.skeler.pulse.sms.SystemSmsReader
@@ -38,6 +40,7 @@ class RealSmsViewModel(
     private val smsReader: SystemSmsReader,
     private val importantMessagePreferences: ImportantMessagePreferences,
     private val inboxThreadPreferences: InboxThreadPreferences,
+    private val messageReactionPreferences: MessageReactionPreferences,
 ) : ViewModel() {
 
     private val _inboxState = MutableStateFlow(RealInboxState())
@@ -69,12 +72,14 @@ class RealSmsViewModel(
                     inboxThreadPreferences.pinnedThreadIds,
                     inboxThreadPreferences.archivedThreadIds,
                     inboxThreadPreferences.blockedAddresses,
-                ) { threads, pinnedIds, archivedIds, blockedAddresses ->
+                    inboxThreadPreferences.threadEmojis,
+                ) { threads, pinnedIds, archivedIds, blockedAddresses, threadEmojis ->
                     InboxThreadPreferenceSnapshot(
                         threads = threads,
                         pinnedIds = pinnedIds,
                         archivedIds = archivedIds,
                         blockedAddresses = blockedAddresses,
+                        threadEmojis = threadEmojis,
                     )
                 }.collectLatest { snapshot ->
                     val readTarget = pendingReadTarget
@@ -96,6 +101,7 @@ class RealSmsViewModel(
                         pinnedThreadIds = snapshot.pinnedIds,
                         archivedThreadIds = snapshot.archivedIds,
                         blockedAddresses = snapshot.blockedAddresses,
+                        threadEmojis = snapshot.threadEmojis,
                         loading = false,
                         showLoadingCard = false,
                         errorMessage = null,
@@ -178,7 +184,8 @@ class RealSmsViewModel(
             combine(
                 smsReader.observeMessages(address = address, threadId = threadId, maxCount = batchSize),
                 importantMessagePreferences.importantMessageIds,
-            ) { (recent, totalCount), importantIds ->
+                messageReactionPreferences.messageReactions,
+            ) { (recent, totalCount), importantIds, messageReactions ->
                 if (recent.size >= batchSize) {
                     hasMoreMessages = true
                 }
@@ -191,15 +198,47 @@ class RealSmsViewModel(
                 } else {
                     allMessages
                 }
-                val visibleImportantIds = visibleMessages.asSequence()
+
+                val reactionMessageIds = mutableSetOf<Long>()
+                val parsedReactions = mutableMapOf<Long, String>()
+                val unmatched = mutableListOf<UnmatchedReaction>()
+                for (msg in visibleMessages) {
+                    val parsed = ReactionParser.parseReaction(msg.body) ?: continue
+                    reactionMessageIds.add(msg.id)
+                    val target = ReactionParser.findMessageMatch(
+                        referencedText = parsed.referencedText,
+                        messages = visibleMessages,
+                    )
+                    if (target != null) {
+                        parsedReactions[target.id] = parsed.emoji
+                    } else {
+                        unmatched += UnmatchedReaction(
+                            emoji = parsed.emoji,
+                            referencedText = parsed.referencedText,
+                            date = msg.date,
+                        )
+                    }
+                }
+                val filteredMessages = visibleMessages.filterNot { it.id in reactionMessageIds }
+
+                val mergedReactions = messageReactions.toMutableMap()
+                for ((targetId, emoji) in parsedReactions) {
+                    if (targetId !in mergedReactions) {
+                        mergedReactions[targetId] = emoji
+                    }
+                }
+
+                val visibleImportantIds = filteredMessages.asSequence()
                     .map(SystemSms::id)
                     .filter(importantIds::contains)
                     .toSet()
                 RealConversationState(
                     address = address,
-                    messages = visibleMessages,
+                    messages = filteredMessages,
                     loading = false,
                     importantMessageIds = visibleImportantIds,
+                    messageReactions = mergedReactions,
+                    unmatchedReactions = unmatched,
                     isReplyable = address.isReplyableConversationAddress(),
                     hasMoreMessages = hasMoreMessages,
                     totalMessageCount = totalCount,
@@ -264,6 +303,34 @@ class RealSmsViewModel(
     fun toggleImportantMessage(messageId: Long) {
         viewModelScope.launch {
             importantMessagePreferences.toggleImportant(messageId)
+        }
+    }
+
+    fun setMessageReaction(messageId: Long, emoji: String?) {
+        val conversationState = _conversationState.value
+        val message = conversationState.messages.firstOrNull { it.id == messageId }
+        if (emoji != null && message != null && message.body.isNotBlank()) {
+            val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
+            viewModelScope.launch {
+                smsReader.sendSms(
+                    address = conversationState.address,
+                    body = reactionText,
+                    subscriptionId = null,
+                    waitForDelivery = false,
+                )
+            }
+        }
+        viewModelScope.launch {
+            messageReactionPreferences.setReaction(messageId, emoji)
+        }
+        _conversationState.update { state ->
+            state.copy(
+                messageReactions = if (emoji != null) {
+                    state.messageReactions + (messageId to emoji)
+                } else {
+                    state.messageReactions - messageId
+                },
+            )
         }
     }
 
@@ -350,6 +417,12 @@ class RealSmsViewModel(
         }
     }
 
+    fun setThreadEmoji(threadId: Long, emoji: String?) {
+        viewModelScope.launch {
+            inboxThreadPreferences.setThreadEmoji(threadId, emoji)
+        }
+    }
+
     fun toggleThreadArchived(threadId: Long) {
         viewModelScope.launch {
             inboxThreadPreferences.toggleArchived(threadId)
@@ -426,4 +499,5 @@ private data class InboxThreadPreferenceSnapshot(
     val pinnedIds: Set<Long>,
     val archivedIds: Set<Long>,
     val blockedAddresses: Set<String>,
+    val threadEmojis: Map<Long, String>,
 )

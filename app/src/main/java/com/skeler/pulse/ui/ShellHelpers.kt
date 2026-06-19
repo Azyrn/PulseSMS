@@ -56,36 +56,72 @@ internal sealed interface ConversationTimelineItem {
         override val key: String = "conversation_message_${message.id}"
         override val contentType: String = "conversation_message"
     }
+
+    data class ReactionCard(
+        val emoji: String,
+        val referencedText: String,
+        override val key: String,
+    ) : ConversationTimelineItem {
+        override val contentType: String = "conversation_reaction_card"
+    }
 }
 
-internal fun List<SystemSms>.toConversationTimeline(
+data class UnmatchedReaction(
+    val emoji: String,
+    val referencedText: String,
+    val date: Long,
+) {
+    val key: String get() = "conversation_reaction_$date"
+}
+
+internal fun buildConversationTimeline(
+    messages: List<SystemSms>,
+    unmatchedReactions: List<UnmatchedReaction>,
     unreadMessagesFormatter: (Int) -> String,
     todayLabel: String,
     yesterdayLabel: String,
 ): List<ConversationTimelineItem> {
-    if (isEmpty()) return emptyList()
+    if (messages.isEmpty() && unmatchedReactions.isEmpty()) return emptyList()
 
-    val items = ArrayList<ConversationTimelineItem>(size + 4)
+    val items = ArrayList<ConversationTimelineItem>(messages.size + unmatchedReactions.size + 4)
     var lastDate: LocalDate? = null
-    val unreadMessages = count { it.isInbound && !it.read }
-    val firstUnreadMessageId = firstOrNull { it.isInbound && !it.read }?.id
+    val unreadMessages = messages.count { it.isInbound && !it.read }
+    val firstUnreadMessageId = messages.firstOrNull { it.isInbound && !it.read }?.id
 
-    for (message in this) {
-        val localDate = message.timestamp.atZone(ZoneId.systemDefault()).toLocalDate()
-        if (localDate != lastDate) {
+    val allEntries = buildList<Pair<Long, Any>> {
+        messages.forEach { add(Pair(it.date, it)) }
+        unmatchedReactions.forEach { add(Pair(it.date, it)) }
+        sortBy { it.first }
+    }
+
+    for (entry in allEntries) {
+        val entryDate = java.time.Instant.ofEpochMilli(entry.first)
+            .atZone(ZoneId.systemDefault()).toLocalDate()
+        if (entryDate != lastDate) {
             items += ConversationTimelineItem.DayDivider(
-                key = "conversation_day_${localDate}",
-                label = localDate.toConversationDayLabel(todayLabel, yesterdayLabel),
+                key = "conversation_day_${entryDate}",
+                label = entryDate.toConversationDayLabel(todayLabel, yesterdayLabel),
             )
-            lastDate = localDate
+            lastDate = entryDate
         }
-        if (message.id == firstUnreadMessageId) {
-            items += ConversationTimelineItem.UnreadDivider(
-                key = "conversation_unread_${message.id}",
-                label = unreadMessagesFormatter(unreadMessages),
-            )
+        when (val data = entry.second) {
+            is SystemSms -> {
+                if (data.id == firstUnreadMessageId) {
+                    items += ConversationTimelineItem.UnreadDivider(
+                        key = "conversation_unread_${data.id}",
+                        label = unreadMessagesFormatter(unreadMessages),
+                    )
+                }
+                items += ConversationTimelineItem.Message(data)
+            }
+            is UnmatchedReaction -> {
+                items += ConversationTimelineItem.ReactionCard(
+                    emoji = data.emoji,
+                    referencedText = data.referencedText,
+                    key = data.key,
+                )
+            }
         }
-        items += ConversationTimelineItem.Message(message)
     }
 
     return items

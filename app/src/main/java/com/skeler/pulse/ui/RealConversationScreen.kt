@@ -62,6 +62,8 @@ internal fun RealConversationScreen(
     messages: List<SystemSms>,
     loading: Boolean,
     importantMessageIds: Set<Long>,
+    messageReactions: Map<Long, String>,
+    unmatchedReactions: List<UnmatchedReaction>,
     isReplyable: Boolean,
     sendState: SendState,
     hasMoreMessages: Boolean = false,
@@ -80,6 +82,7 @@ internal fun RealConversationScreen(
     onForwardMessage: (String) -> Unit,
     onCallAddress: () -> Unit,
     onLoadMoreMessages: () -> Unit = {},
+    onSetMessageReaction: (Long, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -180,8 +183,10 @@ internal fun RealConversationScreen(
         }
     }
 
-    val timelineItems = remember(messages) {
-        messages.toConversationTimeline(
+    val timelineItems = remember(messages, unmatchedReactions) {
+        buildConversationTimeline(
+            messages = messages,
+            unmatchedReactions = unmatchedReactions,
             unreadMessagesFormatter = { count ->
                 context.resources.getQuantityString(R.plurals.conversation_unread_messages, count, count)
             },
@@ -196,6 +201,7 @@ internal fun RealConversationScreen(
     var selectedMessages by remember { mutableStateOf<Set<SystemSms>>(emptySet()) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var infoSheetMessage by remember { mutableStateOf<SystemSms?>(null) }
+    var reactionPickerMessageId by remember { mutableStateOf<Long?>(null) }
     val clipboardMessageLabel = stringResource(R.string.conversation_clipboard_message_label)
     val clipboardCodeLabel = stringResource(R.string.conversation_clipboard_code_label)
     val clipboardManager = remember(context) {
@@ -434,6 +440,7 @@ internal fun RealConversationScreen(
                     loading = loading,
                     timelineItems = timelineItems,
                     importantMessageIds = importantMessageIds,
+                    messageReactions = messageReactions,
                     selectedMessages = selectedMessages,
                     reducedMotion = reducedMotion,
                     hasMoreMessages = hasMoreMessages,
@@ -450,6 +457,9 @@ internal fun RealConversationScreen(
                             selectedMessages + message
                         }
                     },
+                    onMessageEmojiClick = { messageId ->
+                        reactionPickerMessageId = messageId
+                    },
                 )
             }
         }
@@ -460,6 +470,17 @@ internal fun RealConversationScreen(
         message = infoSheetMessage,
         onDismiss = { infoSheetMessage = null },
     )
+
+    val reactionMessageId = reactionPickerMessageId
+    if (reactionMessageId != null) {
+        InboxEmojiPickerSheet(
+            currentEmoji = messageReactions[reactionMessageId],
+            onEmojiSelected = { emoji ->
+                onSetMessageReaction(reactionMessageId, emoji)
+            },
+            onDismiss = { reactionPickerMessageId = null },
+        )
+    }
 }
 
 private fun createImageFile(context: android.content.Context): java.io.File {

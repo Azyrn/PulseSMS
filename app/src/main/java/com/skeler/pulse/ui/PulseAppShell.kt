@@ -193,6 +193,7 @@ fun PulseAppShell(
                             onSetThreadUnread = smsViewModel::setThreadUnread,
                             onBlockThread = smsViewModel::blockThread,
                             onDeleteThread = smsViewModel::deleteThread,
+                            onSetThreadEmoji = smsViewModel::setThreadEmoji,
                         )
                     }
                 }
@@ -243,6 +244,16 @@ fun PulseAppShell(
                         } else {
                             emptySet()
                         },
+                        messageReactions = if (conversationState.address == activeAddress) {
+                            conversationState.messageReactions
+                        } else {
+                            emptyMap()
+                        },
+                        unmatchedReactions = if (conversationState.address == activeAddress) {
+                            conversationState.unmatchedReactions
+                        } else {
+                            emptyList()
+                        },
                         isReplyable = conversationReplyabilityForActiveRoute(
                             activeAddress = activeAddress,
                             conversationState = conversationState,
@@ -280,6 +291,7 @@ fun PulseAppShell(
                             openDialer(context, activeAddress)
                         },
                         onLoadMoreMessages = smsViewModel::loadMoreMessages,
+                        onSetMessageReaction = smsViewModel::setMessageReaction,
                     )
                 }
 

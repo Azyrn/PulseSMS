@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -118,6 +119,7 @@ internal fun SmsThreadCard(
     isPinned: Boolean,
     isArchived: Boolean,
     isContextMenuOpen: Boolean,
+    emoji: String?,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onDismissMenu: () -> Unit,
@@ -126,6 +128,7 @@ internal fun SmsThreadCard(
     onToggleUnread: () -> Unit,
     onBlock: () -> Unit,
     onDelete: () -> Unit,
+    onEmojiClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -314,6 +317,16 @@ internal fun SmsThreadCard(
                             Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
+                    Text(
+                        text = emoji ?: "😊",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (emoji != null) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onEmojiClick)
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    )
                 }
             }
         }

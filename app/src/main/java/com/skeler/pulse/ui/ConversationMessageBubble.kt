@@ -163,9 +163,11 @@ internal fun ConversationMessageBubble(
     isImportant: Boolean,
     isSelected: Boolean,
     isSelectionMode: Boolean,
+    reaction: String?,
     onLongPress: () -> Unit,
     onCopyCode: (String) -> Unit,
     onToggleSelection: () -> Unit,
+    onEmojiClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = rememberReducedMotionEnabled()
@@ -369,6 +371,16 @@ internal fun ConversationMessageBubble(
                             color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                         )
                     }
+                    Text(
+                        text = reaction ?: "😊",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (reaction != null) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onEmojiClick)
+                            .padding(horizontal = 2.dp),
+                    )
                 }
             }
         }

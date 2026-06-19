@@ -39,6 +39,17 @@ class InboxThreadPreferences(
             prefs[KEY_BLOCKED_ADDRESSES].orEmpty().toCanonicalBlockedSenderKeys()
         }
 
+    val threadEmojis: Flow<Map<Long, String>> =
+        store.data.map { prefs ->
+            prefs[KEY_THREAD_EMOJIS].orEmpty().mapNotNull { entry ->
+                val colon = entry.lastIndexOf(':')
+                if (colon <= 0) return@mapNotNull null
+                val id = entry.substring(0, colon).toLongOrNull() ?: return@mapNotNull null
+                val emoji = entry.substring(colon + 1)
+                if (emoji.isEmpty()) null else id to emoji
+            }.toMap()
+        }
+
     suspend fun togglePinned(threadId: Long) {
         store.edit { prefs ->
             val current = prefs[KEY_PINNED_THREAD_IDS].orEmpty().toMutableSet()
@@ -83,15 +94,30 @@ class InboxThreadPreferences(
         }
     }
 
+    suspend fun setThreadEmoji(threadId: Long, emoji: String?) {
+        val id = threadId.toString()
+        store.edit { prefs ->
+            val current = prefs[KEY_THREAD_EMOJIS].orEmpty().toMutableSet()
+            current.removeAll { it.startsWith("$id:") }
+            if (!emoji.isNullOrBlank()) {
+                current.add("$id:$emoji")
+            }
+            prefs[KEY_THREAD_EMOJIS] = current
+        }
+    }
+
     suspend fun removeThread(threadId: Long) {
         val id = threadId.toString()
         store.edit { prefs ->
             val pinned = prefs[KEY_PINNED_THREAD_IDS].orEmpty().toMutableSet()
             val archived = prefs[KEY_ARCHIVED_THREAD_IDS].orEmpty().toMutableSet()
+            val emojis = prefs[KEY_THREAD_EMOJIS].orEmpty().toMutableSet()
             val pinnedChanged = pinned.remove(id)
             val archivedChanged = archived.remove(id)
+            val emojisChanged = emojis.removeAll { it.startsWith("$id:") }
             if (pinnedChanged) prefs[KEY_PINNED_THREAD_IDS] = pinned
             if (archivedChanged) prefs[KEY_ARCHIVED_THREAD_IDS] = archived
+            if (emojisChanged) prefs[KEY_THREAD_EMOJIS] = emojis
         }
     }
 
@@ -100,5 +126,6 @@ class InboxThreadPreferences(
         private val KEY_PINNED_THREAD_IDS = stringSetPreferencesKey("pinned_thread_ids")
         private val KEY_ARCHIVED_THREAD_IDS = stringSetPreferencesKey("archived_thread_ids")
         private val KEY_BLOCKED_ADDRESSES = stringSetPreferencesKey("blocked_addresses")
+        private val KEY_THREAD_EMOJIS = stringSetPreferencesKey("thread_emojis")
     }
 }

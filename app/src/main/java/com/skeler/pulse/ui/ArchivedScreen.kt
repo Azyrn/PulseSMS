@@ -135,6 +135,7 @@ internal fun ArchivedChatsScreen(
                             isPinned = thread.threadId in pinnedThreadIds,
                             isArchived = thread.threadId in archivedThreadIds,
                             isContextMenuOpen = isMenuOpenForThread,
+                            emoji = null,
                             onClick = { onOpenConversation(thread.address, thread.threadId) },
                             onLongPress = { contextMenuThreadId = thread.threadId },
                             onDismissMenu = { contextMenuThreadId = null },
@@ -149,6 +150,7 @@ internal fun ArchivedChatsScreen(
                             },
                             onBlock = { onBlockThread(thread.address) },
                             onDelete = { onDeleteThread(thread.threadId, thread.address) },
+                            onEmojiClick = {},
                             modifier = if (isMenuOpenForThread) itemModifier.then(Modifier.zIndex(2f)) else itemModifier,
                         )
                     }

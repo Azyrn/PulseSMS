@@ -275,10 +275,12 @@ internal fun LazyListScope.conversationTimelineItems(
     loading: Boolean,
     timelineItems: List<ConversationTimelineItem>,
     importantMessageIds: Set<Long>,
+    messageReactions: Map<Long, String>,
     selectedMessages: Set<SystemSms>,
     reducedMotion: Boolean,
     onCopyCode: (String) -> Unit,
     onToggleMessageSelection: (SystemSms) -> Unit,
+    onMessageEmojiClick: (Long) -> Unit,
     hasMoreMessages: Boolean = false,
     loadingMore: Boolean = false,
     onLoadMoreMessages: () -> Unit = {},
@@ -318,9 +320,16 @@ internal fun LazyListScope.conversationTimelineItems(
                     isImportant = item.message.id in importantMessageIds,
                     isSelected = item.message in selectedMessages,
                     isSelectionMode = selectedMessages.isNotEmpty(),
+                    reaction = messageReactions[item.message.id],
                     onLongPress = { onToggleMessageSelection(item.message) },
                     onCopyCode = onCopyCode,
                     onToggleSelection = { onToggleMessageSelection(item.message) },
+                    onEmojiClick = { onMessageEmojiClick(item.message.id) },
+                    modifier = motionAnimateItemModifier(reducedMotion)
+                        .then(rememberEntranceModifier(item.key, reducedMotion)),
+                )
+                is ConversationTimelineItem.ReactionCard -> ConversationReactionCard(
+                    item = item,
                     modifier = motionAnimateItemModifier(reducedMotion)
                         .then(rememberEntranceModifier(item.key, reducedMotion)),
                 )
@@ -396,6 +405,30 @@ private fun ConversationDayDivider(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ConversationReactionCard(
+    item: ConversationTimelineItem.ReactionCard,
+    modifier: Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = ConversationPillShape,
+            color = colors.surfaceContainerLow,
+        ) {
+            Text(
+                text = "${item.emoji}  \u00ab ${item.referencedText} \u00bb",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
             )
         }
     }

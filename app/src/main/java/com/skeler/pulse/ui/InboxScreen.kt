@@ -144,11 +144,13 @@ internal fun RealInboxScreen(
     onSetThreadUnread: (Long?, String, Boolean) -> Unit,
     onBlockThread: (String) -> Unit,
     onDeleteThread: (Long?, String) -> Unit,
+    onSetThreadEmoji: (Long, String?) -> Unit,
 ) {
     var selectedFilter by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var threadEmojiPickerThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
     val searchFocusRequester = remember { FocusRequester() }
     val reducedMotion = rememberReducedMotionEnabled()
@@ -428,6 +430,7 @@ internal fun RealInboxScreen(
                             isPinned = thread.threadId in state.pinnedThreadIds,
                             isArchived = thread.threadId in state.archivedThreadIds,
                             isContextMenuOpen = contextMenuThreadId == thread.threadId,
+                            emoji = state.threadEmojis[thread.threadId],
                             onClick = { onOpenConversation(thread.address, thread.threadId) },
                             onLongPress = { contextMenuThreadId = thread.threadId },
                             onDismissMenu = { contextMenuThreadId = null },
@@ -442,6 +445,7 @@ internal fun RealInboxScreen(
                             },
                             onBlock = { onBlockThread(thread.address) },
                             onDelete = { onDeleteThread(thread.threadId, thread.address) },
+                            onEmojiClick = { threadEmojiPickerThreadId = thread.threadId },
                             modifier = itemModifier,
                         )
                     }
@@ -449,6 +453,19 @@ internal fun RealInboxScreen(
             }
 
         }
+    }
+
+    val emojiPickerThread = threadEmojiPickerThreadId?.let { pickerId ->
+        state.threads.firstOrNull { it.threadId == pickerId }
+    }
+    if (emojiPickerThread != null) {
+        InboxEmojiPickerSheet(
+            currentEmoji = state.threadEmojis[emojiPickerThread.threadId],
+            onEmojiSelected = { emoji ->
+                onSetThreadEmoji(emojiPickerThread.threadId, emoji)
+            },
+            onDismiss = { threadEmojiPickerThreadId = null },
+        )
     }
 }
 }
