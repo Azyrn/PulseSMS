@@ -372,14 +372,14 @@ internal fun ConversationMessageBubble(
                         )
                     }
                     Text(
-                        text = reaction ?: "😊",
+                        text = reaction ?: "+",
                         style = MaterialTheme.typography.labelLarge,
                         color = if (reaction != null) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .clickable(onClick = onEmojiClick)
-                            .padding(horizontal = 2.dp),
+                            .padding(horizontal = if (reaction != null) 2.dp else 4.dp, vertical = 1.dp),
                     )
                 }
             }
