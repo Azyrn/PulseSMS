@@ -83,10 +83,17 @@ internal object ReactionParser {
         val normalized = normalizeText(referencedText)
 
         return messages.lastOrNull { normalizeText(it.body) == normalized }
-            ?: messages.lastOrNull {
-                val msgBody = normalizeText(it.body)
-                msgBody.contains(normalized) || normalized.contains(msgBody)
-            }
+    }
+
+    fun findAllMatchingMessages(
+        referencedText: String,
+        messages: List<SystemSms>,
+    ): List<SystemSms> {
+        if (referencedText.isBlank()) return emptyList()
+
+        val normalized = normalizeText(referencedText)
+
+        return messages.filter { normalizeText(it.body) == normalized }
     }
 
     private fun normalizeText(text: String): String =

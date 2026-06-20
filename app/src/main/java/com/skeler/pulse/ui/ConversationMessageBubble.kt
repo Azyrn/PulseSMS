@@ -371,7 +371,7 @@ internal fun ConversationMessageBubble(
                             color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                         )
                     }
-                    val showEmoji = message.isInbound && reaction != null
+                    val showEmoji = reaction != null
                     Text(
                         text = if (showEmoji) reaction else "+",
                         style = MaterialTheme.typography.labelLarge,
