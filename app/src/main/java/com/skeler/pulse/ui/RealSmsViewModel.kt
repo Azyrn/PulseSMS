@@ -1,7 +1,7 @@
 package com.skeler.pulse.ui
 
 import android.net.Uri
-import android.util.Log
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skeler.pulse.InboxAccessState
@@ -210,7 +210,6 @@ class RealSmsViewModel(
                         referencedText = parsed.referencedText,
                         messages = visibleMessages,
                     )
-                    Log.d("Reaction", "msg#${msg.id}: body=\"${msg.body}\" → emoji=${parsed.emoji} ref=\"${parsed.referencedText}\" target=${target?.id}")
                     if (target != null) {
                         parsedReactions[target.id] = parsed.emoji
                     } else {
@@ -223,16 +222,14 @@ class RealSmsViewModel(
                 }
                 val filteredMessages = visibleMessages.filterNot { it.id in reactionMessageIds }
 
+                val filteredMessageIds = filteredMessages.mapTo(hashSetOf()) { it.id }
                 val mergedReactions = messageReactions.toMutableMap()
+                mergedReactions.keys.retainAll(filteredMessageIds)
                 for ((targetId, emoji) in parsedReactions) {
                     if (targetId !in mergedReactions) {
                         mergedReactions[targetId] = emoji
                     }
                 }
-
-                Log.d("Reaction", "mergedReactions=$mergedReactions")
-                Log.d("Reaction", "messages ids: ${filteredMessages.map { "${it.id}:${it.body}}" }}")
-                Log.d("Reaction", "unmatched=${unmatched.size}")
 
                 val visibleImportantIds = filteredMessages.asSequence()
                     .map(SystemSms::id)
@@ -317,7 +314,6 @@ class RealSmsViewModel(
         val message = conversationState.messages.firstOrNull { it.id == messageId }
         if (emoji != null && message != null && message.body.isNotBlank()) {
             val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
-            Log.d("Reaction", "send msg#$messageId emoji=$emoji → \"$reactionText\"")
             viewModelScope.launch {
                 try {
                     smsReader.sendSms(
