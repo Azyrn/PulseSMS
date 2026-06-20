@@ -82,8 +82,8 @@ internal object ReactionParser {
 
         val normalized = normalizeText(referencedText)
 
-        return messages.firstOrNull { normalizeText(it.body) == normalized }
-            ?: messages.firstOrNull {
+        return messages.lastOrNull { normalizeText(it.body) == normalized }
+            ?: messages.lastOrNull {
                 val msgBody = normalizeText(it.body)
                 msgBody.contains(normalized) || normalized.contains(msgBody)
             }
