@@ -206,14 +206,15 @@ class RealSmsViewModel(
                 for (msg in visibleMessages) {
                     val parsed = ReactionParser.parseReaction(msg.body) ?: continue
                     reactionMessageIds.add(msg.id)
-                    val targets = ReactionParser.findAllMatchingMessages(
+                    if (msg.isOutbound) continue
+                    // inbound echo of our own reaction SMS (self-testing)
+                    if (visibleMessages.any { it.id != msg.id && it.isOutbound && it.body == msg.body }) continue
+                    val target = ReactionParser.findMessageMatch(
                         referencedText = parsed.referencedText,
                         messages = visibleMessages,
                     )
-                    if (targets.isNotEmpty()) {
-                        for (target in targets) {
-                            parsedReactions[target.id] = parsed.emoji
-                        }
+                    if (target != null) {
+                        parsedReactions[target.id] = parsed.emoji
                     } else {
                         unmatched += UnmatchedReaction(
                             emoji = parsed.emoji,
@@ -328,8 +329,15 @@ class RealSmsViewModel(
             }
         }
         val allIds = if (emoji != null && message != null && message.body.isNotBlank()) {
-            val allMatches = ReactionParser.findAllMatchingMessages(message.body, conversationState.messages)
-            allMatches.map { it.id }
+            val ids = mutableListOf(messageId)
+            val previous = ReactionParser.findMessageMatch(
+                message.body,
+                conversationState.messages.filter { it.date < message.date },
+            )
+            if (previous != null && previous.id != messageId) {
+                ids.add(previous.id)
+            }
+            ids
         } else {
             listOf(messageId)
         }
@@ -337,14 +345,14 @@ class RealSmsViewModel(
             allIds.forEach { id ->
                 messageReactionPreferences.setReaction(id, emoji)
             }
-        }
-        _conversationState.update { state ->
-            val updated = if (emoji != null) {
-                allIds.fold(state.messageReactions) { acc, id -> acc + (id to emoji) }
-            } else {
-                allIds.fold(state.messageReactions) { acc, id -> acc - id }
+            _conversationState.update { state ->
+                val updated = if (emoji != null) {
+                    allIds.fold(state.messageReactions) { acc, id -> acc + (id to emoji) }
+                } else {
+                    allIds.fold(state.messageReactions) { acc, id -> acc - id }
+                }
+                state.copy(messageReactions = updated)
             }
-            state.copy(messageReactions = updated)
         }
     }
 
