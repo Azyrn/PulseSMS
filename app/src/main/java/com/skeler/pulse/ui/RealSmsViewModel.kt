@@ -1,6 +1,7 @@
 package com.skeler.pulse.ui
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skeler.pulse.InboxAccessState
@@ -209,6 +210,7 @@ class RealSmsViewModel(
                         referencedText = parsed.referencedText,
                         messages = visibleMessages,
                     )
+                    Log.d("Reaction", "msg#${msg.id}: body=\"${msg.body}\" → emoji=${parsed.emoji} ref=\"${parsed.referencedText}\" target=${target?.id}")
                     if (target != null) {
                         parsedReactions[target.id] = parsed.emoji
                     } else {
@@ -311,6 +313,7 @@ class RealSmsViewModel(
         val message = conversationState.messages.firstOrNull { it.id == messageId }
         if (emoji != null && message != null && message.body.isNotBlank()) {
             val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
+            Log.d("Reaction", "send msg#$messageId emoji=$emoji → \"$reactionText\"")
             viewModelScope.launch {
                 try {
                     smsReader.sendSms(

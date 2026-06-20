@@ -422,14 +422,24 @@ internal fun ConversationReactionCard(
     ) {
         Surface(
             shape = ConversationPillShape,
-            color = colors.surfaceContainerLow,
+            color = colors.secondaryContainer,
         ) {
-            Text(
-                text = "${item.emoji}  \u00ab ${item.referencedText} \u00bb",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = item.emoji,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                val referencedText = item.referencedText.ifBlank { "..." }
+                Text(
+                    text = "\u00ab $referencedText \u00bb",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSecondaryContainer,
+                )
+            }
         }
     }
 }
