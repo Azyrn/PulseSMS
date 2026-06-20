@@ -372,7 +372,7 @@ internal fun ConversationMessageBubble(
                         )
                     }
                     Text(
-                        text = reaction ?: "+",
+                        text = if (reaction != null) "R:$reaction" else "+",
                         style = MaterialTheme.typography.labelLarge,
                         color = if (reaction != null) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
