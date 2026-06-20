@@ -230,6 +230,10 @@ class RealSmsViewModel(
                     }
                 }
 
+                Log.d("Reaction", "mergedReactions=$mergedReactions")
+                Log.d("Reaction", "messages ids: ${filteredMessages.map { "${it.id}:${it.body}}" }}")
+                Log.d("Reaction", "unmatched=${unmatched.size}")
+
                 val visibleImportantIds = filteredMessages.asSequence()
                     .map(SystemSms::id)
                     .filter(importantIds::contains)
