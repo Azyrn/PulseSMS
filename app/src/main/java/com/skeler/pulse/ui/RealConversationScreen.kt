@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -38,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +71,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.R
 import com.skeler.pulse.design.component.StatusPill
@@ -790,21 +794,66 @@ private fun ScheduleMessageDialog(
                         text = stringResource(R.string.conversation_schedule_time),
                         style = MaterialTheme.typography.headlineSmall,
                     )
-                    Spacer(Modifier.height(16.dp))
-                    TimePicker(
-                        state = timePickerState,
-                    )
                     Spacer(Modifier.height(12.dp))
+
+                    var isClockMode by remember { mutableStateOf(true) }
+
+                    if (isClockMode) {
+                        TimePicker(state = timePickerState)
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = if (timePickerState.hour <= 9) "0${timePickerState.hour}" else timePickerState.hour.toString(),
+                                onValueChange = { text ->
+                                    val filtered = text.filter { it.isDigit() }
+                                    val value = filtered.take(2).toIntOrNull() ?: 0
+                                    timePickerState.hour = value.coerceAtMost(23)
+                                },
+                                label = { Text("HH") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                            OutlinedTextField(
+                                value = if (timePickerState.minute <= 9) "0${timePickerState.minute}" else timePickerState.minute.toString(),
+                                onValueChange = { text ->
+                                    val filtered = text.filter { it.isDigit() }
+                                    val value = filtered.take(2).toIntOrNull() ?: 0
+                                    timePickerState.minute = value.coerceAtMost(59)
+                                },
+                                label = { Text("MM") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
                     Surface(
+                        onClick = { isClockMode = !isClockMode },
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.secondaryContainer,
                     ) {
-                        Text(
-                            text = String.format("%02d:%02d %s", timePickerState.hour, timePickerState.minute, timezoneId),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 20.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                        ) {
+                            Text(
+                                text = String.format("%02d:%02d %s", timePickerState.hour, timePickerState.minute, timezoneId),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = if (isClockMode) stringResource(R.string.conversation_schedule_time_input) else stringResource(R.string.conversation_schedule_time_clock),
+                                modifier = Modifier.padding(start = 8.dp).size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                            )
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     Row(

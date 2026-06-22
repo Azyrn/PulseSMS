@@ -328,6 +328,8 @@
     <string name="conversation_schedule_cancel_title">Annuler l\'envoi programmé</string>
     <string name="conversation_schedule_cancel_body">Ce message ne sera pas envoyé.</string>
     <string name="conversation_schedule_cancel_confirm">Supprimer</string>
+    <string name="conversation_schedule_time_clock">Horloge</string>
+    <string name="conversation_schedule_time_input">Saisie</string>
 
     <!-- Encryption -->
     <string name="settings_encryption">Chiffrement</string>
