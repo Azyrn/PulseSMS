@@ -194,7 +194,6 @@ fun PulseAppShell(
                             onSetThreadUnread = smsViewModel::setThreadUnread,
                             onBlockThread = smsViewModel::blockThread,
                             onDeleteThread = smsViewModel::deleteThread,
-                            onSetThreadEmoji = smsViewModel::setThreadEmoji,
                         )
                     }
                 }
