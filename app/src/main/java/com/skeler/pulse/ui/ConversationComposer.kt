@@ -95,7 +95,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
-import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
 import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -1186,7 +1186,7 @@ private fun CameraPreviewContent(
                     .background(Color.Black.copy(alpha = 0.4f), CircleShape),
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Refresh,
+                    imageVector = Icons.Rounded.FlipCameraAndroid,
                     contentDescription = "Switch camera",
                     tint = Color.White,
                 )
