@@ -164,6 +164,7 @@ internal fun ConversationMessageBubble(
     isSelected: Boolean,
     isSelectionMode: Boolean,
     reaction: String?,
+    searchQuery: String = "",
     onLongPress: () -> Unit,
     onCopyCode: (String) -> Unit,
     onToggleSelection: () -> Unit,
@@ -213,13 +214,14 @@ internal fun ConversationMessageBubble(
         label = "message_bubble_container",
     )
     val messageText = message.body.ifBlank { " " }
-    val messageLinkText = remember(messageText, colors, hasFailedDelivery, isOutbound) {
+    val messageLinkText = remember(messageText, colors, hasFailedDelivery, isOutbound, searchQuery) {
         messageText.toConversationMessageLinks(
             linkColor = when {
                 hasFailedDelivery -> colors.error
                 isOutbound -> colors.primary
                 else -> colors.primary
             },
+            searchQuery = searchQuery,
         )
     }
     val copyableCode = remember(message.body) { copyableMessageCode(message.body) }
@@ -425,7 +427,7 @@ internal fun CopyCodeButton(
 internal fun copyableMessageCode(body: String): String? =
     OtpCodeExtractor.extractCode(body)
 
-internal fun String.toConversationMessageLinks(linkColor: Color): AnnotatedString {
+internal fun String.toConversationMessageLinks(linkColor: Color, searchQuery: String = ""): AnnotatedString {
     val targets = MessageLinkDetector.detectTargets(this)
     if (targets.isEmpty()) return AnnotatedString(this)
 
@@ -439,6 +441,7 @@ internal fun String.toConversationMessageLinks(linkColor: Color): AnnotatedStrin
             color = linkColor.copy(alpha = 0.74f),
         ),
     )
+    val searchHighlightColor = Color(0xFFFFEB3B).copy(alpha = 0.4f)
     return AnnotatedString.Builder(this).apply {
         targets.forEach { target ->
             addLink(
@@ -449,6 +452,21 @@ internal fun String.toConversationMessageLinks(linkColor: Color): AnnotatedStrin
                 start = target.start,
                 end = target.end,
             )
+        }
+        if (searchQuery.isNotBlank()) {
+            val lowerText = this.toString().lowercase()
+            val lowerQuery = searchQuery.lowercase()
+            var index = 0
+            while (true) {
+                val found = lowerText.indexOf(lowerQuery, index)
+                if (found < 0) break
+                addStyle(
+                    SpanStyle(background = searchHighlightColor),
+                    start = found,
+                    end = found + lowerQuery.length,
+                )
+                index = found + lowerQuery.length
+            }
         }
     }.toAnnotatedString()
 }

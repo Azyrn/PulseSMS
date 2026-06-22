@@ -431,6 +431,8 @@ internal fun RealInboxScreen(
                             isArchived = thread.threadId in state.archivedThreadIds,
                             isContextMenuOpen = contextMenuThreadId == thread.threadId,
                             emoji = state.threadEmojis[thread.threadId],
+                            draft = state.drafts[thread.address].orEmpty(),
+                            scheduled = thread.address in state.scheduledAddresses,
                             onClick = { onOpenConversation(thread.address, thread.threadId) },
                             onLongPress = { contextMenuThreadId = thread.threadId },
                             onDismissMenu = { contextMenuThreadId = null },

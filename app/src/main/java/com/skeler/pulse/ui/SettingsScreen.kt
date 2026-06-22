@@ -1,7 +1,10 @@
 package com.skeler.pulse.ui
 
 import android.app.Activity
+import android.net.Uri
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -45,8 +48,10 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -124,6 +129,8 @@ internal fun SettingsScreen(
     onOpenArchivedChats: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenBlockedNumbers: () -> Unit,
+    onExportBackup: (Uri) -> Unit = {},
+    onImportBackup: (Uri) -> Unit = {},
     isDefaultSmsApp: Boolean,
 ) {
     val context = LocalContext.current
@@ -143,6 +150,17 @@ internal fun SettingsScreen(
     val settingsFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
     val appearanceOptionState = rememberLazyListState()
     val appearanceOptionFlingBehavior = rememberMomentumFlingBehavior(enabled = !reducedMotion)
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/xml")
+    ) { uri ->
+        if (uri != null) onExportBackup(uri)
+    }
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) onImportBackup(uri)
+    }
+
     val colorSchemeOptions = remember {
         buildList {
             add(SettingsChoiceOption(id = "dynamic", label = context.getString(R.string.settings_dynamic)))
@@ -332,6 +350,25 @@ internal fun SettingsScreen(
                     )
                 }
             }
+            item(key = "data_header") { SettingsSectionHeader(stringResource(R.string.backup_and_restore)) }
+            item(key = "data_card") {
+                SettingsGroupCard {
+                    SettingsRow(
+                        icon = Icons.Rounded.Upload,
+                        title = stringResource(R.string.settings_backup_export),
+                        subtitle = context.getString(R.string.settings_backup_export_subtitle),
+                        onClick = { exportBackupLauncher.launch("PulseSMS_backup_${System.currentTimeMillis()}.xml") },
+                    )
+                    SettingsGroupDivider()
+                    SettingsRow(
+                        icon = Icons.Rounded.Download,
+                        title = stringResource(R.string.settings_backup_import),
+                        subtitle = context.getString(R.string.settings_backup_import_subtitle),
+                        onClick = { importBackupLauncher.launch(arrayOf("text/xml", "text/*")) },
+                    )
+                    SettingsGroupDivider()
+                }
+            }
             item(key = "mms_header") { SettingsSectionHeader(stringResource(R.string.settings_mms)) }
             item(key = "mms_card") {
                 val mmsPreferences = remember(context) {
@@ -380,6 +417,7 @@ internal fun SettingsScreen(
             },
         )
     }
+
 }
 
 @Composable

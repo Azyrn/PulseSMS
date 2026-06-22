@@ -83,6 +83,7 @@ fun PulseAppShell(
     val settingsListState = rememberLazyListState()
     val blockedNumbersListState = rememberLazyListState()
     val newChatListState = rememberLazyListState()
+    val scheduledMessagesListState = rememberLazyListState()
 
     LaunchedEffect(launchRequest, accessState, consumedLaunchRequest) {
         if (!accessState.isReady || consumedLaunchRequest) return@LaunchedEffect
@@ -262,6 +263,7 @@ fun PulseAppShell(
                         loadingMore = conversationState.loadingMore,
                         totalMessageCount = conversationState.totalMessageCount,
                         sendState = sendState,
+                        scheduledMessages = conversationState.scheduledMessages,
                         onBack = {
                             navigateBack()
                         },
@@ -275,6 +277,11 @@ fun PulseAppShell(
                         onRetrySend = smsViewModel::retrySend,
                         onClearSendState = smsViewModel::clearSendState,
                         onDraftConsumed = { conversationDraftSeed = "" },
+                        onDraftChange = { text -> smsViewModel.saveDraft(activeAddress, text) },
+                        onScheduleMessage = { body, time ->
+                            smsViewModel.scheduleMessage(activeAddress, body, time, activeSubscriptionId)
+                        },
+                        onCancelScheduledMessage = smsViewModel::cancelScheduledMessage,
                         onDeleteMessage = smsViewModel::deleteMessage,
                         onDeleteMessages = smsViewModel::deleteMessages,
                         onBlockConversation = {
@@ -315,6 +322,8 @@ fun PulseAppShell(
                         onOpenBlockedNumbers = {
                             backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_BLOCKED_NUMBERS)
                         },
+                        onExportBackup = { uri -> smsViewModel.exportBackupToUri(uri) },
+                        onImportBackup = { uri -> smsViewModel.importBackupFromUri(uri) },
                         isDefaultSmsApp = inboxState.isDefaultSmsApp,
                     )
                 }
@@ -322,6 +331,8 @@ fun PulseAppShell(
                 DESTINATION_ARCHIVED -> {
                     val inboxState by smsViewModel.inboxState.collectAsState()
                     ArchivedChatsScreen(
+                        drafts = inboxState.drafts,
+                        scheduledAddresses = inboxState.scheduledAddresses,
                         threads = inboxState.archivedThreads,
                         pinnedThreadIds = inboxState.pinnedThreadIds,
                         archivedThreadIds = inboxState.archivedThreadIds,

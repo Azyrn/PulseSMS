@@ -616,8 +616,8 @@ class SystemSmsReader(
     private fun List<Long>.toIdSelection(idColumn: String): Pair<String, Array<String>> =
         "$idColumn IN (${joinToString { "?" }})" to map(Long::toString).toTypedArray()
 
-    suspend fun sendSms(address: String, body: String, subscriptionId: Int? = null, waitForDelivery: Boolean = true) =
-        smsSender.sendSms(address = address, body = body, subscriptionId = subscriptionId, waitForDelivery = waitForDelivery)
+    suspend fun sendSms(address: String, body: String, subscriptionId: Int? = null, waitForDelivery: Boolean = true, encryptedBody: String? = null) =
+        smsSender.sendSms(address = address, body = body, subscriptionId = subscriptionId, waitForDelivery = waitForDelivery, encryptedBody = encryptedBody)
 
     suspend fun sendMms(address: String, text: String, imageUris: List<Uri> = emptyList()) =
         smsSender.sendMms(address = address, text = text, imageUris = imageUris)

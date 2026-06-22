@@ -279,6 +279,46 @@
     <string name="attachment_take_photo">Take photo</string>
     <string name="camera_permission_required">Camera permission required</string>
 
+    <!-- Draft -->
+    <string name="draft_label">Draft</string>
+    <string name="draft_saved">Draft saved</string>
+
+    <!-- Conversation Search -->
+    <string name="conversation_search_placeholder">Search in conversation</string>
+    <string name="conversation_search_results">%1$d match(es)</string>
+    <string name="conversation_search_no_results">No matches</string>
+
+    <!-- Backup & Restore -->
+    <string name="backup_and_restore">Backup &amp; Restore</string>
+    <string name="settings_backup">Backup</string>
+    <string name="settings_restore">Restore</string>
+    <string name="settings_backup_export">Export SMS backup</string>
+    <string name="settings_backup_export_subtitle">Save all SMS messages as an XML file</string>
+    <string name="settings_backup_import">Import SMS backup</string>
+    <string name="settings_backup_import_subtitle">Restore messages from an XML backup file</string>
+    <string name="backup_export_success">Backup complete: %1$d messages exported</string>
+    <string name="backup_export_failed">Backup failed</string>
+    <string name="backup_import_success">Restore complete: %1$d messages imported</string>
+    <string name="backup_import_failed">Restore failed</string>
+
+    <!-- Scheduled Messages -->
+    <string name="conversation_schedule">Schedule</string>
+    <string name="conversation_schedule_title">Send later</string>
+    <string name="conversation_schedule_date">Date</string>
+    <string name="conversation_schedule_time">Time</string>
+    <string name="conversation_schedule_confirm">Schedule message</string>
+    <string name="conversation_schedule_success">Message scheduled for %1$s</string>
+    <string name="scheduled_messages_title">Scheduled messages</string>
+    <string name="scheduled_messages_empty">No scheduled messages</string>
+    <string name="scheduled_messages_cancel">Cancel</string>
+    <string name="scheduled_messages_snippet">Scheduled</string>
+
+    <!-- Encryption -->
+    <string name="settings_encryption">Encryption</string>
+    <string name="settings_encryption_subtitle">Encrypt outgoing SMS with AES-GCM</string>
+    <string name="encrypted_badge">Encrypted</string>
+    <string name="encryption_info_dialog_body">Encryption is managed per conversation. Open a conversation and tap the lock icon below the composer to toggle encryption for that conversation.</string>
+
     <!-- Misc -->
     <string name="no_call_app_available">No call app available</string>
     <string name="inbox_read_error_body">Pulse couldn\'t read your messages right now.</string>

@@ -14,9 +14,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,12 +41,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.skeler.pulse.R
 import com.skeler.pulse.contact.contactLookupIntent
 import com.skeler.pulse.contact.contactPhotoUriFor
@@ -52,7 +63,6 @@ import android.provider.Telephony
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
@@ -81,8 +91,13 @@ internal fun ConversationTopBar(
     importantCount: Int,
     totalMessageCount: Int,
     avatarColors: ConversationAvatarColors,
+    isSearching: Boolean = false,
+    searchQuery: String = "",
+    searchMatchCount: Int = 0,
     onBack: () -> Unit,
     onCallAddress: () -> Unit,
+    onSearchQueryChange: (String) -> Unit = {},
+    onSearchToggle: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val photoUri = remember(address) { contactPhotoUriFor(context, address) }
@@ -92,89 +107,126 @@ internal fun ConversationTopBar(
     val titleContainerColor = conversationTopBarTitleContainerColor(colors, hasUnreadMessages)
     val topBarContentColor = conversationTopBarContentColor(colors, hasUnreadMessages)
     val shouldShowCallAction = shouldShowConversationCallAction(address)
+    val searchFocusRequester = remember { FocusRequester() }
 
     TopAppBar(
         modifier = Modifier.background(conversationTopBarBrush()),
         navigationIcon = {
             FilledTonalIconButton(
-                onClick = onBack,
+                onClick = if (isSearching) {
+                    { onSearchToggle() }
+                } else {
+                    onBack
+                },
                 modifier = Modifier.padding(start = 12.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.ArrowBackIosNew,
+                    imageVector = if (isSearching) Icons.Rounded.Close else Icons.Rounded.ArrowBackIosNew,
                     contentDescription = androidx.compose.ui.res.stringResource(R.string.action_back),
                 )
             }
         },
         title = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = ConversationVisualTokens.topBarTitleShape,
-                color = titleContainerColor,
-                tonalElevation = 0.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clickable {
-                                contactLookupIntent(context, address)
-                                    ?.let { context.startActivity(it) }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SerafinaAvatar(
-                            imageUrl = photoUri?.toString(),
-                            initials = title.toAvatarInitials(),
-                            hasUnread = hasUnreadMessages,
-                            size = 42.dp,
-                            containerColor = avatarColors.containerColor,
-                            contentColor = avatarColors.contentColor,
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            text = title,
+            if (isSearching) {
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(searchFocusRequester),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { }),
+                    decorationBox = { innerTextField ->
+                        Box(
                             modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = topBarContentColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        val formattedAddress = remember(address) { formatAddressForDisplay(address) }
-                        if (title != formattedAddress) {
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.conversation_search_placeholder),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = ConversationVisualTokens.topBarTitleShape,
+                    color = titleContainerColor,
+                    tonalElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clickable {
+                                    contactLookupIntent(context, address)
+                                        ?.let { context.startActivity(it) }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            SerafinaAvatar(
+                                imageUrl = photoUri?.toString(),
+                                initials = title.toAvatarInitials(),
+                                hasUnread = hasUnreadMessages,
+                                size = 42.dp,
+                                containerColor = avatarColors.containerColor,
+                                contentColor = avatarColors.contentColor,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
                             Text(
-                                text = formattedAddress,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = topBarContentColor.copy(alpha = 0.6f),
+                                text = title,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = topBarContentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val formattedAddress = remember(address) { formatAddressForDisplay(address) }
+                            if (title != formattedAddress) {
+                                Text(
+                                    text = formattedAddress,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = topBarContentColor.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            val resources = context.resources
+                            val metaParts = buildList {
+                                add(resources.getString(
+                                    R.string.conversation_messages_label,
+                                    if (totalMessageCount > 0) totalMessageCount else messages.size,
+                                ))
+                                if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
+                                if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
+                            }
+                            val metaLabel = metaParts.joinToString(" · ")
+                            Text(
+                                text = metaLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = topBarContentColor.copy(alpha = 0.78f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        val resources = context.resources
-                        val metaParts = buildList {
-                            add(resources.getString(
-                                R.string.conversation_messages_label,
-                                if (totalMessageCount > 0) totalMessageCount else messages.size,
-                            ))
-                            if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
-                            if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
-                        }
-                        val metaLabel = metaParts.joinToString(" · ")
-                        Text(
-                            text = metaLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = topBarContentColor.copy(alpha = 0.78f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                     }
                 }
             }
@@ -188,18 +240,27 @@ internal fun ConversationTopBar(
             titleContentColor = topBarContentColor,
         ),
         actions = {
-            if (shouldShowCallAction) {
-                FilledTonalIconButton(
-                    onClick = onCallAddress,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(ConversationCallButtonSize),
-                ) {
+            if (!isSearching) {
+                IconButton(onClick = onSearchToggle) {
                     Icon(
-                        imageVector = Icons.Rounded.Call,
-                        contentDescription = stringResource(R.string.action_call_contact, title),
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = stringResource(R.string.conversation_search_placeholder),
                         tint = topBarContentColor,
                     )
+                }
+                if (shouldShowCallAction) {
+                    FilledTonalIconButton(
+                        onClick = onCallAddress,
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(ConversationCallButtonSize),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Call,
+                            contentDescription = stringResource(R.string.action_call_contact, title),
+                            tint = topBarContentColor,
+                        )
+                    }
                 }
             }
         },
@@ -224,6 +285,8 @@ internal fun ConversationBottomBar(
     onVoiceRecorded: (Uri) -> Unit = {},
     showAttachmentMenu: Boolean = false,
     onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
+    onScheduleClick: () -> Unit = {},
+    canSchedule: Boolean = false,
 ) {
     if (isReplyable) {
         Column(
@@ -240,6 +303,25 @@ internal fun ConversationBottomBar(
                 },
                 onRetrySend = onRetrySend,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (canSchedule && draft.isNotBlank()) {
+                    IconButton(
+                        onClick = onScheduleClick,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Schedule,
+                            contentDescription = stringResource(R.string.conversation_schedule),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
             ConversationComposer(
                 draft = draft,
                 sendState = sendState,
@@ -278,6 +360,7 @@ internal fun LazyListScope.conversationTimelineItems(
     messageReactions: Map<Long, String>,
     selectedMessages: Set<SystemSms>,
     reducedMotion: Boolean,
+    searchQuery: String = "",
     onCopyCode: (String) -> Unit,
     onToggleMessageSelection: (SystemSms) -> Unit,
     onMessageEmojiClick: (Long) -> Unit,
@@ -321,6 +404,7 @@ internal fun LazyListScope.conversationTimelineItems(
                     isSelected = item.message in selectedMessages,
                     isSelectionMode = selectedMessages.isNotEmpty(),
                     reaction = messageReactions[item.message.id],
+                    searchQuery = searchQuery,
                     onLongPress = { onToggleMessageSelection(item.message) },
                     onCopyCode = onCopyCode,
                     onToggleSelection = { onToggleMessageSelection(item.message) },
@@ -470,8 +554,9 @@ internal fun ConversationSelectionTopBar(
     onDelete: () -> Unit,
     onInfo: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     CenterAlignedTopAppBar(
-        title = { Text(pluralStringResource(R.plurals.conversation_selected_count, selectedCount, selectedCount)) },
+        title = { Text(context.resources.getQuantityString(R.plurals.conversation_selected_count, selectedCount, selectedCount)) },
         navigationIcon = {
             IconButton(onClick = onClose) {
                 Icon(

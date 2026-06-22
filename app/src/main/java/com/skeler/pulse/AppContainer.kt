@@ -88,6 +88,7 @@ class AppContainer(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             RealSmsViewModel(
+                context = appContext,
                 smsReader = SystemSmsReader(appContext),
                 importantMessagePreferences = ImportantMessagePreferences(appContext),
                 inboxThreadPreferences = InboxThreadPreferences(appContext),

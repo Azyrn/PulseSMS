@@ -1,5 +1,6 @@
 package com.skeler.pulse.ui
 
+import android.content.Context
 import android.net.Uri
 
 import androidx.lifecycle.ViewModel
@@ -7,10 +8,16 @@ import androidx.lifecycle.viewModelScope
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
+import com.skeler.pulse.R
+import com.skeler.pulse.sms.DraftPreferences
 import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.InboxThreadPreferences
 import com.skeler.pulse.sms.MessageReactionPreferences
 import com.skeler.pulse.sms.ReactionParser
+import com.skeler.pulse.sms.ScheduledMessageDatabase
+import com.skeler.pulse.sms.ScheduledMessageManager
+import com.skeler.pulse.sms.SmsBackupManager
+import com.skeler.pulse.sms.SmsEncryptionManager
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
 import com.skeler.pulse.sms.SystemSmsReader
@@ -38,11 +45,18 @@ private data class PendingSendRequest(
  * Requires [android.permission.READ_SMS].
  */
 class RealSmsViewModel(
+    private val context: Context,
     private val smsReader: SystemSmsReader,
     private val importantMessagePreferences: ImportantMessagePreferences,
     private val inboxThreadPreferences: InboxThreadPreferences,
     private val messageReactionPreferences: MessageReactionPreferences,
 ) : ViewModel() {
+
+    private val draftPreferences = DraftPreferences(context)
+    private val encryptionManager = SmsEncryptionManager(context)
+    private val scheduledMessageManager = ScheduledMessageManager(context)
+    private val backupManager = SmsBackupManager(context)
+    private val scheduledDao = ScheduledMessageDatabase.getInstance(context).scheduledMessageDao()
 
     private val _inboxState = MutableStateFlow(RealInboxState())
     val inboxState: StateFlow<RealInboxState> = _inboxState.asStateFlow()
@@ -54,6 +68,7 @@ class RealSmsViewModel(
     val sendState: StateFlow<SendState> = _sendState.asStateFlow()
 
     private var inboxJob: Job? = null
+    private var scheduledJob: Job? = null
     private var sendJob: Job? = null
     private var conversationJob: Job? = null
     private var activeConversationAddress: String? = null
@@ -91,7 +106,15 @@ class RealSmsViewModel(
                             if (thread.matchesReadTarget(readTarget)) thread.asRead() else thread
                         }
                     }
-                    val sortedThreads = threadsWithReadOverlay
+                    val decryptedThreads = threadsWithReadOverlay.map { thread ->
+                        if (encryptionManager.isEncrypted(thread.snippet)) {
+                            val decrypted = encryptionManager.decrypt(thread.snippet)
+                            if (decrypted != null) thread.copy(snippet = decrypted) else thread
+                        } else {
+                            thread
+                        }
+                    }
+                    val sortedThreads = decryptedThreads
                         .withoutBlockedAddresses(snapshot.blockedAddresses)
                         .sortedWith(compareByDescending<SmsThread> { it.threadId in snapshot.pinnedIds }.thenByDescending { it.date })
                     val visibleThreads = sortedThreads.filterNot { it.threadId in snapshot.archivedIds }
@@ -118,6 +141,14 @@ class RealSmsViewModel(
                     showLoadingCard = false,
                     errorMessage = "Pulse couldn't read your messages right now.",
                 )
+            }
+
+            scheduledJob?.cancel()
+            scheduledJob = launch {
+                scheduledDao.observePending().collect { messages ->
+                    val addresses = messages.map { it.address }.toSet()
+                    _inboxState.update { it.copy(scheduledAddresses = addresses) }
+                }
             }
         }
     }
@@ -186,18 +217,27 @@ class RealSmsViewModel(
                 smsReader.observeMessages(address = address, threadId = threadId, maxCount = batchSize),
                 importantMessagePreferences.importantMessageIds,
                 messageReactionPreferences.messageReactions,
-            ) { (recent, totalCount), importantIds, messageReactions ->
+                scheduledDao.observePendingForAddress(address),
+            ) { (recent, totalCount), importantIds, messageReactions, scheduledMessages ->
                 if (recent.size >= batchSize) {
                     hasMoreMessages = true
                 }
                 val loadedIds = loadedOlderMessages.mapTo(hashSetOf()) { it.id }
                 val dedupedRecent = recent.filterNot { it.id in loadedIds }
                 val allMessages = loadedOlderMessages + dedupedRecent
-                val hasUnreadInbound = allMessages.hasUnreadInboundMessages()
+                val decryptedMessages = allMessages.map { message ->
+                    if (encryptionManager.isEncrypted(message.body)) {
+                        val decrypted = encryptionManager.decrypt(message.body)
+                        if (decrypted != null) message.copy(body = decrypted) else message
+                    } else {
+                        message
+                    }
+                }
+                val hasUnreadInbound = decryptedMessages.hasUnreadInboundMessages()
                 val visibleMessages = if (pendingReadTarget == ReadConversationTarget(address, threadId)) {
-                    allMessages.map(SystemSms::asReadIfInbound)
+                    decryptedMessages.map(SystemSms::asReadIfInbound)
                 } else {
-                    allMessages
+                    decryptedMessages
                 }
 
                 val reactionMessageIds = mutableSetOf<Long>()
@@ -246,6 +286,7 @@ class RealSmsViewModel(
                     isReplyable = address.isReplyableConversationAddress(),
                     hasMoreMessages = hasMoreMessages,
                     totalMessageCount = totalCount,
+                    scheduledMessages = scheduledMessages,
                 ) to hasUnreadInbound
             }.collectLatest { (conversationState, hasUnreadInbound) ->
                 _conversationState.value = conversationState
@@ -276,7 +317,13 @@ class RealSmsViewModel(
             )
             hasMoreMessages = olderMessages.size >= batchSize
             val loadedIds = loadedOlderMessages.mapTo(hashSetOf()) { it.id }
-            val deduped = olderMessages.filterNot { it.id in loadedIds }
+            val deduped = olderMessages.filterNot { it.id in loadedIds }.map { message ->
+                if (encryptionManager.isEncrypted(message.body)) {
+                    encryptionManager.decrypt(message.body)?.let { message.copy(body = it) } ?: message
+                } else {
+                    message
+                }
+            }
             loadedOlderMessages.addAll(0, deduped)
             _conversationState.update { state ->
                 val recentIds = olderMessages.mapTo(hashSetOf()) { it.id }
@@ -313,7 +360,7 @@ class RealSmsViewModel(
     fun setMessageReaction(messageId: Long, emoji: String?) {
         val conversationState = _conversationState.value
         val message = conversationState.messages.firstOrNull { it.id == messageId }
-        if (emoji != null && message != null && message.body.isNotBlank()) {
+        /*if (emoji != null && message != null && message.body.isNotBlank()) {
             val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
             viewModelScope.launch {
                 try {
@@ -327,7 +374,7 @@ class RealSmsViewModel(
                     // send failed silently — reaction is still stored locally
                 }
             }
-        }
+        }*/
         val allIds = if (emoji != null && message != null && message.body.isNotBlank()) {
             val ids = mutableListOf(messageId)
             val previous = ReactionParser.findMessageMatch(
@@ -362,6 +409,11 @@ class RealSmsViewModel(
         val trimmedBody = body.trim()
         if (trimmedBody.isBlank() && imageUris.isEmpty()) return
 
+        viewModelScope.launch {
+            draftPreferences.clearDraft(address)
+            _conversationState.update { it.copy(draft = "") }
+        }
+
         val request = PendingSendRequest(
             address = address,
             body = trimmedBody,
@@ -375,10 +427,15 @@ class RealSmsViewModel(
         _sendState.value = SendState.Sending(trimmedBody)
         sendJob = viewModelScope.launch {
             try {
+                val encryptedBody = if (imageUris.isEmpty()) {
+                    encryptionManager.encrypt(trimmedBody)
+                } else {
+                    null
+                }
                 if (imageUris.isNotEmpty()) {
                     smsReader.sendMms(address, trimmedBody, imageUris)
                 } else {
-                    smsReader.sendSms(address, trimmedBody, subscriptionId, waitForDelivery = false)
+                    smsReader.sendSms(address, trimmedBody, subscriptionId, waitForDelivery = false, encryptedBody = encryptedBody)
                 }
                 if (sendSequence == seq) {
                     _sendState.value = SendState.Sent(trimmedBody)
@@ -391,6 +448,115 @@ class RealSmsViewModel(
                 if (sendSequence == seq) {
                     _sendState.value = SendState.Failed(trimmedBody)
                 }
+            }
+        }
+    }
+
+    fun loadDraft(address: String) {
+        viewModelScope.launch {
+            draftPreferences.observeDraft(address).collect { draftText ->
+                _conversationState.update { it.copy(draft = draftText) }
+            }
+        }
+    }
+
+    fun saveDraft(address: String, text: String) {
+        viewModelScope.launch {
+            draftPreferences.saveDraft(address, text)
+            _conversationState.update { it.copy(draft = text) }
+        }
+    }
+
+    fun scheduleMessage(address: String, body: String, scheduledAtMillis: Long, subscriptionId: Int? = null) {
+        viewModelScope.launch {
+            val encryptedBody = encryptionManager.encrypt(body)
+            scheduledMessageManager.schedule(address, body, scheduledAtMillis, subscriptionId, encryptedBody = encryptedBody)
+            draftPreferences.clearDraft(address)
+            _conversationState.update { it.copy(draft = "") }
+        }
+    }
+
+    fun cancelScheduledMessage(messageId: Long) {
+        viewModelScope.launch {
+            scheduledMessageManager.cancel(messageId)
+        }
+    }
+
+    fun exportBackup() {
+        viewModelScope.launch {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                val file = java.io.File(downloadsDir, "PulseSMS_backup_${System.currentTimeMillis()}.xml")
+                java.io.FileOutputStream(file).use { outputStream ->
+                    backupManager.exportSms(outputStream)
+                }
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.backup_export_success, file.absolutePath),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.backup_export_failed),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    fun exportBackupToUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    val count = backupManager.exportSms(outputStream)
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.backup_export_success, count),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                } ?: run {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.backup_export_failed),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.backup_export_failed),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    fun importBackupFromUri(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val count = backupManager.importSms(inputStream)
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.backup_import_success, count),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                } ?: run {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.backup_import_failed),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.backup_import_failed),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
             }
         }
     }
@@ -506,6 +672,21 @@ class RealSmsViewModel(
     fun deleteMessages(messages: List<SystemSms>) {
         viewModelScope.launch {
             smsReader.deleteMessages(messages)
+        }
+    }
+
+    fun hasDraftForAddress(address: String): Boolean {
+        return _inboxState.value.drafts.containsKey(address)
+    }
+
+    fun loadDraftForAddress(address: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                draftPreferences.observeDraft(address).collect { draft ->
+                    onResult(draft)
+                    return@collect
+                }
+            } catch (_: Exception) { }
         }
     }
 

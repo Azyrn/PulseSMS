@@ -283,4 +283,44 @@
     <string name="no_call_app_available">Aucune application d\'appel disponible</string>
     <string name="inbox_read_error_body">Pulse n\'a pas pu lire vos messages pour le moment.</string>
     <string name="sms_body_save_failed">Nouveau message reçu, mais Pulse n\'a pas pu l\'enregistrer.</string>
+    <!-- Draft -->
+    <string name="draft_label">Brouillon</string>
+    <string name="draft_saved">Brouillon enregistré</string>
+
+    <!-- Conversation Search -->
+    <string name="conversation_search_placeholder">Rechercher dans la conversation</string>
+    <string name="conversation_search_results">%1$d résultat(s)</string>
+    <string name="conversation_search_no_results">Aucun résultat</string>
+
+    <!-- Backup & Restore -->
+    <string name="backup_and_restore">Sauvegarde &amp; Restauration</string>
+    <string name="settings_backup">Sauvegarder</string>
+    <string name="settings_restore">Restaurer</string>
+    <string name="settings_backup_export">Exporter les SMS</string>
+    <string name="settings_backup_export_subtitle">Enregistrer tous les SMS dans un fichier XML</string>
+    <string name="settings_backup_import">Importer une sauvegarde SMS</string>
+    <string name="settings_backup_import_subtitle">Restaurer les messages depuis un fichier XML</string>
+    <string name="backup_export_success">Sauvegarde terminée : %1$d messages exportés</string>
+    <string name="backup_export_failed">Échec de la sauvegarde</string>
+    <string name="backup_import_success">Restauration terminée : %1$d messages importés</string>
+    <string name="backup_import_failed">Échec de la restauration</string>
+
+    <!-- Scheduled Messages -->
+    <string name="conversation_schedule">Programmer</string>
+    <string name="conversation_schedule_title">Envoi programmé</string>
+    <string name="conversation_schedule_date">Date</string>
+    <string name="conversation_schedule_time">Heure</string>
+    <string name="conversation_schedule_confirm">Programmer l\'envoi</string>
+    <string name="conversation_schedule_success">Message programmé pour le %1$s</string>
+    <string name="scheduled_messages_title">Messages programmés</string>
+    <string name="scheduled_messages_empty">Aucun message programmé</string>
+    <string name="scheduled_messages_cancel">Annuler</string>
+    <string name="scheduled_messages_snippet">Programmé</string>
+
+    <!-- Encryption -->
+    <string name="settings_encryption">Chiffrement</string>
+    <string name="settings_encryption_subtitle">Chiffrer les SMS sortants avec AES-GCM</string>
+    <string name="encrypted_badge">Chiffré</string>
+    <string name="encryption_info_dialog_body">Le chiffrement est géré par conversation. Ouvrez une conversation et appuyez sur l\'icône de cadenas sous le composeur pour activer ou désactiver le chiffrement.</string>
+
 </resources>

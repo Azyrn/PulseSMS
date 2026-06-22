@@ -2,6 +2,7 @@ package com.skeler.pulse.ui
 
 import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
+import com.skeler.pulse.sms.ScheduledMessageEntity
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
 
@@ -52,6 +53,8 @@ data class RealInboxState(
     val permissionDenied: Boolean = false,
     val isDefaultSmsApp: Boolean = true,
     val errorMessage: String? = null,
+    val drafts: Map<String, String> = emptyMap(),
+    val scheduledAddresses: Set<String> = emptySet(),
 )
 
 internal data class ReadConversationTarget(
@@ -70,6 +73,9 @@ data class RealConversationState(
     val hasMoreMessages: Boolean = false,
     val loadingMore: Boolean = false,
     val totalMessageCount: Int = 0,
+    val searchQuery: String = "",
+    val draft: String = "",
+    val scheduledMessages: List<ScheduledMessageEntity> = emptyList(),
 )
 
 sealed interface SendState {

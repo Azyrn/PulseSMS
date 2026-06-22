@@ -47,7 +47,7 @@ internal class SystemSmsSender(
     private val contentResolver: ContentResolver get() = context.contentResolver
 
     @Suppress("DEPRECATION")
-    suspend fun sendSms(address: String, body: String, subscriptionId: Int? = null, waitForDelivery: Boolean = true) = withContext(ioDispatcher) {
+    suspend fun sendSms(address: String, body: String, subscriptionId: Int? = null, waitForDelivery: Boolean = true, encryptedBody: String? = null) = withContext(ioDispatcher) {
         val smsManager = if (subscriptionId != null) {
             SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
         } else {
@@ -62,6 +62,9 @@ internal class SystemSmsSender(
                 smsManager.sendMultipartTextMessage(address, null, parts, sentIntents, deliveryIntents)
             }
             updateOutgoingMessage(messageUri, Telephony.Sms.MESSAGE_TYPE_SENT)
+            if (encryptedBody != null) {
+                encryptStoredMessage(messageUri, encryptedBody)
+            }
             if (waitForDelivery) {
                 awaitDeliveryCallbacks(parts, messageUri, token)
             }
@@ -101,6 +104,14 @@ internal class SystemSmsSender(
         if (messageUri == null) return
         val values = ContentValues().apply {
             put(Telephony.Sms.STATUS, status)
+        }
+        contentResolver.update(messageUri, values, null, null)
+    }
+
+    private fun encryptStoredMessage(messageUri: Uri?, encryptedBody: String) {
+        if (messageUri == null) return
+        val values = ContentValues().apply {
+            put(Telephony.Sms.BODY, encryptedBody)
         }
         contentResolver.update(messageUri, values, null, null)
     }
