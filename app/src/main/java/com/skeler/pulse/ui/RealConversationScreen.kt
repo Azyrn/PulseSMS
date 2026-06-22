@@ -26,8 +26,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -79,6 +81,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -598,11 +601,40 @@ private fun ScheduleMessageDialog(
     val initialCalendar = remember { Calendar.getInstance().apply { add(Calendar.MINUTE, 15) } }
     var hour by remember { mutableStateOf(initialCalendar.get(Calendar.HOUR_OF_DAY)) }
     var minute by remember { mutableStateOf(initialCalendar.get(Calendar.MINUTE)) }
+    val timezoneId = remember { TimeZone.getDefault().getDisplayName(false, TimeZone.SHORT) }
+    val isPastTime by remember {
+        derivedStateOf {
+            val dateMillis = datePickerState.selectedDateMillis ?: return@derivedStateOf true
+            val cal = Calendar.getInstance().apply { timeInMillis = dateMillis }
+            cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
+            cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            cal.timeInMillis <= System.currentTimeMillis()
+        }
+    }
+    val dateFormat = remember { SimpleDateFormat("EEE d MMM", Locale.getDefault()) }
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val displayDate by remember {
+        derivedStateOf {
+            val dateMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
+            dateFormat.format(Date(dateMillis))
+        }
+    }
+    val displayTime by remember {
+        derivedStateOf {
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
+            cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
+            timeFormat.format(cal.time)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
+                enabled = !isPastTime,
                 onClick = {
                     val dateMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
                     val cal = Calendar.getInstance().apply { timeInMillis = dateMillis }
@@ -624,14 +656,9 @@ private fun ScheduleMessageDialog(
         title = { Text(stringResource(R.string.conversation_schedule_title)) },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = stringResource(R.string.conversation_schedule_time),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -661,12 +688,27 @@ private fun ScheduleMessageDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.conversation_schedule_date),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.fillMaxWidth().padding(bottom= 4.dp),
-                )
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        text = "${stringResource(R.string.conversation_schedule_date)}: $displayDate · $displayTime $timezoneId",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                if (isPastTime) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.conversation_schedule_past_error),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
                 DatePicker(state = datePickerState)
             }
         },

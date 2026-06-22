@@ -308,6 +308,7 @@
     <string name="conversation_schedule_time">Time</string>
     <string name="conversation_schedule_confirm">Schedule message</string>
     <string name="conversation_schedule_success">Message scheduled for %1$s</string>
+    <string name="conversation_schedule_past_error">Selected time is in the past</string>
     <string name="scheduled_messages_title">Scheduled messages</string>
     <string name="scheduled_messages_empty">No scheduled messages</string>
     <string name="scheduled_messages_cancel">Cancel</string>

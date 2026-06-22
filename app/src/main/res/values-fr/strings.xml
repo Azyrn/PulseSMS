@@ -312,6 +312,7 @@
     <string name="conversation_schedule_time">Heure</string>
     <string name="conversation_schedule_confirm">Programmer l\'envoi</string>
     <string name="conversation_schedule_success">Message programmé pour le %1$s</string>
+    <string name="conversation_schedule_past_error">L\'heure choisie est déjà passée</string>
     <string name="scheduled_messages_title">Messages programmés</string>
     <string name="scheduled_messages_empty">Aucun message programmé</string>
     <string name="scheduled_messages_cancel">Annuler</string>
