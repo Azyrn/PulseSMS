@@ -138,7 +138,7 @@ class SystemSmsReader(
                     MutableThreadAccumulator(
                         threadId = resolvedThreadId,
                         address = address.normalizeAddressForDisplay(),
-                        snippet = (it.getString(columns.body) ?: "").take(120),
+                        snippet = it.getString(columns.body) ?: "",
                         date = it.getLong(columns.date),
                     )
                 }

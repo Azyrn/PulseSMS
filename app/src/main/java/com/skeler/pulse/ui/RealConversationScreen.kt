@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,26 +28,27 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -64,6 +67,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.skeler.pulse.R
 import com.skeler.pulse.design.component.StatusPill
@@ -595,17 +599,18 @@ private fun ScheduleMessageDialog(
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit,
 ) {
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = System.currentTimeMillis() + 3600000L,
-    )
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+
     val initialCalendar = remember { Calendar.getInstance().apply { add(Calendar.MINUTE, 15) } }
+    var selectedDateMillis by remember { mutableStateOf(System.currentTimeMillis() + 3600000L) }
     var hour by remember { mutableStateOf(initialCalendar.get(Calendar.HOUR_OF_DAY)) }
     var minute by remember { mutableStateOf(initialCalendar.get(Calendar.MINUTE)) }
     val timezoneId = remember { TimeZone.getDefault().getDisplayName(false, TimeZone.SHORT) }
+
     val isPastTime by remember {
         derivedStateOf {
-            val dateMillis = datePickerState.selectedDateMillis ?: return@derivedStateOf true
-            val cal = Calendar.getInstance().apply { timeInMillis = dateMillis }
+            val cal = Calendar.getInstance().apply { timeInMillis = selectedDateMillis }
             cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
             cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
             cal.set(Calendar.SECOND, 0)
@@ -615,104 +620,400 @@ private fun ScheduleMessageDialog(
     }
     val dateFormat = remember { SimpleDateFormat("EEE d MMM", Locale.getDefault()) }
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    val displayDate by remember {
-        derivedStateOf {
-            val dateMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
-            dateFormat.format(Date(dateMillis))
-        }
-    }
-    val displayTime by remember {
-        derivedStateOf {
-            val cal = Calendar.getInstance()
-            cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
-            cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
-            timeFormat.format(cal.time)
+    val displayDate = dateFormat.format(Date(selectedDateMillis))
+    val displayTime = timeFormat.format(
+        Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
+            set(Calendar.MINUTE, minute.coerceIn(0, 59))
+        }.time
+    )
+
+    val confirmEnabled = !isPastTime
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .widthIn(min = 300.dp, max = 380.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.conversation_schedule_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Spacer(Modifier.height(16.dp))
+
+                    Surface(
+                        onClick = { showDatePicker = true },
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.conversation_schedule_date),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = displayDate,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Surface(
+                        onClick = { showTimePicker = true },
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.conversation_schedule_time),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "$displayTime $timezoneId",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    if (isPastTime) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.conversation_schedule_past_error),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            enabled = confirmEnabled,
+                            onClick = {
+                                val cal = Calendar.getInstance().apply { timeInMillis = selectedDateMillis }
+                                cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
+                                cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
+                                cal.set(Calendar.SECOND, 0)
+                                cal.set(Calendar.MILLISECOND, 0)
+                                onConfirm(cal.timeInMillis)
+                            },
+                        ) {
+                            Text(stringResource(R.string.conversation_schedule_confirm))
+                        }
+                    }
+                }
+            }
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = !isPastTime,
-                onClick = {
-                    val dateMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
-                    val cal = Calendar.getInstance().apply { timeInMillis = dateMillis }
-                    cal.set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
-                    cal.set(Calendar.MINUTE, minute.coerceIn(0, 59))
-                    cal.set(Calendar.SECOND, 0)
-                    cal.set(Calendar.MILLISECOND, 0)
-                    onConfirm(cal.timeInMillis)
-                },
+    if (showDatePicker) {
+        SimpleDatePickerDialog(
+            selectedDateMillis = selectedDateMillis,
+            onDateSelected = { millis ->
+                selectedDateMillis = millis
+                showDatePicker = false
+            },
+            onDismiss = { showDatePicker = false },
+        )
+    }
+
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = hour,
+            initialMinute = minute,
+            is24Hour = true,
+        )
+
+        Dialog(
+            onDismissRequest = { showTimePicker = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .widthIn(min = 300.dp, max = 380.dp),
             ) {
-                Text(stringResource(R.string.conversation_schedule_confirm))
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = stringResource(R.string.conversation_schedule_time),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    TimePicker(
+                        state = timePickerState,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
+                        Text(
+                            text = String.format("%02d:%02d %s", timePickerState.hour, timePickerState.minute, timezoneId),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { showTimePicker = false }) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = {
+                            hour = timePickerState.hour
+                            minute = timePickerState.minute
+                            showTimePicker = false
+                        }) {
+                            Text(stringResource(R.string.action_ok))
+                        }
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
-            }
-        },
-        title = { Text(stringResource(R.string.conversation_schedule_title)) },
-        text = {
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SimpleDatePickerDialog(
+    selectedDateMillis: Long,
+    onDateSelected: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val today = Calendar.getInstance()
+    val todayStart = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    var monthOffset by remember { mutableIntStateOf(0) }
+    var selectedDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
+
+    val visibleMonth = remember(monthOffset) {
+        Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.MONTH, monthOffset)
+        }
+    }
+    val year = visibleMonth.get(Calendar.YEAR)
+    val month = visibleMonth.get(Calendar.MONTH)
+    val daysInMonth = visibleMonth.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val firstDayOfWeek = visibleMonth.get(Calendar.DAY_OF_WEEK)
+    val startOffset = (firstDayOfWeek - Calendar.MONDAY + 7) % 7
+
+    val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
+    val dayHeaders = listOf(
+        stringResource(R.string.conversation_schedule_day_mon),
+        stringResource(R.string.conversation_schedule_day_tue),
+        stringResource(R.string.conversation_schedule_day_wed),
+        stringResource(R.string.conversation_schedule_day_thu),
+        stringResource(R.string.conversation_schedule_day_fri),
+        stringResource(R.string.conversation_schedule_day_sat),
+        stringResource(R.string.conversation_schedule_day_sun),
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .widthIn(min = 300.dp, max = 380.dp),
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                Text(
+                    text = stringResource(R.string.conversation_schedule_date),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Spacer(Modifier.height(12.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OutlinedTextField(
-                        value = if (hour <= 9) "0$hour" else hour.toString(),
-                        onValueChange = { text ->
-                            val filtered = text.filter { it.isDigit() }
-                            val value = filtered.take(2).toIntOrNull() ?: 0
-                            hour = value.coerceAtMost(23)
-                        },
-                        label = { Text("HH") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = if (minute <= 9) "0$minute" else minute.toString(),
-                        onValueChange = { text ->
-                            val filtered = text.filter { it.isDigit() }
-                            val value = filtered.take(2).toIntOrNull() ?: 0
-                            minute = value.coerceAtMost(59)
-                        },
-                        label = { Text("MM") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
+                    IconButton(
+                        onClick = { monthOffset--; selectedDay = -1 },
+                        enabled = monthOffset > 0,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = null,
+                        )
+                    }
                     Text(
-                        text = "${stringResource(R.string.conversation_schedule_date)}: $displayDate · $displayTime $timezoneId",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        text = monthFormat.format(visibleMonth.time),
+                        style = MaterialTheme.typography.titleMedium,
                     )
+                    IconButton(
+                        onClick = { monthOffset++; selectedDay = -1 },
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                        )
+                    }
                 }
-                if (isPastTime) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.conversation_schedule_past_error),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
+
                 Spacer(Modifier.height(12.dp))
-                DatePicker(state = datePickerState)
+
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    dayHeaders.forEach { day ->
+                        Text(
+                            text = day,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                for (row in 0 until (daysInMonth + startOffset + 6) / 7) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        for (col in 0 until 7) {
+                            val dayNum = row * 7 + col - startOffset + 1
+                            if (dayNum in 1..daysInMonth) {
+                                val dayCal = Calendar.getInstance().apply {
+                                    set(year, month, dayNum, 0, 0, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val isPast = dayCal.timeInMillis < todayStart
+                                val isSelected = selectedDay == dayNum
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .then(
+                                            if (!isPast) Modifier.clickable { selectedDay = dayNum }
+                                            else Modifier
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .then(
+                                                if (isSelected) Modifier.background(
+                                                    MaterialTheme.colorScheme.primary,
+                                                    CircleShape,
+                                                ) else Modifier
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = dayNum.toString(),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = when {
+                                                isPast -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                                                isSelected -> MaterialTheme.colorScheme.onPrimary
+                                                else -> MaterialTheme.colorScheme.onSurface
+                                            },
+                                        )
+                                    }
+                                }
+                            } else {
+                                Box(modifier = Modifier.weight(1f).aspectRatio(1f))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        enabled = selectedDay != -1,
+                        onClick = {
+                            val cal = Calendar.getInstance().apply {
+                                set(year, month, selectedDay, 0, 0, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }
+                            onDateSelected(cal.timeInMillis)
+                        },
+                    ) {
+                        Text(stringResource(R.string.action_ok))
+                    }
+                }
             }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -748,7 +1049,30 @@ private fun ScheduledMessageBubble(
     scheduledMessages: List<ScheduledMessageEntity>,
     onCancel: (Long) -> Unit,
 ) {
+    var showCancelDialog by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
+
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text(stringResource(R.string.conversation_schedule_cancel_title)) },
+            text = { Text(stringResource(R.string.conversation_schedule_cancel_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onCancel(message.id)
+                    showCancelDialog = false
+                }) {
+                    Text(stringResource(R.string.conversation_schedule_cancel_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -756,6 +1080,7 @@ private fun ScheduledMessageBubble(
         horizontalArrangement = Arrangement.End,
     ) {
         Surface(
+            onClick = { showCancelDialog = true },
             shape = RoundedCornerShape(
                 topStart = 24.dp,
                 topEnd = 24.dp,
