@@ -203,6 +203,26 @@ internal fun SettingsScreen(
     }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     val batteryOptExempt = remember { mutableStateOf(checkBatteryOpt(context)) }
+    val batteryOptLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        batteryOptExempt.value = checkBatteryOpt(context)
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                batteryOptExempt.value = checkBatteryOpt(context)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val encryptionPreferences = remember(context) {
+        EncryptionPreferences(context.applicationContext)
+    }
+    val encryptionEnabled by encryptionPreferences.encryptionEnabled.collectAsState(initial = false)
+    var showEncryptionWarningDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -266,11 +286,6 @@ internal fun SettingsScreen(
                         },
                     )
                     SettingsGroupDivider()
-                    val encryptionPreferences = remember(context) {
-                        EncryptionPreferences(context.applicationContext)
-                    }
-                    val encryptionEnabled by encryptionPreferences.encryptionEnabled.collectAsState(initial = false)
-                    var showEncryptionWarningDialog by remember { mutableStateOf(false) }
                     SettingsToggleRow(
                         icon = Icons.Rounded.Lock,
                         title = stringResource(R.string.settings_encryption),
@@ -309,21 +324,6 @@ internal fun SettingsScreen(
                         )
                     }
                     SettingsGroupDivider()
-                    val batteryOptLauncher = rememberLauncherForActivityResult(
-                        ActivityResultContracts.StartActivityForResult()
-                    ) {
-                        batteryOptExempt.value = checkBatteryOpt(context)
-                    }
-                    val lifecycle = LocalLifecycleOwner.current.lifecycle
-                    DisposableEffect(lifecycle) {
-                        val observer = LifecycleEventObserver { _, event ->
-                            if (event == Lifecycle.Event.ON_RESUME) {
-                                batteryOptExempt.value = checkBatteryOpt(context)
-                            }
-                        }
-                        lifecycle.addObserver(observer)
-                        onDispose { lifecycle.removeObserver(observer) }
-                    }
                     SettingsRow(
                         icon = if (batteryOptExempt.value) Icons.Rounded.CheckCircle else Icons.Rounded.Bolt,
                         title = stringResource(R.string.settings_battery_optimization),
