@@ -100,6 +100,14 @@
             android:name=".sms.SmsNotificationActionReceiver"
             android:exported="false" />
 
+        <!-- Quick compose — bottom sheet overlay for sending SMS -->
+        <activity
+            android:name=".sms.QuickComposeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Pulse.Translucent"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustNothing" />
+
         <!-- Quick compose notification actions — set contact / send message -->
         <receiver
             android:name=".sms.QuickComposeReceiver"

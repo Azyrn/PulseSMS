@@ -11,15 +11,11 @@ import android.provider.Telephony
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.app.RemoteInput
-import com.skeler.pulse.MainActivity
 import com.skeler.pulse.R
 
 object QuickComposeNotificationManager {
 
     private const val NOTIFICATION_ID = 9001
-    private const val REQUEST_CODE_CONTACT = 900101
-    private const val REQUEST_CODE_SEND = 900102
     private const val REQUEST_CODE_OPEN = 900103
     private const val REQUEST_CODE_DISMISS = 900104
     const val CHANNEL_ID = "quick_compose_channel"
@@ -43,56 +39,14 @@ object QuickComposeNotificationManager {
     }
 
     fun show(context: Context) {
-        // Auto-select the last contacted number for convenience on first show
         if (getTargetNumber(context) == null) {
             getLastContactedNumber(context)?.let { setTargetNumber(context, it) }
         }
         val targetNumber = getTargetNumber(context)
         val targetDisplay = targetNumber ?: context.getString(R.string.quick_compose_no_contact)
-
-        val contactRemoteInput = RemoteInput.Builder(KEY_CONTACT_INPUT)
-            .setLabel(context.getString(R.string.quick_compose_contact_hint))
-            .build()
-
-        val contactIntent = Intent(context, QuickComposeReceiver::class.java).apply {
-            action = QuickComposeReceiver.ACTION_SET_CONTACT
-        }
-        val contactPendingIntent = PendingIntent.getBroadcast(
-            context, REQUEST_CODE_CONTACT, contactIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-        )
-        val contactAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_action_reply,
-            context.getString(R.string.quick_compose_contact_action),
-            contactPendingIntent,
-        )
-            .addRemoteInput(contactRemoteInput)
-            .build()
-
-        val messageRemoteInput = RemoteInput.Builder(KEY_MESSAGE_INPUT)
-            .setLabel(context.getString(R.string.quick_compose_message_hint))
-            .build()
-        val sendIntent = Intent(context, QuickComposeReceiver::class.java).apply {
-            action = QuickComposeReceiver.ACTION_SEND_MESSAGE
-        }
-        val sendPendingIntent = PendingIntent.getBroadcast(
-            context, REQUEST_CODE_SEND, sendIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-        )
-        val sendAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_action_reply,
-            context.getString(R.string.quick_compose_send_action),
-            sendPendingIntent,
-        )
-            .addRemoteInput(messageRemoteInput)
-            .setAllowGeneratedReplies(true)
-            .build()
-
         val contentText = "${context.getString(R.string.quick_compose_to_label)} $targetDisplay"
-        val openIntent = MainActivity.createLaunchIntent(
-            context = context,
-            conversationAddress = targetNumber,
-        )
+
+        val openIntent = Intent(context, QuickComposeActivity::class.java)
         val openPendingIntent = PendingIntent.getActivity(
             context, REQUEST_CODE_OPEN, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -113,8 +67,6 @@ object QuickComposeNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setDeleteIntent(dismissPendingIntent)
-            .addAction(contactAction)
-            .addAction(sendAction)
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
@@ -164,6 +116,4 @@ object QuickComposeNotificationManager {
             .commit() // synchronous: caller may be BroadcastReceiver without goAsync()
     }
 
-    const val KEY_CONTACT_INPUT = "contact_input"
-    const val KEY_MESSAGE_INPUT = "message_input"
 }
