@@ -8,6 +8,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -52,6 +55,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -66,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 private data class ContactMatch(
     val displayName: String,
@@ -83,7 +89,7 @@ class QuickComposeActivity : ComponentActivity() {
                         try {
                             SystemSmsSender(this@QuickComposeActivity, Dispatchers.IO)
                                 .sendSmsFireAndForget(address, message)
-                            runOnUiThread {
+                            withContext(Dispatchers.Main) {
                                 Toast
                                     .makeText(
                                         this@QuickComposeActivity,
@@ -94,7 +100,7 @@ class QuickComposeActivity : ComponentActivity() {
                             }
                         } catch (e: Exception) {
                             Log.e("QuickComposeActivity", "send failed", e)
-                            runOnUiThread {
+                            withContext(Dispatchers.Main) {
                                 Toast
                                     .makeText(
                                         this@QuickComposeActivity,
@@ -104,7 +110,9 @@ class QuickComposeActivity : ComponentActivity() {
                                     .show()
                             }
                         } finally {
-                            finish()
+                            withContext(Dispatchers.Main) {
+                                if (!isFinishing && !isDestroyed) finish()
+                            }
                         }
                     }
                 },
@@ -127,13 +135,22 @@ private fun QuickComposeSheet(
     var isSending by remember { mutableStateOf(false) }
     val suggestions = remember { mutableStateListOf<ContactMatch>() }
     val recentContacts = remember { mutableStateListOf<ContactMatch>() }
+    val messageFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(selectedContact) {
+        if (selectedContact != null) {
+            messageFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     LaunchedEffect(Unit) {
-        val contacts = withContext(Dispatchers.IO) {
-            loadRecentContacts(context, 8)
+        val (contacts, number) = withContext(Dispatchers.IO) {
+            loadRecentContacts(context, 8) to
+                QuickComposeNotificationManager.getTargetNumber(context)
         }
-        recentContacts.clear()
         recentContacts.addAll(contacts)
+        number?.let { contactQuery = it }
     }
 
     val contactNumber = remember(selectedContact, contactQuery) {
@@ -150,18 +167,12 @@ private fun QuickComposeSheet(
         }
     }
 
-    LaunchedEffect(Unit) {
-        QuickComposeNotificationManager.getTargetNumber(context)?.let {
-            contactQuery = it
-        }
-    }
-
     LaunchedEffect(contactQuery) {
         if (contactQuery.isBlank() || selectedContact != null) {
             suggestions.clear()
             return@LaunchedEffect
         }
-        delay(300)
+        delay(300.milliseconds)
         val query = contactQuery
         val matches = withContext(Dispatchers.IO) {
             searchContacts(context, query)
@@ -267,12 +278,20 @@ private fun QuickComposeSheet(
                     }
                 }
 
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = displayText,
-                        onValueChange = {
-                            contactQuery = it
-                            selectedContact = null
+                        onValueChange = { newValue ->
+                            if (selectedContact != null) {
+                                selectedContact = null
+                                contactQuery = if (newValue.length > displayText.length) {
+                                    newValue.last().toString()
+                                } else {
+                                    ""
+                                }
+                            } else {
+                                contactQuery = newValue
+                            }
                         },
                         label = { Text(stringResource(R.string.quick_compose_to_label)) },
                         singleLine = true,
@@ -284,39 +303,45 @@ private fun QuickComposeSheet(
                         enabled = !isSending,
                     )
 
-                    if (suggestions.isNotEmpty() && selectedContact == null) {
-                        Spacer(Modifier.height(4.dp))
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 220.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                        ) {
-                            LazyColumn {
-                                items(suggestions) { contact ->
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                selectedContact = contact
-                                                contactQuery = contact.displayName
-                                                suggestions.clear()
+                    AnimatedVisibility(
+                        visible = suggestions.isNotEmpty() && selectedContact == null,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(4.dp))
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 220.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                ),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            ) {
+                                LazyColumn {
+                                    items(suggestions) { contact ->
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    selectedContact = contact
+                                                    contactQuery = contact.displayName
+                                                    suggestions.clear()
+                                                }
+                                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = contact.displayName,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                )
+                                                Text(
+                                                    text = contact.phoneNumber,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
                                             }
-                                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = contact.displayName,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                            )
-                                            Text(
-                                                text = contact.phoneNumber,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
                                         }
                                     }
                                 }
@@ -333,7 +358,8 @@ private fun QuickComposeSheet(
                     label = { Text(stringResource(R.string.quick_compose_message_hint)) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 80.dp),
+                        .heightIn(min = 80.dp)
+                        .focusRequester(messageFocusRequester),
                     maxLines = 6,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
@@ -342,6 +368,7 @@ private fun QuickComposeSheet(
                     keyboardActions = KeyboardActions(
                         onSend = {
                             if (contactNumber != null && messageText.isNotBlank() && !isSending) {
+                                isSending = true
                                 keyboardController?.hide()
                                 onSend(contactNumber, messageText.trim())
                             }
@@ -356,6 +383,7 @@ private fun QuickComposeSheet(
                     onClick = {
                         keyboardController?.hide()
                         contactNumber?.let { addr ->
+                            isSending = true
                             onSend(addr, messageText.trim())
                         }
                     },
@@ -417,7 +445,7 @@ private fun loadRecentContacts(context: Context, limit: Int): List<ContactMatch>
     val results = mutableListOf<ContactMatch>()
     val seen = mutableSetOf<String>()
     val uri = Telephony.Sms.CONTENT_URI.buildUpon()
-        .appendQueryParameter("limit", "500")
+        .appendQueryParameter("limit", "100")
         .build()
     try {
         context.contentResolver.query(
