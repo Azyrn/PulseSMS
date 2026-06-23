@@ -95,7 +95,7 @@ internal fun SmsThreadCard(
 ) {
     val context = LocalContext.current
     val reducedMotion = rememberReducedMotionEnabled()
-    var displayName by remember(thread.address) { mutableStateOf(displayNameFor(context, thread.address)) }
+    var displayName by remember(thread.address) { mutableStateOf(thread.address) }
     var photoUri by remember(thread.address) { mutableStateOf<Uri?>(null) }
     LaunchedEffect(thread.address) {
         val (name, uri) = withContext(Dispatchers.IO) {
@@ -138,9 +138,9 @@ internal fun SmsThreadCard(
         ),
         label = "thread_card_press_scale",
     )
-    val threadOpenPrefix = remember { context.getString(R.string.thread_open_prefix) }
-    val threadUnreadLabel = remember { context.getString(R.string.thread_unread_count) }
-    val semanticsLabel = remember(displayName, thread.unreadCount) {
+    val threadOpenPrefix = stringResource(R.string.thread_open_prefix)
+    val threadUnreadLabel = stringResource(R.string.thread_unread_count)
+    val semanticsLabel = remember(displayName, thread.unreadCount, threadOpenPrefix, threadUnreadLabel) {
         buildString {
             append(threadOpenPrefix)
             append(displayName)
