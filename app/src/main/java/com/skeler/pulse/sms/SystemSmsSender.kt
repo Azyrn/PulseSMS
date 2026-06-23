@@ -25,6 +25,8 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.klinker.android.send_message.Transaction
 import com.google.android.mms.MMSPart
+import com.google.android.mms.pdu_alt.PduParser
+import com.google.android.mms.pdu_alt.SendConf
 import com.skeler.pulse.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -356,14 +358,31 @@ internal class SystemSmsSender(
             throw RuntimeException("No MMSC configured")
         }
 
-        sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
-
-        if (messageUri != null) {
-            contentResolver.update(messageUri, ContentValues().apply {
-                put("st", 128)
-            }, null, null)
+        try {
+            val body = sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
+            if (messageUri != null) {
+                val sendConf = if (body != null) PduParser(body).parse() as? SendConf else null
+                val responseStatus = sendConf?.responseStatus ?: 128
+                if (responseStatus != 128) {
+                    throw RuntimeException("MMS rejected by MMSC: responseStatus=$responseStatus")
+                }
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_SENT)
+                    put("st", 128)
+                    sendConf?.messageId?.let { put("m_id", String(it)) }
+                }, null, null)
+            }
+        } catch (e: Exception) {
+            if (messageUri != null) {
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_FAILED)
+                    put("st", 129)
+                }, null, null)
+            }
+            throw e
+        } finally {
+            context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         }
-        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
     }
 
     private suspend fun sendMmsInternal(address: String, text: String, imageUris: List<Uri>, maxImageSizeKb: Int) {
@@ -458,17 +477,34 @@ internal class SystemSmsSender(
         }
         Log.i("SystemSmsSender", "MMSC=$mmsc proxy=$mmsProxy port=$mmsPort")
 
-        sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
-
-        if (messageUri != null) {
-            contentResolver.update(messageUri, ContentValues().apply {
-                put("st", 128) // STATUS_COMPLETE
-            }, null, null)
+        try {
+            val body = sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
+            if (messageUri != null) {
+                val sendConf = if (body != null) PduParser(body).parse() as? SendConf else null
+                val responseStatus = sendConf?.responseStatus ?: 128
+                if (responseStatus != 128) {
+                    throw RuntimeException("MMS rejected by MMSC: responseStatus=$responseStatus")
+                }
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_SENT)
+                    put("st", 128)
+                    sendConf?.messageId?.let { put("m_id", String(it)) }
+                }, null, null)
+            }
+        } catch (e: Exception) {
+            if (messageUri != null) {
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_FAILED)
+                    put("st", 129)
+                }, null, null)
+            }
+            throw e
+        } finally {
+            context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         }
-        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
     }
 
-    private suspend fun sendPduToMmsc(pduBytes: ByteArray, mmsc: String, proxy: String?, port: Int) {
+    private suspend fun sendPduToMmsc(pduBytes: ByteArray, mmsc: String, proxy: String?, port: Int): ByteArray? {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val mmsNetwork = cm.awaitNetwork(
             NetworkCapabilities.TRANSPORT_CELLULAR,
@@ -496,7 +532,7 @@ internal class SystemSmsSender(
             }
         }
 
-        try {
+        return try {
             val url = URL(mmsc)
             val connection = if (proxy != null) {
                 url.openConnection(Proxy(Proxy.Type.HTTP, java.net.InetSocketAddress(proxy, port)))
@@ -515,7 +551,11 @@ internal class SystemSmsSender(
             if (code !in 200..299) {
                 throw RuntimeException("MMS server returned $code")
             }
-            connection.disconnect()
+            try {
+                connection.inputStream?.use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            }.also { connection.disconnect() }
         } finally {
             if (Build.VERSION.SDK_INT >= 23) {
                 cm.bindProcessToNetwork(previousNetwork)
@@ -543,7 +583,6 @@ internal class SystemSmsSender(
             put("v", 18)
             put("pri", 129)
             put("tr_id", "T${now.toString(16)}")
-            put("resp_st", 128)
         }
         val mmsUri = contentResolver.insert(Telephony.Mms.CONTENT_URI, mmsValues) ?: return null
         val mmsId = mmsUri.lastPathSegment ?: return null
@@ -600,7 +639,6 @@ internal class SystemSmsSender(
             put("v", 18)
             put("pri", 129)
             put("tr_id", "T${now.toString(16)}")
-            put("resp_st", 128)
         }
         val mmsUri = contentResolver.insert(Telephony.Mms.CONTENT_URI, mmsValues) ?: return null
         val mmsId = mmsUri.lastPathSegment ?: return null

@@ -19,6 +19,7 @@
     <string name="conversation_message_failed">Non envoyé</string>
     <string name="conversation_message_delivered">Distribué</string>
     <string name="conversation_message_not_delivered">Non distribué</string>
+    <string name="conversation_message_sent">Envoyé</string>
     <string name="conversation_action_copy">Copier</string>
     <string name="conversation_action_copy_code">Copier le code</string>
     <string name="conversation_copy_code_content_description">Copier le code %1$s</string>

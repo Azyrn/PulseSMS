@@ -375,6 +375,12 @@ internal fun ConversationMessageBubble(
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                         )
+                    } else if (message.isSentPending()) {
+                        Text(
+                            text = stringResource(R.string.conversation_message_sent),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                        )
                     }
                     val showEmoji = reaction != null
                     Text(

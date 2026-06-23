@@ -361,7 +361,7 @@ class SystemSmsReader(
         val cursor = try {
             contentResolver.query(
                 Telephony.Mms.CONTENT_URI,
-                arrayOf("_id", "date", "read", "msg_box", "thread_id"),
+                arrayOf("_id", "date", "read", "msg_box", "thread_id", "st", "resp_st"),
                 selection,
                 selectionArgs.toTypedArray(),
                 sortOrder,
@@ -376,6 +376,8 @@ class SystemSmsReader(
             val dateIdx = c.getColumnIndexOrThrow("date")
             val readIdx = c.getColumnIndexOrThrow("read")
             val msgBoxIdx = c.getColumnIndexOrThrow("msg_box")
+            val stIdx = c.getColumnIndex("st")
+            val respStIdx = c.getColumnIndex("resp_st")
 
             // Resolve the other-party address once — all MMS in this thread share
             // the same contact address regardless of direction (sent vs received)
@@ -421,6 +423,16 @@ class SystemSmsReader(
                     else -> Telephony.Sms.MESSAGE_TYPE_SENT
                 }
 
+                val st = stIdx.takeIf { it >= 0 }?.let { c.getInt(it) }
+                val respSt = respStIdx.takeIf { it >= 0 }?.let { c.getInt(it) }
+                val status = when {
+                    respSt == 128 -> Telephony.Sms.STATUS_COMPLETE
+                    respSt != null && respSt > 128 -> Telephony.Sms.STATUS_FAILED
+                    st == 129 -> Telephony.Sms.STATUS_FAILED
+                    st != null && st >= 128 -> Telephony.Sms.STATUS_COMPLETE
+                    else -> Telephony.Sms.STATUS_NONE
+                }
+
                 messages.add(
                     SystemSms(
                         id = mmsId,
@@ -433,6 +445,7 @@ class SystemSmsReader(
                         threadId = resolvedThreadId,
                         mmsPartUri = partUri,
                         mmsContentType = partsResult.attachmentMimeType,
+                        status = status,
                         fromAddress = fromAddress,
                         toAddress = toAddress,
                     ),

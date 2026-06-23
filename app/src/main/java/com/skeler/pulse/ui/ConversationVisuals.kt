@@ -305,6 +305,9 @@ internal fun SystemSms.isSentAndDelivered(): Boolean =
 internal fun SystemSms.isDeliveryFailed(): Boolean =
     type == Telephony.Sms.MESSAGE_TYPE_SENT && status == Telephony.Sms.STATUS_FAILED
 
+internal fun SystemSms.isSentPending(): Boolean =
+    type == Telephony.Sms.MESSAGE_TYPE_SENT && status == Telephony.Sms.STATUS_PENDING
+
 internal fun draftAfterSendState(currentDraft: String, sendState: SendState): String = when (sendState) {
     is SendState.Sent -> ""
     is SendState.Failed -> currentDraft.ifBlank { sendState.body }

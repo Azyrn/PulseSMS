@@ -1,6 +1,7 @@
 package com.skeler.pulse.sms
 
 import android.content.BroadcastReceiver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -11,8 +12,10 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Telephony
 import android.util.Log
+import com.google.android.mms.pdu_alt.DeliveryInd
 import com.google.android.mms.pdu_alt.NotificationInd
 import com.google.android.mms.pdu_alt.PduBody
+import com.google.android.mms.pdu_alt.PduHeaders
 import com.google.android.mms.pdu_alt.PduParser
 import com.google.android.mms.pdu_alt.RetrieveConf
 import com.skeler.pulse.R
@@ -53,14 +56,17 @@ class MmsReceiver : BroadcastReceiver() {
 
     private suspend fun handleWapPush(context: Context, pduData: ByteArray) {
         val pdu = PduParser(pduData).parse()
-        if (pdu !is NotificationInd) {
-            Log.w(TAG, "Unexpected PDU type: ${pdu?.javaClass?.simpleName}")
-            return
+        when (pdu) {
+            is NotificationInd -> handleNotification(context, pdu)
+            is DeliveryInd -> handleDeliveryInd(context, pdu)
+            else -> Log.w(TAG, "Unexpected PDU type: ${pdu?.javaClass?.simpleName}")
         }
+    }
 
-        val locationUrl = String(pdu.contentLocation ?: ByteArray(0))
-        val transactionId = String(pdu.transactionId ?: ByteArray(0))
-        val from = pdu.from?.string.orEmpty()
+    private suspend fun handleNotification(context: Context, notification: NotificationInd) {
+        val locationUrl = String(notification.contentLocation ?: ByteArray(0))
+        val transactionId = String(notification.transactionId ?: ByteArray(0))
+        val from = notification.from?.string.orEmpty()
 
         Log.i(TAG, "MMS Notification: location=$locationUrl transactionId=$transactionId from=$from")
 
@@ -83,6 +89,43 @@ class MmsReceiver : BroadcastReceiver() {
         }
 
         storeMms(context, retrieveConf, from)
+    }
+
+    private suspend fun handleDeliveryInd(context: Context, deliveryInd: DeliveryInd) {
+        val messageId = deliveryInd.messageId?.let { String(it) } ?: return
+        val status = deliveryInd.status
+        Log.i(TAG, "Delivery report: m_id=$messageId status=$status")
+
+        val cursor = context.contentResolver.query(
+            Telephony.Mms.CONTENT_URI,
+            arrayOf("_id"),
+            "m_id = ?",
+            arrayOf(messageId),
+            null,
+        )
+
+        cursor?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val mmsUri = ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, id)
+
+                val respSt = when (status) {
+                    PduHeaders.STATUS_RETRIEVED -> PduHeaders.RESPONSE_STATUS_OK
+                    PduHeaders.STATUS_REJECTED -> PduHeaders.RESPONSE_STATUS_ERROR_PERMANENT_CONTENT_NOT_ACCEPTED
+                    PduHeaders.STATUS_EXPIRED -> PduHeaders.RESPONSE_STATUS_ERROR_PERMANENT_MESSAGE_NOT_FOUND
+                    PduHeaders.STATUS_DEFERRED -> PduHeaders.RESPONSE_STATUS_ERROR_TRANSIENT_FAILURE
+                    else -> PduHeaders.RESPONSE_STATUS_ERROR_UNSPECIFIED
+                }
+
+                context.contentResolver.update(mmsUri, ContentValues().apply {
+                    put("resp_st", respSt)
+                }, null, null)
+
+                Log.i(TAG, "Delivery report updated: mmsId=$id resp_st=$respSt")
+            }
+        }
+
+        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
     }
 
     private suspend fun downloadFromLocation(context: Context, locationUrl: String): ByteArray? {
