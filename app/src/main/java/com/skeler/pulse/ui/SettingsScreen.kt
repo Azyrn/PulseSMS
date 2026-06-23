@@ -268,18 +268,45 @@ internal fun SettingsScreen(
                     val encryptionPreferences = remember(context) {
                         EncryptionPreferences(context.applicationContext)
                     }
-                    val encryptionEnabled by encryptionPreferences.encryptionEnabled.collectAsState(initial = true)
+                    val encryptionEnabled by encryptionPreferences.encryptionEnabled.collectAsState(initial = false)
+                    var showEncryptionWarningDialog by remember { mutableStateOf(false) }
                     SettingsToggleRow(
                         icon = Icons.Rounded.Lock,
                         title = stringResource(R.string.settings_encryption),
                         subtitle = context.getString(R.string.settings_encryption_subtitle),
                         checked = encryptionEnabled,
                         onToggle = {
-                            coroutineScope.launch {
-                                encryptionPreferences.setEncryptionEnabled(!encryptionEnabled)
+                            if (encryptionEnabled) {
+                                coroutineScope.launch {
+                                    encryptionPreferences.setEncryptionEnabled(false)
+                                }
+                            } else {
+                                showEncryptionWarningDialog = true
                             }
                         },
                     )
+                    if (showEncryptionWarningDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showEncryptionWarningDialog = false },
+                            title = { Text(stringResource(R.string.encryption_warning_title)) },
+                            text = { Text(stringResource(R.string.encryption_warning_body)) },
+                            dismissButton = {
+                                TextButton(onClick = { showEncryptionWarningDialog = false }) {
+                                    Text(stringResource(R.string.encryption_warning_cancel))
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showEncryptionWarningDialog = false
+                                    coroutineScope.launch {
+                                        encryptionPreferences.setEncryptionEnabled(true)
+                                    }
+                                }) {
+                                    Text(stringResource(R.string.encryption_warning_confirm))
+                                }
+                            },
+                        )
+                    }
                     SettingsGroupDivider()
                     val batteryOptDisabled = remember { mutableStateOf(checkBatteryOpt(context)) }
                     val batteryOptLauncher = rememberLauncherForActivityResult(

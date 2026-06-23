@@ -17,7 +17,7 @@ class EncryptionPreferences(
         get() = context.dataStore
 
     val encryptionEnabled: Flow<Boolean> =
-        store.data.map { prefs -> prefs[KEY_ENCRYPTION_ENABLED] ?: true }
+        store.data.map { prefs -> prefs[KEY_ENCRYPTION_ENABLED] ?: false }
 
     suspend fun isEncryptionEnabled(): Boolean = encryptionEnabled.first()
 
