@@ -179,13 +179,13 @@ fun PulseAppShell(
                                 conversationDraftSeed = ""
                                 NotificationManagerCompat.from(context).cancel(address.hashCode() and 0x7fffffff)
                                 onOpenConversation(address, threadId)
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
+                                backStack = backStack + DESTINATION_CONVERSATION
                             },
                             onOpenArchivedChats = {
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_ARCHIVED)
+                                backStack = backStack + DESTINATION_ARCHIVED
                             },
                             onOpenSettings = {
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS)
+                                backStack = backStack + DESTINATION_SETTINGS
                             },
                             onOpenNewChat = onRequestNewChat,
                             onRefreshInbox = smsViewModel::refreshInbox,
@@ -206,7 +206,7 @@ fun PulseAppShell(
                         query = newChatQuery,
                         onQueryChange = { newChatQuery = it },
                         onBack = {
-                            backStack = listOf(DESTINATION_INBOX)
+                            navigateBack()
                         },
                         onStartConversation = { recipient, subscriptionId ->
                             activeAddress = recipient.address
@@ -215,7 +215,7 @@ fun PulseAppShell(
                             conversationDraftSeed = pendingForwardDraft.orEmpty()
                             pendingForwardDraft = null
                             onOpenConversation(recipient.address, null)
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT, DESTINATION_CONVERSATION)
+                            backStack = backStack + DESTINATION_CONVERSATION
                         },
                     )
                 }
@@ -313,13 +313,13 @@ fun PulseAppShell(
                         },
                         onRequestDefaultSms = onRequestDefaultSms,
                         onOpenArchivedChats = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED)
+                            backStack = backStack + DESTINATION_ARCHIVED
                         },
                         onOpenSecurity = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_SECURITY)
+                            backStack = backStack + DESTINATION_SECURITY
                         },
                         onOpenBlockedNumbers = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_BLOCKED_NUMBERS)
+                            backStack = backStack + DESTINATION_BLOCKED_NUMBERS
                         },
                         onExportBackup = { uri -> smsViewModel.exportBackupToUri(uri) },
                         onImportBackup = { uri -> smsViewModel.importBackupFromUri(uri) },
@@ -347,7 +347,7 @@ fun PulseAppShell(
                             activeSubscriptionId = null
                             conversationDraftSeed = ""
                             onOpenConversation(address, threadId)
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED, DESTINATION_CONVERSATION)
+                            backStack = backStack + DESTINATION_CONVERSATION
                         },
                         onRefreshInbox = smsViewModel::refreshInbox,
                         onTogglePinned = smsViewModel::toggleThreadPinned,
