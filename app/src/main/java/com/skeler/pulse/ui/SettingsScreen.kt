@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -71,6 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +93,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.skeler.pulse.R
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
@@ -102,6 +107,7 @@ import com.skeler.pulse.security.auth.BiometricAuthResult
 import com.skeler.pulse.security.auth.BiometricAvailability
 import com.skeler.pulse.security.auth.checkBiometricAvailability
 import com.skeler.pulse.security.auth.showBiometricPrompt
+import com.skeler.pulse.sms.EncryptionPreferences
 import com.skeler.pulse.sms.MessageAutomationPreferences
 import com.skeler.pulse.sms.MmsPreferences
 import com.skeler.pulse.sms.NotificationPreferences
@@ -256,6 +262,52 @@ internal fun SettingsScreen(
                             coroutineScope.launch {
                                 messageAutomationPreferences.setAutoCopyOtpCodesEnabled(!autoCopyOtpCodes)
                             }
+                        },
+                    )
+                    SettingsGroupDivider()
+                    val encryptionPreferences = remember(context) {
+                        EncryptionPreferences(context.applicationContext)
+                    }
+                    val encryptionEnabled by encryptionPreferences.encryptionEnabled.collectAsState(initial = true)
+                    SettingsToggleRow(
+                        icon = Icons.Rounded.Lock,
+                        title = stringResource(R.string.settings_encryption),
+                        subtitle = context.getString(R.string.settings_encryption_subtitle),
+                        checked = encryptionEnabled,
+                        onToggle = {
+                            coroutineScope.launch {
+                                encryptionPreferences.setEncryptionEnabled(!encryptionEnabled)
+                            }
+                        },
+                    )
+                    SettingsGroupDivider()
+                    val batteryOptDisabled = remember { mutableStateOf(checkBatteryOpt(context)) }
+                    val lifecycle = LocalLifecycleOwner.current.lifecycle
+                    DisposableEffect(lifecycle) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                batteryOptDisabled.value = checkBatteryOpt(context)
+                            }
+                        }
+                        lifecycle.addObserver(observer)
+                        onDispose { lifecycle.removeObserver(observer) }
+                    }
+                    SettingsRow(
+                        icon = Icons.Rounded.Bolt,
+                        title = stringResource(R.string.settings_battery_optimization),
+                        subtitle = if (batteryOptDisabled.value) {
+                            context.getString(R.string.settings_battery_optimization_disabled)
+                        } else {
+                            context.getString(R.string.settings_battery_optimization_enabled)
+                        },
+                        onClick = {
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            ).apply {
+                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
                         },
                     )
                     SettingsGroupDivider()
@@ -477,6 +529,11 @@ private fun mmsSizeLabel(context: android.content.Context, sizeKb: Int): String 
     1000 -> context.getString(R.string.settings_mms_size_mb)
     -1 -> context.getString(R.string.settings_mms_size_unlimited)
     else -> context.getString(R.string.settings_mms_size_kb, sizeKb)
+}
+
+private fun checkBatteryOpt(context: android.content.Context): Boolean {
+    val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
 }
 
 // ── Settings sub-components ──

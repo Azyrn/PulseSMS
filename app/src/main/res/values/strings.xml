@@ -339,4 +339,9 @@
     <string name="no_call_app_available">No call app available</string>
     <string name="inbox_read_error_body">Pulse couldn\'t read your messages right now.</string>
     <string name="sms_body_save_failed">New message received, but Pulse couldn\'t save it yet.</string>
+
+    <!-- Battery optimization -->
+    <string name="settings_battery_optimization">Battery optimization</string>
+    <string name="settings_battery_optimization_disabled">Disabled</string>
+    <string name="settings_battery_optimization_enabled">Enabled — tap to disable</string>
 </resources>

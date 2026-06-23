@@ -10,6 +10,7 @@ import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.R
 import com.skeler.pulse.sms.DraftPreferences
+import com.skeler.pulse.sms.EncryptionPreferences
 import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.InboxThreadPreferences
 import com.skeler.pulse.sms.MessageReactionPreferences
@@ -50,6 +51,7 @@ class RealSmsViewModel(
     private val importantMessagePreferences: ImportantMessagePreferences,
     private val inboxThreadPreferences: InboxThreadPreferences,
     private val messageReactionPreferences: MessageReactionPreferences,
+    private val encryptionPreferences: EncryptionPreferences,
 ) : ViewModel() {
 
     private val draftPreferences = DraftPreferences(context)
@@ -427,7 +429,7 @@ class RealSmsViewModel(
         _sendState.value = SendState.Sending(trimmedBody)
         sendJob = viewModelScope.launch {
             try {
-                val encryptedBody = if (imageUris.isEmpty()) {
+                val encryptedBody = if (imageUris.isEmpty() && encryptionPreferences.isEncryptionEnabled()) {
                     encryptionManager.encrypt(trimmedBody)
                 } else {
                     null

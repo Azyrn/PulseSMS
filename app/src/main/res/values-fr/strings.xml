@@ -339,4 +339,9 @@
     <string name="encrypted_badge">Chiffré</string>
     <string name="encryption_info_dialog_body">Le chiffrement est géré par conversation. Ouvrez une conversation et appuyez sur l\'icône de cadenas sous le composeur pour activer ou désactiver le chiffrement.</string>
 
+    <!-- Battery optimization -->
+    <string name="settings_battery_optimization">Optimisation batterie</string>
+    <string name="settings_battery_optimization_disabled">Désactivée</string>
+    <string name="settings_battery_optimization_enabled">Activée — appuyez pour désactiver</string>
+
 </resources>
