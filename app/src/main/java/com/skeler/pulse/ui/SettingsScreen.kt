@@ -202,6 +202,7 @@ internal fun SettingsScreen(
         themeState.selectedPalette.label
     }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    val batteryOptExempt = remember { mutableStateOf(checkBatteryOpt(context)) }
 
     Scaffold(
         topBar = {
@@ -308,26 +309,25 @@ internal fun SettingsScreen(
                         )
                     }
                     SettingsGroupDivider()
-                    val batteryOptDisabled = remember { mutableStateOf(checkBatteryOpt(context)) }
                     val batteryOptLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.StartActivityForResult()
                     ) {
-                        batteryOptDisabled.value = checkBatteryOpt(context)
+                        batteryOptExempt.value = checkBatteryOpt(context)
                     }
                     val lifecycle = LocalLifecycleOwner.current.lifecycle
                     DisposableEffect(lifecycle) {
                         val observer = LifecycleEventObserver { _, event ->
                             if (event == Lifecycle.Event.ON_RESUME) {
-                                batteryOptDisabled.value = checkBatteryOpt(context)
+                                batteryOptExempt.value = checkBatteryOpt(context)
                             }
                         }
                         lifecycle.addObserver(observer)
                         onDispose { lifecycle.removeObserver(observer) }
                     }
                     SettingsRow(
-                        icon = Icons.Rounded.Bolt,
+                        icon = if (batteryOptExempt.value) Icons.Rounded.CheckCircle else Icons.Rounded.Bolt,
                         title = stringResource(R.string.settings_battery_optimization),
-                        subtitle = if (batteryOptDisabled.value) {
+                        subtitle = if (batteryOptExempt.value) {
                             context.getString(R.string.settings_battery_optimization_disabled)
                         } else {
                             context.getString(R.string.settings_battery_optimization_enabled)
