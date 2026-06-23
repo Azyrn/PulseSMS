@@ -339,6 +339,9 @@
     <string name="encrypted_badge">Chiffré</string>
     <string name="encryption_info_dialog_body">Le chiffrement est géré par conversation. Ouvrez une conversation et appuyez sur l\'icône de cadenas sous le composeur pour activer ou désactiver le chiffrement.</string>
     <string name="encryption_key_lost">Message chiffré (clé perdue après réinstallation)</string>
+    <string name="thread_open_prefix">Ouvrir la conversation </string>
+    <string name="thread_unread_count">%d non lu</string>
+    <string name="thread_pinned">Épinglé</string>
     <string name="encryption_warning_title">Activer le chiffrement ?</string>
     <string name="encryption_warning_body">Les messages chiffrés ne pourront plus être lus après une réinstallation de l\'application, car les clés de chiffrement sont stockées dans le matériel sécurisé de l\'appareil.\n\nLes sauvegardes ne permettront pas non plus de restaurer les messages chiffrés.\n\nÊtes-vous sûr de vouloir activer le chiffrement ?</string>
     <string name="encryption_warning_cancel">Annuler</string>

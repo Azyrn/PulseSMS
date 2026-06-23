@@ -335,6 +335,9 @@
     <string name="encrypted_badge">Encrypted</string>
     <string name="encryption_info_dialog_body">Encryption is managed per conversation. Open a conversation and tap the lock icon below the composer to toggle encryption for that conversation.</string>
     <string name="encryption_key_lost">Encrypted message (key lost on reinstall)</string>
+    <string name="thread_open_prefix">Open thread </string>
+    <string name="thread_unread_count">%d unread</string>
+    <string name="thread_pinned">Pinned</string>
     <string name="encryption_warning_title">Enable encryption?</string>
     <string name="encryption_warning_body">Encrypted messages cannot be read after reinstalling the app, as encryption keys are stored securely in your device\'s hardware.\n\nBackups also cannot restore encrypted messages.\n\nAre you sure you want to enable encryption?</string>
     <string name="encryption_warning_cancel">Cancel</string>
