@@ -334,6 +334,7 @@
     <string name="settings_encryption_subtitle">Encrypt outgoing SMS with AES-GCM</string>
     <string name="encrypted_badge">Encrypted</string>
     <string name="encryption_info_dialog_body">Encryption is managed per conversation. Open a conversation and tap the lock icon below the composer to toggle encryption for that conversation.</string>
+    <string name="encryption_key_lost">Encrypted message (key lost on reinstall)</string>
 
     <!-- Misc -->
     <string name="no_call_app_available">No call app available</string>

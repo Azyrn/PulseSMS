@@ -57,5 +57,6 @@ class SmsEncryptionManager @Inject constructor(
         private const val ENCRYPTED_PREFIX = "~~pulse_e2e~~"
         private const val IV_LENGTH = 12
         private const val PULSE_SMS_KEY_ALIAS = "pulse_sms_e2e_key"
+        const val KEY_LOST_PLACEHOLDER = "Message chiffré (clé perdue)"
     }
 }

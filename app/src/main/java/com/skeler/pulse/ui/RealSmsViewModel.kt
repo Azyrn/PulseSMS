@@ -110,8 +110,8 @@ class RealSmsViewModel(
                     }
                     val decryptedThreads = threadsWithReadOverlay.map { thread ->
                         if (encryptionManager.isEncrypted(thread.snippet)) {
-                            val decrypted = encryptionManager.decrypt(thread.snippet)
-                            if (decrypted != null) thread.copy(snippet = decrypted) else thread
+                            thread.copy(snippet = encryptionManager.decrypt(thread.snippet)
+                                ?: SmsEncryptionManager.KEY_LOST_PLACEHOLDER)
                         } else {
                             thread
                         }
@@ -229,8 +229,8 @@ class RealSmsViewModel(
                 val allMessages = loadedOlderMessages + dedupedRecent
                 val decryptedMessages = allMessages.map { message ->
                     if (encryptionManager.isEncrypted(message.body)) {
-                        val decrypted = encryptionManager.decrypt(message.body)
-                        if (decrypted != null) message.copy(body = decrypted) else message
+                        message.copy(body = encryptionManager.decrypt(message.body)
+                            ?: SmsEncryptionManager.KEY_LOST_PLACEHOLDER)
                     } else {
                         message
                     }
@@ -321,7 +321,8 @@ class RealSmsViewModel(
             val loadedIds = loadedOlderMessages.mapTo(hashSetOf()) { it.id }
             val deduped = olderMessages.filterNot { it.id in loadedIds }.map { message ->
                 if (encryptionManager.isEncrypted(message.body)) {
-                    encryptionManager.decrypt(message.body)?.let { message.copy(body = it) } ?: message
+                    message.copy(body = encryptionManager.decrypt(message.body)
+                        ?: SmsEncryptionManager.KEY_LOST_PLACEHOLDER)
                 } else {
                     message
                 }

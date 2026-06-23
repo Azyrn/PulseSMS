@@ -338,6 +338,7 @@
     <string name="settings_encryption_subtitle">Chiffrer les SMS sortants avec AES-GCM</string>
     <string name="encrypted_badge">Chiffré</string>
     <string name="encryption_info_dialog_body">Le chiffrement est géré par conversation. Ouvrez une conversation et appuyez sur l\'icône de cadenas sous le composeur pour activer ou désactiver le chiffrement.</string>
+    <string name="encryption_key_lost">Message chiffré (clé perdue après réinstallation)</string>
 
     <!-- Battery optimization -->
     <string name="settings_battery_optimization">Optimisation batterie</string>
