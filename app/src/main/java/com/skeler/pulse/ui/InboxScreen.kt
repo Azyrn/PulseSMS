@@ -175,10 +175,14 @@ internal fun RealInboxScreen(
     }
 
     val normalizedQuery = remember(searchQuery) { searchQuery.trim() }
-    val searchableDisplayNames = remember(filteredByChip, context) {
-        filteredByChip.associateWith { thread ->
-            displayNameFor(context, thread.address)
+    var searchableDisplayNames by remember { mutableStateOf<Map<SmsThread, String>>(emptyMap()) }
+    LaunchedEffect(filteredByChip) {
+        val names = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            filteredByChip.associateWith { thread ->
+                displayNameFor(context, thread.address)
+            }
         }
+        searchableDisplayNames = names
     }
     val filteredThreads = remember(filteredByChip, normalizedQuery, searchableDisplayNames) {
         if (normalizedQuery.isBlank()) {
@@ -331,21 +335,21 @@ internal fun RealInboxScreen(
                 .background(brush = inboxBackdropBrush),
         ) {
             LazyColumn(
-            state = listState,
-            flingBehavior = listFlingBehavior,
-            modifier = Modifier
-                .fillMaxSize()
-                .elasticOverscroll(
-                    enabled = !reducedMotion,
-                    state = listState,
+                state = listState,
+                flingBehavior = listFlingBehavior,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .elasticOverscroll(
+                        enabled = !reducedMotion,
+                        state = listState,
+                    ),
+                contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding() + 4.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 16.dp,
+                    start = 16.dp, end = 16.dp,
                 ),
-            contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding() + 4.dp,
-                bottom = innerPadding.calculateBottomPadding() + 16.dp,
-                start = 16.dp, end = 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
             item(key = "filter_chips") {
                 Row(
                     modifier = Modifier
