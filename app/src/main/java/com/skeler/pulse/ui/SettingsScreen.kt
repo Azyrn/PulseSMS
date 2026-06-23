@@ -282,6 +282,11 @@ internal fun SettingsScreen(
                     )
                     SettingsGroupDivider()
                     val batteryOptDisabled = remember { mutableStateOf(checkBatteryOpt(context)) }
+                    val batteryOptLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.StartActivityForResult()
+                    ) {
+                        batteryOptDisabled.value = checkBatteryOpt(context)
+                    }
                     val lifecycle = LocalLifecycleOwner.current.lifecycle
                     DisposableEffect(lifecycle) {
                         val observer = LifecycleEventObserver { _, event ->
@@ -302,12 +307,11 @@ internal fun SettingsScreen(
                         },
                         onClick = {
                             val intent = android.content.Intent(
-                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                             ).apply {
-                                data = android.net.Uri.fromParts("package", context.packageName, null)
-                                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                data = android.net.Uri.parse("package:${context.packageName}")
                             }
-                            context.startActivity(intent)
+                            batteryOptLauncher.launch(intent)
                         },
                     )
                     SettingsGroupDivider()
