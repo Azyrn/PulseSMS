@@ -23,7 +23,10 @@ data class BackupMessage(
     val threadId: Long?,
 )
 
-class SmsBackupManager(private val context: Context) {
+class SmsBackupManager(
+    private val context: Context,
+    private val encryptionManager: SmsEncryptionManager,
+) {
 
     private val contentResolver: ContentResolver get() = context.contentResolver
 
@@ -49,7 +52,12 @@ class SmsBackupManager(private val context: Context) {
         contentResolver.query(uri, projection, null, null, "${Telephony.Sms.DATE} ASC")?.use { cursor ->
             while (cursor.moveToNext()) {
                 val address = cursor.getString(0) ?: ""
-                val body = cursor.getString(1) ?: ""
+                val rawBody = cursor.getString(1) ?: ""
+                val body = if (encryptionManager.isEncrypted(rawBody)) {
+                    encryptionManager.decrypt(rawBody) ?: SmsEncryptionManager.KEY_LOST_PLACEHOLDER
+                } else {
+                    rawBody
+                }
                 val date = cursor.getLong(2)
                 val dateSent = if (cursor.isNull(3)) null else cursor.getLong(3)
                 val type = cursor.getInt(4)

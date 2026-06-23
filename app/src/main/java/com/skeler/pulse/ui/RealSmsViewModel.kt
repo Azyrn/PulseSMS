@@ -57,7 +57,7 @@ class RealSmsViewModel(
     private val draftPreferences = DraftPreferences(context)
     private val encryptionManager = SmsEncryptionManager(context)
     private val scheduledMessageManager = ScheduledMessageManager(context)
-    private val backupManager = SmsBackupManager(context)
+    private val backupManager = SmsBackupManager(context, encryptionManager)
     private val scheduledDao = ScheduledMessageDatabase.getInstance(context).scheduledMessageDao()
 
     private val _inboxState = MutableStateFlow(RealInboxState())
