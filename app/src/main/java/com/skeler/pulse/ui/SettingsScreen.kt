@@ -78,7 +78,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -469,14 +468,10 @@ internal fun SettingsScreen(
                 }
                 val maxSms by cleanupPrefs.maxSmsPerThread.collectAsState(initial = MessageCleanupPreferences.KEEP_ALL)
                 val maxMms by cleanupPrefs.maxMmsPerThread.collectAsState(initial = MessageCleanupPreferences.KEEP_ALL)
+                val lastSmsValue by cleanupPrefs.lastSmsValue.collectAsState(initial = MessageCleanupPreferences.DEFAULT_KEEP_COUNT)
+                val lastMmsValue by cleanupPrefs.lastMmsValue.collectAsState(initial = MessageCleanupPreferences.DEFAULT_KEEP_COUNT)
                 var isCleaning by remember { mutableStateOf(false) }
                 val sliderValues = remember { (10..500 step 10).toList() }
-                val lastSmsValue = remember {
-                    mutableIntStateOf(if (maxSms != MessageCleanupPreferences.KEEP_ALL) maxSms else 50)
-                }
-                val lastMmsValue = remember {
-                    mutableIntStateOf(if (maxMms != MessageCleanupPreferences.KEEP_ALL) maxMms else 50)
-                }
 
                 SettingsGroupCard {
                     SettingsCleanupSliderRow(
@@ -487,12 +482,11 @@ internal fun SettingsScreen(
                         onKeepAllChange = { keepAll ->
                             coroutineScope.launch {
                                 cleanupPrefs.setMaxSmsPerThread(
-                                    if (keepAll) MessageCleanupPreferences.KEEP_ALL else lastSmsValue.intValue,
+                                    if (keepAll) MessageCleanupPreferences.KEEP_ALL else lastSmsValue,
                                 )
                             }
                         },
                         onValueChange = { value ->
-                            lastSmsValue.intValue = value
                             coroutineScope.launch {
                                 cleanupPrefs.setMaxSmsPerThread(value)
                             }
@@ -507,12 +501,11 @@ internal fun SettingsScreen(
                         onKeepAllChange = { keepAll ->
                             coroutineScope.launch {
                                 cleanupPrefs.setMaxMmsPerThread(
-                                    if (keepAll) MessageCleanupPreferences.KEEP_ALL else lastMmsValue.intValue,
+                                    if (keepAll) MessageCleanupPreferences.KEEP_ALL else lastMmsValue,
                                 )
                             }
                         },
                         onValueChange = { value ->
-                            lastMmsValue.intValue = value
                             coroutineScope.launch {
                                 cleanupPrefs.setMaxMmsPerThread(value)
                             }

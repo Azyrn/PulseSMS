@@ -23,21 +23,37 @@ class MessageCleanupPreferences(
     val maxMmsPerThread: Flow<Int> =
         store.data.map { prefs -> prefs[KEY_MAX_MMS_PER_THREAD] ?: KEEP_ALL }
 
+    val lastSmsValue: Flow<Int> =
+        store.data.map { prefs -> prefs[KEY_LAST_SMS_VALUE] ?: DEFAULT_KEEP_COUNT }
+
+    val lastMmsValue: Flow<Int> =
+        store.data.map { prefs -> prefs[KEY_LAST_MMS_VALUE] ?: DEFAULT_KEEP_COUNT }
+
     suspend fun setMaxSmsPerThread(value: Int) {
-        store.edit { prefs -> prefs[KEY_MAX_SMS_PER_THREAD] = value }
+        store.edit { prefs ->
+            prefs[KEY_MAX_SMS_PER_THREAD] = value
+            if (value != KEEP_ALL) prefs[KEY_LAST_SMS_VALUE] = value
+        }
     }
 
     suspend fun setMaxMmsPerThread(value: Int) {
-        store.edit { prefs -> prefs[KEY_MAX_MMS_PER_THREAD] = value }
+        store.edit { prefs ->
+            prefs[KEY_MAX_MMS_PER_THREAD] = value
+            if (value != KEEP_ALL) prefs[KEY_LAST_MMS_VALUE] = value
+        }
     }
 
     suspend fun getMaxSmsPerThread(): Int = maxSmsPerThread.first()
     suspend fun getMaxMmsPerThread(): Int = maxMmsPerThread.first()
+    suspend fun getLastSmsValue(): Int = lastSmsValue.first()
+    suspend fun getLastMmsValue(): Int = lastMmsValue.first()
 
     companion object {
         private val KEY_MAX_SMS_PER_THREAD = intPreferencesKey("max_sms_per_thread")
         private val KEY_MAX_MMS_PER_THREAD = intPreferencesKey("max_mms_per_thread")
+        private val KEY_LAST_SMS_VALUE = intPreferencesKey("last_sms_value")
+        private val KEY_LAST_MMS_VALUE = intPreferencesKey("last_mms_value")
         const val KEEP_ALL = -1
-        val PRESET_VALUES = listOf(10, 20, 50, 100, KEEP_ALL)
+        const val DEFAULT_KEEP_COUNT = 50
     }
 }
