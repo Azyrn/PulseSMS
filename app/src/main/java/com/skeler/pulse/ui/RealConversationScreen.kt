@@ -474,7 +474,7 @@ internal fun RealConversationScreen(
                         imagePickerLauncher.launch("image/*")
                     },
                     onTakePhoto = {
-                        val photoFile = createImageFile(context)
+                        val photoFile = createCameraImageFile(context)
                         val photoUri = androidx.core.content.FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.mmsfileprovider",
@@ -843,7 +843,7 @@ private fun ScheduleMessageDialog(
                             modifier = Modifier.padding(start = 20.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                         ) {
                             Text(
-                                text = String.format("%02d:%02d %s", timePickerState.hour, timePickerState.minute, timezoneId),
+                                    text = String.format(Locale.US, "%02d:%02d %s", timePickerState.hour, timePickerState.minute, timezoneId),
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                             )
@@ -1171,9 +1171,4 @@ private fun ScheduledMessageBubble(
     }
 }
 
-private fun createImageFile(context: android.content.Context): java.io.File {
-    val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-    val imageDir = java.io.File(context.cacheDir, "camera_photos")
-    imageDir.mkdirs()
-    return java.io.File(imageDir, "MMS_$timeStamp.jpg")
-}
+// createCameraImageFile lives in ConversationComposer.kt

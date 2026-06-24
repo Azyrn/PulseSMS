@@ -1205,7 +1205,7 @@ private fun CameraPreviewContent(
     }
 }
 
-private fun createCameraImageFile(context: android.content.Context): java.io.File {
+internal fun createCameraImageFile(context: android.content.Context): java.io.File {
     val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
     val imageDir = java.io.File(context.cacheDir, "camera_photos")
     imageDir.mkdirs()
