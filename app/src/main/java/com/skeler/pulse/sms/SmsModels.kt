@@ -24,13 +24,15 @@ data class SystemSms(
     val read: Boolean,
     val threadId: Long,
     val status: Int = Telephony.Sms.STATUS_NONE,
-    val mmsPartUri: Uri? = null,
-    val mmsContentType: String? = null,
+    val mmsPartUris: List<Uri> = emptyList(),
+    val mmsContentTypes: List<String> = emptyList(),
     val priority: Int? = null,
     val dateSent: Long? = null,
     val fromAddress: String? = null,
     val toAddress: String? = null,
 ) {
+    val mmsPartUri: Uri? get() = mmsPartUris.firstOrNull()
+    val mmsContentType: String? get() = mmsContentTypes.firstOrNull()
     val isInbound: Boolean get() = type == Telephony.Sms.MESSAGE_TYPE_INBOX
     val isOutbound: Boolean
         get() = type == Telephony.Sms.MESSAGE_TYPE_SENT ||

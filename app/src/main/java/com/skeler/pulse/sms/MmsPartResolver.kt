@@ -14,16 +14,19 @@ internal object MmsPartResolver {
 
     data class MmsPartsResult(
         val textBody: String?,
-        val attachmentUri: Uri?,
-        val attachmentMimeType: String? = null,
-    )
+        val attachmentUris: List<Uri> = emptyList(),
+        val attachmentMimeTypes: List<String> = emptyList(),
+    ) {
+        val attachmentUri: Uri? get() = attachmentUris.firstOrNull()
+        val attachmentMimeType: String? get() = attachmentMimeTypes.firstOrNull()
+    }
 
     fun resolveParts(context: Context, mmsId: Long): MmsPartsResult {
-        val parts = queryParts(context, mmsId) ?: return MmsPartsResult(null, null)
+        val parts = queryParts(context, mmsId) ?: return MmsPartsResult(null)
 
         var textBody: String? = null
-        var attachmentUri: Uri? = null
-        var attachmentMimeType: String? = null
+        val uris = mutableListOf<Uri>()
+        val mimeTypes = mutableListOf<String>()
 
         for (entry in parts) {
             when (entry.mimeType) {
@@ -31,9 +34,9 @@ internal object MmsPartResolver {
                     textBody = readPartContent(context, entry.id, entry.text)
                 }
                 "application/smil" -> { /* skip SMIL manifest */ }
-                else -> if (attachmentUri == null) {
+                else -> {
                     val cacheFile = File(context.cacheDir, "mms_parts/${entry.id}")
-                    attachmentUri = if (cacheFile.exists()) {
+                    val uri = if (cacheFile.exists()) {
                         FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.mmsfileprovider",
@@ -42,16 +45,17 @@ internal object MmsPartResolver {
                     } else {
                         Uri.parse("content://mms/part/${entry.id}")
                     }
-                    attachmentMimeType = entry.mimeType
-                    Log.i(TAG, "Attachment URI: $attachmentUri (${entry.mimeType})")
+                    uris.add(uri)
+                    mimeTypes.add(entry.mimeType)
+                    Log.i(TAG, "Attachment URI: $uri (${entry.mimeType})")
                 }
             }
         }
 
         return MmsPartsResult(
             textBody = textBody,
-            attachmentUri = attachmentUri,
-            attachmentMimeType = attachmentMimeType,
+            attachmentUris = uris,
+            attachmentMimeTypes = mimeTypes,
         )
     }
 

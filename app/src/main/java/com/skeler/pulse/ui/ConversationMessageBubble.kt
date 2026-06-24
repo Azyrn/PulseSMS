@@ -52,6 +52,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -281,33 +284,19 @@ internal fun ConversationMessageBubble(
                     shadowElevation = bubbleElevation,
                 ) {
                     Column {
-                        if (message.mmsPartUri != null) {
+                        val partUri = message.mmsPartUri
+                        if (partUri != null) {
                             if (message.mmsContentType?.startsWith("audio/") == true) {
                                 VoiceMessagePlayer(
-                                    uri = message.mmsPartUri,
+                                    uri = partUri,
                                     isOutbound = isOutbound,
                                 )
                             } else {
-                                var showImageDialog by remember { mutableStateOf(false) }
-                                AsyncImage(
-                                    model = message.mmsPartUri,
-                                    contentDescription = stringResource(R.string.mms_body_placeholder),
-                                    modifier = Modifier
-                                        .widthIn(max = 200.dp)
-                                        .aspectRatio(1f)
-                                        .clip(bubbleShape)
-                                        .combinedClickable(
-                                            onClick = { showImageDialog = true },
-                                            onLongClick = onLongClickAction,
-                                        ),
-                                    contentScale = ContentScale.Crop,
+                                ImageContent(
+                                    uris = message.mmsPartUris,
+                                    bubbleShape = bubbleShape,
+                                    onLongClickAction = onLongClickAction,
                                 )
-                                if (showImageDialog) {
-                                    MmsImageDialog(
-                                        uri = message.mmsPartUri,
-                                        onDismiss = { showImageDialog = false },
-                                    )
-                                }
                             }
                         }
                         if (messageText.isNotBlank()) {
@@ -481,14 +470,109 @@ internal fun String.toConversationMessageLinks(linkColor: Color, searchQuery: St
 }
 
 @Composable
+private fun ImageContent(
+    uris: List<Uri>,
+    bubbleShape: RoundedCornerShape,
+    onLongClickAction: (() -> Unit)?,
+) {
+    if (uris.isEmpty()) return
+    if (uris.size == 1) {
+        var showDialog by remember { mutableStateOf(false) }
+        AsyncImage(
+            model = uris[0],
+            contentDescription = stringResource(R.string.mms_body_placeholder),
+            modifier = Modifier
+                .widthIn(max = 200.dp)
+                .aspectRatio(1f)
+                .clip(bubbleShape)
+                .combinedClickable(
+                    onClick = { showDialog = true },
+                    onLongClick = onLongClickAction,
+                ),
+            contentScale = ContentScale.Crop,
+        )
+        if (showDialog) {
+            MmsImageDialog(uris = uris, initialIndex = 0, onDismiss = { showDialog = false })
+        }
+    } else {
+        val pagerState = rememberPagerState(pageCount = { uris.size })
+        var showDialog by remember { mutableStateOf(false) }
+        var dialogIndex by remember { mutableIntStateOf(0) }
+        var selectedPage by remember { mutableIntStateOf(0) }
+
+        Box {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .widthIn(max = 200.dp)
+                    .aspectRatio(1f),
+                pageSpacing = 2.dp,
+            ) { page ->
+                AsyncImage(
+                    model = uris[page],
+                    contentDescription = stringResource(R.string.mms_body_placeholder),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(bubbleShape)
+                        .combinedClickable(
+                            onClick = {
+                                selectedPage = page
+                                dialogIndex = page
+                                showDialog = true
+                            },
+                            onLongClick = onLongClickAction,
+                        ),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                repeat(uris.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (pagerState.currentPage == index) 7.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (pagerState.currentPage == index)
+                                    Color.White
+                                else
+                                    Color.White.copy(alpha = 0.45f)
+                            ),
+                    )
+                }
+            }
+        }
+        if (showDialog) {
+            MmsImageDialog(uris = uris, initialIndex = dialogIndex, onDismiss = { showDialog = false })
+        }
+    }
+}
+
+@Composable
 private fun MmsImageDialog(
-    uri: Uri,
+    uris: List<Uri>,
+    initialIndex: Int = 0,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val pagerState = rememberPagerState(pageCount = { uris.size })
+    var currentIndex by remember { mutableIntStateOf(initialIndex) }
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(initialIndex) {
+        if (uris.size > 1 && initialIndex != pagerState.currentPage) {
+            pagerState.animateScrollToPage(initialIndex)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -500,46 +584,94 @@ private fun MmsImageDialog(
                 .background(Color.Black.copy(alpha = 0.95f)),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = uri,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clipToBounds()
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val newScale = (scale * zoom).coerceIn(1f, 5f)
-                            scale = newScale
-                            if (newScale > 1f) {
-                                offsetX += pan.x
-                                offsetY += pan.y
-                            } else {
-                                offsetX = 0f
-                                offsetY = 0f
-                            }
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                if (scale > 1f) {
-                                    scale = 1f
-                                    offsetX = 0f
-                                    offsetY = 0f
-                                } else {
-                                    scale = 2.5f
+            if (uris.size == 1) {
+                SingleImageViewer(
+                    uri = uris[0],
+                    scale = scale,
+                    offsetX = offsetX,
+                    offsetY = offsetY,
+                    onScaleChange = { scale = it },
+                    onOffsetChange = { x, y -> offsetX = x; offsetY = y },
+                )
+            } else {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    currentIndex = page
+                    var pageScale by remember(page) { mutableStateOf(1f) }
+                    var pageOffsetX by remember(page) { mutableStateOf(0f) }
+                    var pageOffsetY by remember(page) { mutableStateOf(0f) }
+
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AsyncImage(
+                            model = uris[page],
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clipToBounds()
+                                .pointerInput(Unit) {
+                                    detectTransformGestures { _, pan, zoom, _ ->
+                                        val newScale = (pageScale * zoom).coerceIn(1f, 5f)
+                                        pageScale = newScale
+                                        if (newScale > 1f) {
+                                            pageOffsetX += pan.x
+                                            pageOffsetY += pan.y
+                                        } else {
+                                            pageOffsetX = 0f
+                                            pageOffsetY = 0f
+                                        }
+                                    }
                                 }
-                            }
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onDoubleTap = {
+                                            if (pageScale > 1f) {
+                                                pageScale = 1f
+                                                pageOffsetX = 0f
+                                                pageOffsetY = 0f
+                                            } else {
+                                                pageScale = 2.5f
+                                            }
+                                        }
+                                    )
+                                }
+                                .graphicsLayer {
+                                    scaleX = pageScale
+                                    scaleY = pageScale
+                                    translationX = pageOffsetX
+                                    translationY = pageOffsetY
+                                },
+                            contentScale = ContentScale.Fit,
                         )
                     }
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationX = offsetX
-                        translationY = offsetY
-                    },
-                contentScale = ContentScale.Fit,
-            )
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    repeat(uris.size) { index ->
+                        Box(
+                            modifier = Modifier
+                                .size(if (pagerState.currentPage == index) 8.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (pagerState.currentPage == index)
+                                        Color.White
+                                    else
+                                        Color.White.copy(alpha = 0.45f)
+                                ),
+                        )
+                    }
+                }
+            }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -552,6 +684,7 @@ private fun MmsImageDialog(
             }
             IconButton(
                 onClick = {
+                    val uri = uris.getOrNull(currentIndex) ?: return@IconButton
                     val savedUri = saveMmsImage(context, uri)
                     if (savedUri != null) {
                         android.widget.Toast
@@ -581,6 +714,54 @@ private fun MmsImageDialog(
             }
         }
     }
+}
+
+@Composable
+private fun SingleImageViewer(
+    uri: Uri,
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    onScaleChange: (Float) -> Unit,
+    onOffsetChange: (Float, Float) -> Unit,
+) {
+    AsyncImage(
+        model = uri,
+        contentDescription = null,
+        modifier = Modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                    onScaleChange(newScale)
+                    if (newScale > 1f) {
+                        onOffsetChange(offsetX + pan.x, offsetY + pan.y)
+                    } else {
+                        onOffsetChange(0f, 0f)
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > 1f) {
+                            onScaleChange(1f)
+                            onOffsetChange(0f, 0f)
+                        } else {
+                            onScaleChange(2.5f)
+                        }
+                    }
+                )
+            }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offsetX
+                translationY = offsetY
+            },
+        contentScale = ContentScale.Fit,
+    )
 }
 
 @Composable

@@ -409,7 +409,7 @@ class SystemSmsReader(
                 val partsResult = try {
                     MmsPartResolver.resolveParts(context, mmsId)
                 } catch (e: SecurityException) {
-                    MmsPartResolver.MmsPartsResult(null, null)
+                    MmsPartResolver.MmsPartsResult(null)
                 }
 
                 val body = partsResult.textBody.orEmpty()
@@ -444,8 +444,8 @@ class SystemSmsReader(
                         type = smsType,
                         read = readInt == 1,
                         threadId = resolvedThreadId,
-                        mmsPartUri = partUri,
-                        mmsContentType = partsResult.attachmentMimeType,
+                        mmsPartUris = partsResult.attachmentUris,
+                        mmsContentTypes = partsResult.attachmentMimeTypes,
                         status = status,
                         fromAddress = fromAddress,
                         toAddress = toAddress,
