@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -253,25 +254,29 @@ internal fun RealInboxScreen(
                     selectedThreadIds.size,
                     selectedThreadIds.size,
                 )
-                TopAppBar(
-                    title = {
+                Surface(
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = { selectedThreadIds = emptySet() }) {
+                            Icon(Icons.Rounded.Close, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        }
                         Text(
                             selectedLabel,
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { selectedThreadIds = emptySet() }) {
-                            Icon(Icons.Rounded.Close, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    actions = {
                         IconButton(onClick = {
                             selectedThreadIds = if (allFilteredSelected) {
                                 emptySet()
@@ -330,8 +335,8 @@ internal fun RealInboxScreen(
                                 )
                             }
                         }
-                    },
-                )
+                    }
+                }
             } else {
                 TopAppBar(
                     title = {
