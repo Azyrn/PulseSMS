@@ -157,6 +157,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.skeler.pulse.R
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
@@ -334,7 +335,7 @@ internal fun ConversationComposer(
             if (voiceMode is VoiceMode.Recording) {
                 val s = voiceMode as VoiceMode.Recording
                 var amps = s.amplitudes
-                while (true) {
+                while (isActive) {
                     delay(50.milliseconds)
                     if (voiceMode !is VoiceMode.Recording) break
                     val amp = voiceRecorder.value?.maxAmplitude ?: 0
@@ -349,8 +350,12 @@ internal fun ConversationComposer(
             onDispose {
                 val rec = voiceRecorder.value
                 if (rec != null) {
-                    try { rec.stop() } catch (_: Exception) {}
-                    rec.release()
+                    @Suppress("DEPRECATION")
+                    try {
+                        try { rec.stop() } catch (_: IllegalStateException) {}
+                    } finally {
+                        rec.release()
+                    }
                 }
                 voiceRecorder.value = null
                 val vm = voiceMode
@@ -595,9 +600,15 @@ internal fun ConversationComposer(
                     IconButton(
                         onClick = {
                             val rec = voiceRecorder.value
-                            try { rec?.stop() } catch (_: Exception) {}
-                            rec?.release()
-                            voiceRecorder.value = null
+                            if (rec != null) {
+                                @Suppress("DEPRECATION")
+                                try {
+                                    try { rec.stop() } catch (_: IllegalStateException) {}
+                                } finally {
+                                    rec.release()
+                                }
+                                voiceRecorder.value = null
+                            }
                             val file = s.file
                             if (file.exists() && file.length() > 0) {
                                 voiceMode = VoiceMode.Preview(file)
@@ -622,7 +633,7 @@ internal fun ConversationComposer(
 
                 is VoiceMode.Preview -> {
                     val previewFile = (voiceMode as VoiceMode.Preview).file
-                    val previewUri = Uri.fromFile(previewFile)
+                    val previewUri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", previewFile)
                     var isPlaying by remember(previewFile) { mutableStateOf(false) }
                     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
                     var durationMs by remember { mutableIntStateOf(0) }
@@ -806,10 +817,11 @@ internal fun ConversationComposer(
             } else {
                 Manifest.permission.READ_EXTERNAL_STORAGE
             }
-            val hasMediaPermission = remember {
-                ContextCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
+            var mediaPermissionGranted by remember { mutableStateOf(false) }
+
+            LaunchedEffect(showAttachmentMenu, mediaPermissionGranted) {
+                mediaPermissionGranted = ContextCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
             }
-            var mediaPermissionGranted by remember { mutableStateOf(hasMediaPermission) }
             val mediaPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission(),
             ) { granted -> mediaPermissionGranted = granted }
@@ -838,7 +850,9 @@ internal fun ConversationComposer(
                                 )
                             }
                         }
-                    } catch (_: SecurityException) {}
+                    } catch (e: SecurityException) {
+                        Log.w("ConversationComposer", "MediaStore query denied", e)
+                    }
                     uris
                 }
             }
@@ -1107,6 +1121,22 @@ private fun CameraPreviewContent(
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var useFrontCamera by remember { mutableStateOf(false) }
     val cameraSelector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+    var previewViewProvider by remember { mutableStateOf<PreviewView?>(null) }
+
+    LaunchedEffect(cameraSelector) {
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            val provider = future.get()
+            val pv = previewViewProvider ?: return@addListener
+            val preview = Preview.Builder().build().also { it.surfaceProvider = pv.surfaceProvider }
+            val capture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+            imageCapture = capture
+            provider.unbindAll()
+            provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, capture)
+        }, ContextCompat.getMainExecutor(context))
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -1118,27 +1148,7 @@ private fun CameraPreviewContent(
             key(cameraSelector) {
                 AndroidView(
                     factory = { ctx ->
-                        val previewView = PreviewView(ctx)
-                        val cameraProvider = ProcessCameraProvider.getInstance(ctx).get()
-
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = previewView.surfaceProvider
-                        }
-
-                        val capture = ImageCapture.Builder()
-                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                            .build()
-                        imageCapture = capture
-
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            capture,
-                        )
-
-                        previewView
+                        PreviewView(ctx).also { previewViewProvider = it }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -1154,7 +1164,7 @@ private fun CameraPreviewContent(
                         ContextCompat.getMainExecutor(context),
                         object : ImageCapture.OnImageSavedCallback {
                             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                onPhotoTaken(Uri.fromFile(photoFile))
+                                onPhotoTaken(FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", photoFile))
                             }
                             override fun onError(exception: ImageCaptureException) {
                                 Log.e("CameraPreview", "Photo capture failed", exception)
@@ -1202,22 +1212,13 @@ private fun createCameraImageFile(context: android.content.Context): java.io.Fil
     return java.io.File(imageDir, "MMS_$timeStamp.jpg")
 }
 
-private sealed interface VoiceRecordingUiState {
-    data object Idle : VoiceRecordingUiState
-    data class Recording(
-        val startMs: Long = System.currentTimeMillis(),
-        val amplitudes: List<Float> = emptyList(),
-    ) : VoiceRecordingUiState
-    data class Preview(val file: java.io.File) : VoiceRecordingUiState
-}
-
 @Composable
 private fun VoiceRecordingContent(
     onVoiceRecorded: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var state by remember { mutableStateOf<VoiceRecordingUiState>(VoiceRecordingUiState.Idle) }
+    var state by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
     var audioFile by remember { mutableStateOf<java.io.File?>(null) }
     val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
 
@@ -1230,12 +1231,12 @@ private fun VoiceRecordingContent(
     ) { granted -> recordPermissionGranted = granted }
 
     LaunchedEffect(state) {
-        if (state is VoiceRecordingUiState.Recording) {
-            val s = state as VoiceRecordingUiState.Recording
+        if (state is VoiceMode.Recording) {
+            val s = state as VoiceMode.Recording
             var amps = s.amplitudes
-            while (true) {
+            while (isActive) {
                 delay(50.milliseconds)
-                if (state !is VoiceRecordingUiState.Recording) break
+                if (state !is VoiceMode.Recording) break
                 val amp = recorder.value?.maxAmplitude ?: 0
                 val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
                 amps = (amps + normalized).takeLast(120)
@@ -1248,12 +1249,16 @@ private fun VoiceRecordingContent(
         onDispose {
             val rec = recorder.value
             if (rec != null) {
-                try { rec.stop() } catch (_: Exception) {}
-                rec.release()
+                @Suppress("DEPRECATION")
+                try {
+                    try { rec.stop() } catch (_: IllegalStateException) {}
+                } finally {
+                    rec.release()
+                }
             }
             recorder.value = null
             val s = state
-            if (s is VoiceRecordingUiState.Preview) {
+            if (s is VoiceMode.Preview) {
                 s.file.delete()
             }
         }
@@ -1265,7 +1270,7 @@ private fun VoiceRecordingContent(
         verticalArrangement = Arrangement.Center,
     ) {
         when (val s = state) {
-            is VoiceRecordingUiState.Idle -> {
+            is VoiceMode.Hidden -> {
                 if (!recordPermissionGranted) {
                     Text(
                         text = stringResource(R.string.voice_recording_permission_required),
@@ -1295,7 +1300,7 @@ private fun VoiceRecordingContent(
                                     start()
                                 }
                                 recorder.value = rec
-                                state = VoiceRecordingUiState.Recording()
+                                state = VoiceMode.Recording(file = file)
                             } catch (e: Exception) {
                                 Log.e("VoiceRecording", "Failed to start recording", e)
                                 file.delete()
@@ -1323,7 +1328,7 @@ private fun VoiceRecordingContent(
                 }
             }
 
-            is VoiceRecordingUiState.Recording -> {
+            is VoiceMode.Recording -> {
                 val elapsedMs = System.currentTimeMillis() - s.startMs
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -1352,16 +1357,22 @@ private fun VoiceRecordingContent(
                     IconButton(
                         onClick = {
                             val rec = recorder.value
-                            try { rec?.stop() } catch (_: Exception) {}
-                            rec?.release()
-                            recorder.value = null
+                            if (rec != null) {
+                                @Suppress("DEPRECATION")
+                                try {
+                                    try { rec.stop() } catch (_: IllegalStateException) {}
+                                } finally {
+                                    rec.release()
+                                }
+                                recorder.value = null
+                            }
                             val file = audioFile
                             if (file != null && file.exists() && file.length() > 0) {
-                                state = VoiceRecordingUiState.Preview(file)
+                                state = VoiceMode.Preview(file)
                             } else {
                                 audioFile?.delete()
                                 audioFile = null
-                                state = VoiceRecordingUiState.Idle
+                                state = VoiceMode.Hidden
                             }
                         },
                         modifier = Modifier
@@ -1380,8 +1391,8 @@ private fun VoiceRecordingContent(
                 Spacer(Modifier.height(12.dp))
             }
 
-            is VoiceRecordingUiState.Preview -> {
-                val uri = Uri.fromFile(s.file)
+            is VoiceMode.Preview -> {
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", s.file)
                 var isPlaying by remember { mutableStateOf(false) }
                 var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
                 var durationMs by remember { mutableIntStateOf(0) }
@@ -1515,7 +1526,7 @@ private fun VoiceRecordingContent(
                         onClick = {
                             s.file.delete()
                             audioFile = null
-                            state = VoiceRecordingUiState.Idle
+                            state = VoiceMode.Hidden
                         },
                         modifier = Modifier.size(48.dp),
                     ) {
