@@ -11,7 +11,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -65,7 +64,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
@@ -210,7 +208,13 @@ internal fun SettingsScreen(
     } else {
         themeState.selectedPalette.label
     }
-    var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    val localeOptions = remember {
+        listOf(
+            SettingsChoiceOption(id = "system", label = context.getString(R.string.settings_language_system)),
+            SettingsChoiceOption(id = "en", label = context.getString(R.string.settings_language_english)),
+            SettingsChoiceOption(id = "fr", label = context.getString(R.string.settings_language_french)),
+        )
+    }
     val batteryOptExempt = remember { mutableStateOf(checkBatteryOpt(context)) }
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -381,12 +385,21 @@ internal fun SettingsScreen(
                         },
                     )
                     SettingsGroupDivider()
-                    SettingsRow(
+                    SettingsChoiceRow(
                         icon = Icons.Outlined.Language,
                         title = stringResource(R.string.settings_language),
                         subtitle = localeDisplayName(context, themeState.selectedLocale),
-                        onClick = { showLanguageDialog = true },
-                    )
+                    ) {
+                        SettingsChoiceRail(
+                            options = localeOptions,
+                            selectedId = themeState.selectedLocale,
+                            reducedMotion = reducedMotion,
+                            onSelect = { locale ->
+                                themeViewModel.setSelectedLocaleAndRecreate(locale)
+                                activity?.recreate()
+                            },
+                        )
+                    }
                     SettingsGroupDivider()
                     SettingsChoiceRow(
                         icon = Icons.Outlined.Palette,
@@ -599,65 +612,6 @@ internal fun SettingsScreen(
         }
     }
 
-    if (showLanguageDialog) {
-        LanguagePickerDialog(
-            currentLocale = themeState.selectedLocale,
-            onDismiss = { showLanguageDialog = false },
-            onSelect = { locale ->
-                showLanguageDialog = false
-                themeViewModel.setSelectedLocaleAndRecreate(locale)
-                activity?.recreate()
-            },
-        )
-    }
-
-}
-
-@Composable
-private fun LanguagePickerDialog(
-    currentLocale: String,
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit,
-) {
-    val systemLabel = stringResource(R.string.settings_language_system)
-    val englishLabel = stringResource(R.string.settings_language_english)
-    val frenchLabel = stringResource(R.string.settings_language_french)
-    val options = remember(systemLabel, englishLabel, frenchLabel) {
-        listOf(
-            "system" to systemLabel,
-            "en" to englishLabel,
-            "fr" to frenchLabel,
-        )
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_language)) },
-        text = {
-            Column {
-                options.forEach { (locale, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(locale) }
-                            .padding(vertical = 12.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = locale == currentLocale,
-                            onClick = { onSelect(locale) },
-                        )
-                        Spacer(Modifier.size(12.dp))
-                        Text(label, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_close))
-            }
-        },
-    )
 }
 
 private fun localeDisplayName(context: android.content.Context, locale: String): String = when (locale) {
