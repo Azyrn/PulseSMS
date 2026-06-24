@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Reads real SMS messages from the Android system content provider (`content://sms`).
@@ -571,6 +572,150 @@ class SystemSmsReader(
                 deleteMmsPartCacheFile(mmsId)
             }
             contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
+        }
+    }
+
+    suspend fun cleanupMessages(
+        maxSmsPerThread: Int,
+        maxMmsPerThread: Int,
+        importantMessageIds: Set<Long>,
+    ): Int = withContext(ioDispatcher) {
+        var totalDeleted = 0
+
+        if (maxSmsPerThread >= 0) {
+            runCatching { getSmsThreadIds() }.getOrDefault(emptyList()).forEach { threadId ->
+                runCatching {
+                    val toDelete = getSmsIdsForCleanup(threadId, maxSmsPerThread, importantMessageIds)
+                    if (toDelete.isNotEmpty()) {
+                        toDelete.chunked(500).forEach { batch ->
+                            val (selection, selectionArgs) = batch.toIdSelection(Telephony.Sms._ID)
+                            contentResolver.delete(Telephony.Sms.CONTENT_URI, selection, selectionArgs)
+                        }
+                        totalDeleted += toDelete.size
+                    }
+                }
+            }
+        }
+
+        if (maxMmsPerThread >= 0) {
+            runCatching { getMmsThreadIds() }.getOrDefault(emptyList()).forEach { threadId ->
+                runCatching {
+                    val toDelete = getMmsIdsForCleanup(threadId, maxMmsPerThread, importantMessageIds)
+                    if (toDelete.isNotEmpty()) {
+                        for (mmsId in toDelete) {
+                            contentResolver.delete(
+                                Uri.withAppendedPath(Telephony.Mms.CONTENT_URI, mmsId.toString()),
+                                null, null,
+                            )
+                            deleteMmsPartCacheFile(mmsId)
+                        }
+                        contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
+                        totalDeleted += toDelete.size
+                    }
+                }
+            }
+        }
+
+        totalDeleted
+    }
+
+    private fun getSmsThreadIds(): List<Long> {
+        val cursor = contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms.THREAD_ID),
+            "${Telephony.Sms.THREAD_ID} > ?",
+            arrayOf("0"),
+            "${Telephony.Sms.THREAD_ID} ASC",
+        ) ?: return emptyList()
+        cursor.use {
+            val idx = it.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+            val ids = mutableSetOf<Long>()
+            while (it.moveToNext()) {
+                ids.add(it.getLong(idx))
+            }
+            return ids.toList()
+        }
+    }
+
+    private fun getMmsThreadIds(): List<Long> {
+        val cursor = try {
+            contentResolver.query(
+                Telephony.Mms.CONTENT_URI,
+                arrayOf("thread_id"),
+                "thread_id > ? AND msg_box IN (${MMS_READ_BOXES.joinToString(", ") { "?" }})",
+                arrayOf("0") + MMS_READ_BOXES.map { it.toString() }.toTypedArray(),
+                "thread_id ASC",
+            )
+        } catch (e: SecurityException) {
+            return emptyList()
+        } ?: return emptyList()
+        cursor.use {
+            val idx = it.getColumnIndexOrThrow("thread_id")
+            val ids = mutableSetOf<Long>()
+            while (it.moveToNext()) {
+                ids.add(it.getLong(idx))
+            }
+            return ids.toList()
+        }
+    }
+
+    private fun getSmsIdsForCleanup(threadId: Long, keepCount: Int, importantIds: Set<Long>): List<Long> {
+        val cursor = contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms._ID),
+            "${Telephony.Sms.THREAD_ID} = ?",
+            arrayOf(threadId.toString()),
+            "${Telephony.Sms.DATE} ASC",
+        ) ?: return emptyList()
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
+            val count = it.count
+            val toDeleteCount = count - keepCount
+            if (toDeleteCount <= 0) return emptyList()
+            val ids = mutableListOf<Long>()
+            var index = 0
+            it.moveToPosition(-1)
+            while (it.moveToNext()) {
+                if (index >= toDeleteCount) break
+                val id = it.getLong(idIdx)
+                if (id !in importantIds) {
+                    ids.add(id)
+                }
+                index++
+            }
+            return ids
+        }
+    }
+
+    private fun getMmsIdsForCleanup(threadId: Long, keepCount: Int, importantIds: Set<Long>): List<Long> {
+        val cursor = try {
+            contentResolver.query(
+                Telephony.Mms.CONTENT_URI,
+                arrayOf("_id"),
+                "thread_id = ? AND msg_box IN (${MMS_READ_BOXES.joinToString(", ") { "?" }})",
+                arrayOf(threadId.toString()) + MMS_READ_BOXES.map { it.toString() }.toTypedArray(),
+                "date ASC",
+            )
+        } catch (e: SecurityException) {
+            return emptyList()
+        } ?: return emptyList()
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow("_id")
+            val count = it.count
+            val toDeleteCount = count - keepCount
+            if (toDeleteCount <= 0) return emptyList()
+            val ids = mutableListOf<Long>()
+            var index = 0
+            it.moveToPosition(-1)
+            while (it.moveToNext()) {
+                if (index >= toDeleteCount) break
+                val id = it.getLong(idIdx)
+                if (id !in importantIds) {
+                    ids.add(id)
+                }
+                index++
+            }
+            return ids
         }
     }
 

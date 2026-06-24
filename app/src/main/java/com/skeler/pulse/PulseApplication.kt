@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Telephony
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.skeler.pulse.sms.MessageCleanupWorker
 import com.skeler.pulse.sms.NotificationPreferences
 import com.skeler.pulse.sms.QuickComposeNotificationManager
 import com.skeler.pulse.sms.SmsNotificationHelper
@@ -42,6 +43,8 @@ class PulseApplication : Application() {
                 Log.e(TAG, "Failed to show quick compose notification", e)
             }
         }
+
+        MessageCleanupWorker.schedulePeriodic(this)
 
         registerSmsFallbackReceiver()
     }

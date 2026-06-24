@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
@@ -67,6 +68,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,6 +76,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -99,6 +103,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.skeler.pulse.R
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
+import kotlinx.coroutines.flow.first
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.design.util.elasticOverscroll
 import com.skeler.pulse.design.util.rememberMomentumFlingBehavior
@@ -108,10 +113,14 @@ import com.skeler.pulse.security.auth.BiometricAvailability
 import com.skeler.pulse.security.auth.checkBiometricAvailability
 import com.skeler.pulse.security.auth.showBiometricPrompt
 import com.skeler.pulse.sms.EncryptionPreferences
+import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.MessageAutomationPreferences
+import com.skeler.pulse.sms.MessageCleanupPreferences
 import com.skeler.pulse.sms.MmsPreferences
 import com.skeler.pulse.sms.NotificationPreferences
 import com.skeler.pulse.sms.QuickComposeNotificationManager
+import com.skeler.pulse.sms.SystemSmsReader
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 internal data class SettingsChoiceOption(
@@ -452,6 +461,101 @@ internal fun SettingsScreen(
                     SettingsGroupDivider()
                 }
             }
+            item(key = "cleanup_header") { SettingsSectionHeader(stringResource(R.string.settings_cleanup)) }
+            item(key = "cleanup_card") {
+                val cleanupPrefs = remember(context) {
+                    MessageCleanupPreferences(context.applicationContext)
+                }
+                val maxSms by cleanupPrefs.maxSmsPerThread.collectAsState(initial = MessageCleanupPreferences.KEEP_ALL)
+                val maxMms by cleanupPrefs.maxMmsPerThread.collectAsState(initial = MessageCleanupPreferences.KEEP_ALL)
+                var isCleaning by remember { mutableStateOf(false) }
+                val sliderValues = remember { (10..500 step 10).toList() }
+
+                SettingsGroupCard {
+                    SettingsCleanupSliderRow(
+                        icon = Icons.Outlined.Sms,
+                        title = stringResource(R.string.settings_cleanup_sms),
+                        currentValue = maxSms,
+                        sliderValues = sliderValues,
+                        onKeepAllChange = { keepAll ->
+                            coroutineScope.launch {
+                                cleanupPrefs.setMaxSmsPerThread(if (keepAll) MessageCleanupPreferences.KEEP_ALL else 50)
+                            }
+                        },
+                        onValueChange = { value ->
+                            coroutineScope.launch {
+                                cleanupPrefs.setMaxSmsPerThread(value)
+                            }
+                        },
+                    )
+                    SettingsGroupDivider()
+                    SettingsCleanupSliderRow(
+                        icon = Icons.Outlined.Sms,
+                        title = stringResource(R.string.settings_cleanup_mms),
+                        currentValue = maxMms,
+                        sliderValues = sliderValues,
+                        onKeepAllChange = { keepAll ->
+                            coroutineScope.launch {
+                                cleanupPrefs.setMaxMmsPerThread(if (keepAll) MessageCleanupPreferences.KEEP_ALL else 50)
+                            }
+                        },
+                        onValueChange = { value ->
+                            coroutineScope.launch {
+                                cleanupPrefs.setMaxMmsPerThread(value)
+                            }
+                        },
+                    )
+                    SettingsGroupDivider()
+                    SettingsRow(
+                        icon = Icons.Rounded.Delete,
+                        title = stringResource(R.string.settings_cleanup_now),
+                        subtitle = if (isCleaning) {
+                            stringResource(R.string.settings_cleanup_running)
+                        } else {
+                            stringResource(R.string.settings_cleanup_now_subtitle)
+                        },
+                        onClick = {
+                            if (!isCleaning) {
+                                isCleaning = true
+                                coroutineScope.launch {
+                                    try {
+                                        val cleanupPrefs = MessageCleanupPreferences(context.applicationContext)
+                                        val maxSms = cleanupPrefs.getMaxSmsPerThread()
+                                        val maxMms = cleanupPrefs.getMaxMmsPerThread()
+                                        if (maxSms == MessageCleanupPreferences.KEEP_ALL &&
+                                            maxMms == MessageCleanupPreferences.KEEP_ALL
+                                        ) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                android.R.string.ok,
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                            return@launch
+                                        }
+                                        val importantPrefs = ImportantMessagePreferences(context.applicationContext)
+                                        val importantIds = importantPrefs.importantMessageIds.first()
+                                        val reader = SystemSmsReader(context.applicationContext)
+                                        val deleted = reader.cleanupMessages(maxSms, maxMms, importantIds)
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.settings_cleanup_done, deleted),
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "Cleanup failed",
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } finally {
+                                        isCleaning = false
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
             item(key = "mms_header") { SettingsSectionHeader(stringResource(R.string.settings_mms)) }
             item(key = "mms_card") {
                 val mmsPreferences = remember(context) {
@@ -567,4 +671,88 @@ private fun checkBatteryOpt(context: android.content.Context): Boolean {
     return pm.isIgnoringBatteryOptimizations(context.packageName)
 }
 
-// ── Settings sub-components ──
+@Composable
+private fun SettingsCleanupSliderRow(
+    icon: ImageVector,
+    title: String,
+    currentValue: Int,
+    sliderValues: List<Int>,
+    onKeepAllChange: (Boolean) -> Unit,
+    onValueChange: (Int) -> Unit,
+) {
+    val isKeepAll = currentValue == MessageCleanupPreferences.KEEP_ALL
+    val clamped = currentValue.coerceIn(sliderValues.first(), sliderValues.last())
+    val initialIndex = sliderValues.indexOf(clamped).coerceAtLeast(0).toFloat()
+    var sliderIndex by remember { mutableFloatStateOf(initialIndex) }
+    LaunchedEffect(currentValue) {
+        if (!isKeepAll) {
+            sliderIndex = sliderValues.indexOf(clamped).coerceAtLeast(0).toFloat()
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.size(16.dp))
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = if (isKeepAll) stringResource(R.string.settings_cleanup_keep_all) else sliderValues[initialIndex.roundToInt()].toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(12.dp))
+            Switch(
+                checked = isKeepAll,
+                onCheckedChange = onKeepAllChange,
+            )
+        }
+        if (!isKeepAll) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp + 36.dp + 16.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Slider(
+                    value = sliderIndex,
+                    onValueChange = { sliderIndex = it },
+                    valueRange = 0f..(sliderValues.size - 1).toFloat(),
+                    steps = (sliderValues.size - 2).coerceAtLeast(0),
+                    modifier = Modifier.weight(1f),
+                    onValueChangeFinished = {
+                        onValueChange(sliderValues[sliderIndex.roundToInt()])
+                    },
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    text = sliderValues[sliderIndex.roundToInt()].toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+
+                )
+            }
+        }
+    }
+}

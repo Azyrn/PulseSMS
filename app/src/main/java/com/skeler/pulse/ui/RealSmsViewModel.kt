@@ -13,6 +13,7 @@ import com.skeler.pulse.sms.DraftPreferences
 import com.skeler.pulse.sms.EncryptionPreferences
 import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.InboxThreadPreferences
+import com.skeler.pulse.sms.MessageCleanupPreferences
 import com.skeler.pulse.sms.MessageReactionPreferences
 import com.skeler.pulse.sms.ReactionParser
 import com.skeler.pulse.sms.ScheduledMessageDatabase
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -675,6 +677,27 @@ class RealSmsViewModel(
     fun deleteMessages(messages: List<SystemSms>) {
         viewModelScope.launch {
             smsReader.deleteMessages(messages)
+        }
+    }
+
+    fun runCleanupNow(onResult: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val cleanupPrefs = MessageCleanupPreferences(context)
+            val maxSms = cleanupPrefs.getMaxSmsPerThread()
+            val maxMms = cleanupPrefs.getMaxMmsPerThread()
+            if (maxSms == MessageCleanupPreferences.KEEP_ALL &&
+                maxMms == MessageCleanupPreferences.KEEP_ALL
+            ) {
+                onResult(0)
+                return@launch
+            }
+            val importantIds = importantMessagePreferences.importantMessageIds.first()
+            val deleted = smsReader.cleanupMessages(
+                maxSmsPerThread = maxSms,
+                maxMmsPerThread = maxMms,
+                importantMessageIds = importantIds,
+            )
+            onResult(deleted)
         }
     }
 

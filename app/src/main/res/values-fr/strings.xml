@@ -352,4 +352,14 @@
     <string name="settings_battery_optimization_disabled">Désactivée</string>
     <string name="settings_battery_optimization_enabled">Activée — appuyez pour désactiver</string>
 
+    <!-- Message cleanup -->
+    <string name="settings_cleanup">Nettoyage automatique</string>
+    <string name="settings_cleanup_sms">Conserver les SMS par conversation</string>
+    <string name="settings_cleanup_mms">Conserver les MMS par conversation</string>
+    <string name="settings_cleanup_keep_all">Tout garder</string>
+    <string name="settings_cleanup_keep_count">Garder %d</string>
+    <string name="settings_cleanup_now">Nettoyer maintenant</string>
+    <string name="settings_cleanup_now_subtitle">Supprimer les anciens messages dépassant les limites</string>
+    <string name="settings_cleanup_running">Nettoyage en cours…</string>
+    <string name="settings_cleanup_done">Nettoyage terminé : %1$d messages supprimés</string>
 </resources>

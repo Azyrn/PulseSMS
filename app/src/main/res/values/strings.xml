@@ -352,4 +352,15 @@
     <string name="settings_battery_optimization">Battery optimization</string>
     <string name="settings_battery_optimization_disabled">Disabled</string>
     <string name="settings_battery_optimization_enabled">Enabled — tap to disable</string>
+
+    <!-- Message cleanup -->
+    <string name="settings_cleanup">Message cleanup</string>
+    <string name="settings_cleanup_sms">Keep SMS per conversation</string>
+    <string name="settings_cleanup_mms">Keep MMS per conversation</string>
+    <string name="settings_cleanup_keep_all">Keep all</string>
+    <string name="settings_cleanup_keep_count">Keep %d</string>
+    <string name="settings_cleanup_now">Clean up now</string>
+    <string name="settings_cleanup_now_subtitle">Delete old messages exceeding the limits above</string>
+    <string name="settings_cleanup_running">Cleaning up…</string>
+    <string name="settings_cleanup_done">Cleanup complete: %1$d messages deleted</string>
 </resources>
