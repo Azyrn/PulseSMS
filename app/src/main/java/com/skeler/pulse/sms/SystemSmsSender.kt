@@ -310,8 +310,10 @@ internal class SystemSmsSender(
 
         val messageUri = insertVoiceMmsRecord(threadId, address, text, audioBytes.size, pduBytes.size, now, myNumber, audioBytes)
 
-        suspendCancellableCoroutine<Unit> { cont ->
-            com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+        withTimeout(15_000L) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+            }
         }
 
         runCatching {
@@ -426,8 +428,10 @@ internal class SystemSmsSender(
         val messageUri = insertMmsRecord(threadId, address, text, imageBytesList, pduBytes.size, now, myNumber)
 
         // Load APN settings from klinker's bundled carrier database
-        suspendCancellableCoroutine<Unit> { cont ->
-            com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+        withTimeout(15_000L) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+            }
         }
 
         // Copy klinker's SharedPreferences values to DataStore for consistency
@@ -715,6 +719,8 @@ internal class SystemSmsSender(
 
         val tempDir = java.io.File(context.cacheDir, "voice_compressed")
         tempDir.mkdirs()
+        // Clean stale temp files from previous runs
+        tempDir.listFiles()?.filter { it.extension == "amr" }?.forEach { it.delete() }
 
         val amrBitrates = listOf(7950, 5900, 4750)
 
@@ -736,7 +742,7 @@ internal class SystemSmsSender(
         }
 
         Log.w("SystemSmsSender", "Voice compression could not fit in $maxSizeBytes")
-        throw RuntimeException(context.getString(R.string.mms_image_too_large, maxSizeBytes / 1024))
+        throw RuntimeException("Compressed voice message exceeds ${maxSizeBytes / 1024} KB")
     }
 
     private fun transcodeAmr(inputBytes: ByteArray, outputPath: String, targetBitrate: Int): Boolean {
@@ -883,27 +889,30 @@ internal class SystemSmsSender(
             val outputIdx = encoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
             when {
                 outputIdx >= 0 -> {
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                        encodedOutputDone = true
-                    }
+                    val eos = bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                    if (eos) encodedOutputDone = true
+
                     if (bufferInfo.size > 0) {
                         val encBuf = encoder.getOutputBuffer(outputIdx) ?: continue
                         if (muxerStarted) {
                             muxer.writeSampleData(encoderTrackIndex, encBuf, bufferInfo)
-                        }
-                    }
-                    encoder.releaseOutputBuffer(outputIdx, false)
+                            encoder.releaseOutputBuffer(outputIdx, false)
+                        } else {
+                            // Save data before releasing; buffer is invalid after releaseOutputBuffer
+                            val savedBuf = ByteBuffer.allocate(bufferInfo.size)
+                            encBuf.position(bufferInfo.offset)
+                            savedBuf.put(encBuf)
+                            savedBuf.flip()
+                            encoder.releaseOutputBuffer(outputIdx, false)
 
-                    if (!muxerStarted && bufferInfo.size > 0 && bufferInfo.presentationTimeUs > 0) {
-                        val newFormat = encoder.outputFormat
-                        encoderTrackIndex = muxer.addTrack(newFormat)
-                        muxer.start()
-                        muxerStarted = true
-                        // re-write the first sample
-                        val firstBuf = encoder.getOutputBuffer(outputIdx) ?: continue
-                        if (firstBuf.remaining() > 0) {
-                            muxer.writeSampleData(encoderTrackIndex, firstBuf, bufferInfo)
+                            val newFormat = encoder.outputFormat
+                            encoderTrackIndex = muxer.addTrack(newFormat)
+                            muxer.start()
+                            muxerStarted = true
+                            muxer.writeSampleData(encoderTrackIndex, savedBuf, bufferInfo)
                         }
+                    } else {
+                        encoder.releaseOutputBuffer(outputIdx, false)
                     }
                 }
                 outputIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
@@ -926,6 +935,7 @@ internal class SystemSmsSender(
         }
         muxer.release()
 
+        inputFile.delete()
         return muxerStarted
     }
 
