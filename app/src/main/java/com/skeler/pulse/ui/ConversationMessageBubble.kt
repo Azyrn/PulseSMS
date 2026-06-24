@@ -593,6 +593,39 @@ private fun MmsImageDialog(
                     onScaleChange = { scale = it },
                     onOffsetChange = { x, y -> offsetX = x; offsetY = y },
                 )
+                Column(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    IconButton(
+                        onClick = {
+                            val savedUri = saveMmsImage(context, uris[0])
+                            if (savedUri != null) {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.mms_image_saved), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
+                                try {
+                                    val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                        setDataAndType(savedUri, "image/jpeg")
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(viewIntent)
+                                } catch (_: android.content.ActivityNotFoundException) {}
+                            } else {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.mms_image_save_failed), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
+                            }
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .padding(bottom = 24.dp)
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = stringResource(R.string.mms_image_download), tint = Color.White)
+                    }
+                }
             } else {
                 HorizontalPager(
                     state = pagerState,
@@ -613,16 +646,18 @@ private fun MmsImageDialog(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clipToBounds()
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        val newScale = (pageScale * zoom).coerceIn(1f, 5f)
-                                        pageScale = newScale
-                                        if (newScale > 1f) {
-                                            pageOffsetX += pan.x
-                                            pageOffsetY += pan.y
-                                        } else {
-                                            pageOffsetX = 0f
-                                            pageOffsetY = 0f
+                                .pointerInput(pageScale) {
+                                    if (pageScale > 1f) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            val newScale = (pageScale * zoom).coerceIn(1f, 5f)
+                                            pageScale = newScale
+                                            if (newScale > 1f) {
+                                                pageOffsetX += pan.x
+                                                pageOffsetY += pan.y
+                                            } else {
+                                                pageOffsetX = 0f
+                                                pageOffsetY = 0f
+                                            }
                                         }
                                     }
                                 }
@@ -649,26 +684,59 @@ private fun MmsImageDialog(
                         )
                     }
                 }
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                Column(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    repeat(uris.size) { index ->
-                        Box(
-                            modifier = Modifier
-                                .size(if (pagerState.currentPage == index) 8.dp else 6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (pagerState.currentPage == index)
-                                        Color.White
-                                    else
-                                        Color.White.copy(alpha = 0.45f)
-                                ),
-                        )
+                    Row(
+                        modifier = Modifier
+                            .padding(bottom = 12.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        repeat(uris.size) { index ->
+                            Box(
+                                modifier = Modifier
+                                    .size(if (pagerState.currentPage == index) 8.dp else 6.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (pagerState.currentPage == index)
+                                            Color.White
+                                        else
+                                            Color.White.copy(alpha = 0.45f)
+                                    ),
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = {
+                            val uri = uris.getOrNull(currentIndex) ?: return@IconButton
+                            val savedUri = saveMmsImage(context, uri)
+                            if (savedUri != null) {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.mms_image_saved), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
+                                try {
+                                    val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                        setDataAndType(savedUri, "image/jpeg")
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(viewIntent)
+                                } catch (_: android.content.ActivityNotFoundException) {}
+                            } else {
+                                android.widget.Toast
+                                    .makeText(context, context.getString(R.string.mms_image_save_failed), android.widget.Toast.LENGTH_SHORT)
+                                    .show()
+                            }
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .padding(bottom = 24.dp)
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = stringResource(R.string.mms_image_download), tint = Color.White)
                     }
                 }
             }
@@ -681,36 +749,6 @@ private fun MmsImageDialog(
                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp)),
             ) {
                 Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_close), tint = Color.White)
-            }
-            IconButton(
-                onClick = {
-                    val uri = uris.getOrNull(currentIndex) ?: return@IconButton
-                    val savedUri = saveMmsImage(context, uri)
-                    if (savedUri != null) {
-                        android.widget.Toast
-                            .makeText(context, context.getString(R.string.mms_image_saved), android.widget.Toast.LENGTH_SHORT)
-                            .show()
-                        try {
-                            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                setDataAndType(savedUri, "image/jpeg")
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(viewIntent)
-                        } catch (_: android.content.ActivityNotFoundException) {}
-                    } else {
-                        android.widget.Toast
-                            .makeText(context, context.getString(R.string.mms_image_save_failed), android.widget.Toast.LENGTH_SHORT)
-                            .show()
-                    }
-                    onDismiss()
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(24.dp)
-                    .size(48.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
-            ) {
-                Icon(Icons.Rounded.Download, contentDescription = stringResource(R.string.mms_image_download), tint = Color.White)
             }
         }
     }
