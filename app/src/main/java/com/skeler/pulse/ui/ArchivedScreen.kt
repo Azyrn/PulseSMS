@@ -22,8 +22,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -61,11 +63,14 @@ internal fun ArchivedChatsScreen(
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(threads, contextMenuThreadId) {
-        val activeThreadId = contextMenuThreadId ?: return@LaunchedEffect
-        if (threads.none { it.threadId == activeThreadId }) {
-            contextMenuThreadId = null
+    val shouldDismissMenu by remember {
+        derivedStateOf {
+            val id = contextMenuThreadId ?: return@derivedStateOf false
+            threads.none { it.threadId == id }
         }
+    }
+    LaunchedEffect(shouldDismissMenu) {
+        if (shouldDismissMenu) contextMenuThreadId = null
     }
 
     Scaffold(
@@ -126,7 +131,7 @@ internal fun ArchivedChatsScreen(
                 else -> {
                     items(
                         items = threads,
-                        key = { "${it.threadId}:${it.address}" },
+                        key = { it.threadId },
                         contentType = { "archived_thread" },
                     ) { thread ->
                         val itemModifier = motionAnimateItemModifier(reducedMotion)
