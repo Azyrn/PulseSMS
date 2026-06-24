@@ -10,11 +10,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+private val Context.cleanupDataStore: DataStore<Preferences> by preferencesDataStore(name = "message_cleanup_prefs")
+
 class MessageCleanupPreferences(
     private val context: Context,
 ) {
-    private val store: DataStore<Preferences>
-        get() = context.dataStore
+    private val store: DataStore<Preferences> = context.cleanupDataStore
 
     val maxSmsPerThread: Flow<Int> =
         store.data.map { prefs -> prefs[KEY_MAX_SMS_PER_THREAD] ?: KEEP_ALL }
@@ -34,7 +35,6 @@ class MessageCleanupPreferences(
     suspend fun getMaxMmsPerThread(): Int = maxMmsPerThread.first()
 
     companion object {
-        private val Context.dataStore by preferencesDataStore(name = "message_cleanup_prefs")
         private val KEY_MAX_SMS_PER_THREAD = intPreferencesKey("max_sms_per_thread")
         private val KEY_MAX_MMS_PER_THREAD = intPreferencesKey("max_mms_per_thread")
         const val KEEP_ALL = -1
