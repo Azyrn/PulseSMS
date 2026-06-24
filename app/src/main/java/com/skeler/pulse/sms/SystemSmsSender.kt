@@ -389,10 +389,12 @@ internal class SystemSmsSender(
 
     private suspend fun sendMmsInternal(address: String, text: String, imageUris: List<Uri>, maxImageSizeKb: Int) {
         val threadId = Telephony.Threads.getOrCreateThreadId(context, address)
-        val maxSizeBytes = if (maxImageSizeKb <= 0) -1 else maxImageSizeKb * 1024
+        val totalBudgetBytes = if (maxImageSizeKb <= 0) -1 else maxImageSizeKb * 1024
+        // Distribute total budget evenly so multiple images don't exceed carrier MMS limits
+        val perImageBudget = if (totalBudgetBytes <= 0 || imageUris.isEmpty()) totalBudgetBytes else totalBudgetBytes / imageUris.size
         val imageBytesList = imageUris.mapNotNull { uri ->
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@mapNotNull null
-            compressImageToMaxSize(bytes, maxSizeBytes)
+            compressImageToMaxSize(bytes, perImageBudget)
         }
         if (imageBytesList.isEmpty() && text.isBlank()) throw RuntimeException("No content to send")
         val now = System.currentTimeMillis()
