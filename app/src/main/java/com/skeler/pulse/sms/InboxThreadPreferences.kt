@@ -61,11 +61,37 @@ class InboxThreadPreferences(
         }
     }
 
+    suspend fun setPinned(threadId: Long, pinned: Boolean) {
+        store.edit { prefs ->
+            val current = prefs[KEY_PINNED_THREAD_IDS].orEmpty().toMutableSet()
+            val id = threadId.toString()
+            if (pinned) {
+                current.add(id)
+            } else {
+                current.remove(id)
+            }
+            prefs[KEY_PINNED_THREAD_IDS] = current
+        }
+    }
+
     suspend fun toggleArchived(threadId: Long) {
         store.edit { prefs ->
             val current = prefs[KEY_ARCHIVED_THREAD_IDS].orEmpty().toMutableSet()
             val id = threadId.toString()
             if (!current.add(id)) {
+                current.remove(id)
+            }
+            prefs[KEY_ARCHIVED_THREAD_IDS] = current
+        }
+    }
+
+    suspend fun setArchived(threadId: Long, archived: Boolean) {
+        store.edit { prefs ->
+            val current = prefs[KEY_ARCHIVED_THREAD_IDS].orEmpty().toMutableSet()
+            val id = threadId.toString()
+            if (archived) {
+                current.add(id)
+            } else {
                 current.remove(id)
             }
             prefs[KEY_ARCHIVED_THREAD_IDS] = current

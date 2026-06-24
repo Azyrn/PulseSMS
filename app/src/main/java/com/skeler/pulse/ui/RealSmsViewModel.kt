@@ -572,6 +572,12 @@ class RealSmsViewModel(
         }
     }
 
+    fun setThreadPinned(threadId: Long, pinned: Boolean) {
+        viewModelScope.launch {
+            inboxThreadPreferences.setPinned(threadId, pinned)
+        }
+    }
+
     fun setThreadEmoji(threadId: Long, emoji: String?) {
         viewModelScope.launch {
             inboxThreadPreferences.setThreadEmoji(threadId, emoji)
@@ -581,6 +587,12 @@ class RealSmsViewModel(
     fun toggleThreadArchived(threadId: Long) {
         viewModelScope.launch {
             inboxThreadPreferences.toggleArchived(threadId)
+        }
+    }
+
+    fun setThreadArchived(threadId: Long, archived: Boolean) {
+        viewModelScope.launch {
+            inboxThreadPreferences.setArchived(threadId, archived)
         }
     }
 

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.MarkunreadMailbox
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -74,6 +75,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -140,7 +143,9 @@ internal fun RealInboxScreen(
     onOpenNewChat: () -> Unit,
     onRefreshInbox: () -> Unit,
     onTogglePinned: (Long) -> Unit,
+    onSetPinned: (Long, Boolean) -> Unit,
     onToggleArchived: (Long) -> Unit,
+    onSetArchived: (Long, Boolean) -> Unit,
     onSetThreadUnread: (Long?, String, Boolean) -> Unit,
     onBlockThread: (String) -> Unit,
     onDeleteThread: (Long?, String) -> Unit,
@@ -249,7 +254,14 @@ internal fun RealInboxScreen(
                     selectedThreadIds.size,
                 )
                 TopAppBar(
-                    title = { Text(selectedLabel, style = MaterialTheme.typography.headlineMedium) },
+                    title = {
+                        Text(
+                            selectedLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { selectedThreadIds = emptySet() }) {
                             Icon(Icons.Rounded.Close, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
@@ -274,28 +286,49 @@ internal fun RealInboxScreen(
                             )
                         }
                         IconButton(onClick = {
-                            selectedThreadIds.forEach { onTogglePinned(it) }
-                        }) {
-                            Icon(
-                                imageVector = if (allPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                        IconButton(onClick = {
-                            selectedThreadIds.forEach { onToggleArchived(it) }
+                            selectedThreadIds.forEach { onSetArchived(it, true) }
                             selectedThreadIds = emptySet()
                         }) {
                             Icon(Icons.Rounded.Archive, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                         }
-                        IconButton(onClick = {
-                            selectedThreads.forEach { onSetThreadUnread(it.threadId, it.address, false) }
-                            selectedThreadIds = emptySet()
-                        }) {
-                            Icon(Icons.Rounded.MarkunreadMailbox, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-                        }
                         IconButton(onClick = { showBatchDeleteConfirmation = true }) {
                             Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        }
+                        var showOverflow by remember { mutableStateOf(false) }
+                        IconButton(onClick = { showOverflow = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Box {
+                            DropdownMenu(
+                                expanded = showOverflow,
+                                onDismissRequest = { showOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(if (allPinned) R.string.thread_unpin else R.string.thread_pin)) },
+                                    onClick = {
+                                        showOverflow = false
+                                        val pinned = !allPinned
+                                        selectedThreadIds.forEach { onSetPinned(it, pinned) }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (allPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.thread_mark_read)) },
+                                    onClick = {
+                                        showOverflow = false
+                                        selectedThreads.forEach { onSetThreadUnread(it.threadId, it.address, false) }
+                                        selectedThreadIds = emptySet()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Rounded.MarkunreadMailbox, contentDescription = null)
+                                    },
+                                )
+                            }
                         }
                     },
                 )
