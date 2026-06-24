@@ -149,6 +149,8 @@ internal fun RealInboxScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedThreadIds by rememberSaveable { mutableStateOf<Set<Long>>(emptySet()) }
+    var showBatchDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val searchFocusRequester = remember { FocusRequester() }
     val reducedMotion = rememberReducedMotionEnabled()
@@ -197,6 +199,17 @@ internal fun RealInboxScreen(
         }
     }
 
+    val isSelectionMode = selectedThreadIds.isNotEmpty()
+    val selectedThreads = remember(selectedThreadIds, filteredThreads) {
+        filteredThreads.filter { it.threadId in selectedThreadIds }
+    }
+    val allFilteredSelected = remember(selectedThreadIds, filteredThreads) {
+        filteredThreads.isNotEmpty() && filteredThreads.all { it.threadId in selectedThreadIds }
+    }
+    val allPinned = remember(selectedThreads, state.pinnedThreadIds) {
+        selectedThreads.isNotEmpty() && selectedThreads.all { it.threadId in state.pinnedThreadIds }
+    }
+
     LaunchedEffect(normalizedQuery, selectedFilter) {
         if (listState.firstVisibleItemIndex > 0) {
             listState.scrollToItem(0)
@@ -210,7 +223,9 @@ internal fun RealInboxScreen(
         }
     }
 
-    if (isSearching) {
+    if (isSelectionMode) {
+        BackHandler { selectedThreadIds = emptySet() }
+    } else if (isSearching) {
         BackHandler {
             isSearching = false
             searchQuery = ""
@@ -227,105 +242,166 @@ internal fun RealInboxScreen(
         modifier = Modifier.background(brush = inboxBackdropBrush),
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = {
-                    if (isSearching) {
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(searchFocusRequester),
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            keyboardOptions = KeyboardOptions(
-                                imeAction = ImeAction.Search,
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onSearch = { /* keep filtering as user types */ },
-                            ),
-                            decorationBox = { innerTextField ->
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) {
-                                    if (searchQuery.isEmpty()) {
-                                        Text(
-                                            text = stringResource(R.string.inbox_search_placeholder),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+            if (isSelectionMode) {
+                val selectedLabel = context.resources.getQuantityString(
+                    R.plurals.conversation_selected_count,
+                    selectedThreadIds.size,
+                    selectedThreadIds.size,
+                )
+                TopAppBar(
+                    title = { Text(selectedLabel, style = MaterialTheme.typography.headlineMedium) },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedThreadIds = emptySet() }) {
+                            Icon(Icons.Rounded.Close, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    actions = {
+                        IconButton(onClick = {
+                            selectedThreadIds = if (allFilteredSelected) {
+                                emptySet()
+                            } else {
+                                filteredThreads.map { it.threadId }.toSet()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = if (allFilteredSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = {
+                            selectedThreadIds.forEach { onTogglePinned(it) }
+                        }) {
+                            Icon(
+                                imageVector = if (allPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        IconButton(onClick = {
+                            selectedThreadIds.forEach { onToggleArchived(it) }
+                            selectedThreadIds = emptySet()
+                        }) {
+                            Icon(Icons.Rounded.Archive, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = {
+                            selectedThreads.forEach { onSetThreadUnread(it.threadId, it.address, false) }
+                            selectedThreadIds = emptySet()
+                        }) {
+                            Icon(Icons.Rounded.MarkunreadMailbox, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { showBatchDeleteConfirmation = true }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        if (isSearching) {
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester),
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Search,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSearch = { /* keep filtering as user types */ },
+                                ),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = stringResource(R.string.inbox_search_placeholder),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        innerTextField()
                                     }
-                                    innerTextField()
+                                },
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.inbox_title),
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                if (isSearching) {
+                                    isSearching = false
+                                    searchQuery = ""
+                                } else {
+                                    isSearching = true
                                 }
                             },
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.inbox_title),
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (isSearching) {
-                                isSearching = false
-                                searchQuery = ""
-                            } else {
-                                isSearching = true
-                            }
-                        },
-                    ) {
-                        Icon(
-                            imageVector = if (isSearching) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Search,
-                            contentDescription = if (isSearching) stringResource(R.string.inbox_clear_search) else stringResource(R.string.inbox_search_placeholder),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-                actions = {
-                    if (isSearching && searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.inbox_clear_search), tint = MaterialTheme.colorScheme.onSurface)
+                        ) {
+                            Icon(
+                                imageVector = if (isSearching) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Search,
+                                contentDescription = if (isSearching) stringResource(R.string.inbox_clear_search) else stringResource(R.string.inbox_search_placeholder),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
-                    }
-                    IconButton(onClick = onOpenArchivedChats) {
-                        Icon(Icons.Rounded.Archive, contentDescription = stringResource(R.string.settings_archived_chats), tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings_title), tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    actions = {
+                        if (isSearching && searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.inbox_clear_search), tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        IconButton(onClick = onOpenArchivedChats) {
+                            Icon(Icons.Rounded.Archive, contentDescription = stringResource(R.string.settings_archived_chats), tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings_title), tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    },
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                modifier = Modifier.semantics {
-                    role = Role.Button
-                    contentDescription = context.getString(R.string.inbox_new_chat)
-                },
-                onClick = onOpenNewChat,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(16.dp),
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = NewChatFabDefaultElevation,
-                    pressedElevation = NewChatFabPressedElevation,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.AddComment,
-                    contentDescription = null,
-                )
+            if (!isSelectionMode) {
+                FloatingActionButton(
+                    modifier = Modifier.semantics {
+                        role = Role.Button
+                        contentDescription = context.getString(R.string.inbox_new_chat)
+                    },
+                    onClick = onOpenNewChat,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = NewChatFabDefaultElevation,
+                        pressedElevation = NewChatFabPressedElevation,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AddComment,
+                        contentDescription = null,
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -423,7 +499,7 @@ internal fun RealInboxScreen(
                         key = { "${it.threadId}:${it.address}" },
                         contentType = { "inbox_thread" },
                     ) { thread ->
-                        val isMenuOpenForThread = contextMenuThreadId == thread.threadId
+                        val isMenuOpenForThread = !isSelectionMode && contextMenuThreadId == thread.threadId
                         val itemModifier = motionAnimateItemModifier(reducedMotion)
                             .then(rememberEntranceModifier(thread.address, reducedMotion))
                             .then(if (isMenuOpenForThread) Modifier.zIndex(2f) else Modifier)
@@ -431,11 +507,33 @@ internal fun RealInboxScreen(
                             thread = thread,
                             isPinned = thread.threadId in state.pinnedThreadIds,
                             isArchived = thread.threadId in state.archivedThreadIds,
-                            isContextMenuOpen = contextMenuThreadId == thread.threadId,
+                            isContextMenuOpen = isMenuOpenForThread,
+                            isSelected = thread.threadId in selectedThreadIds,
                             draft = state.drafts[thread.address].orEmpty(),
                             scheduled = thread.address in state.scheduledAddresses,
-                            onClick = { onOpenConversation(thread.address, thread.threadId) },
-                            onLongPress = { contextMenuThreadId = thread.threadId },
+                            onClick = {
+                                if (isSelectionMode) {
+                                    selectedThreadIds = if (thread.threadId in selectedThreadIds) {
+                                        selectedThreadIds - thread.threadId
+                                    } else {
+                                        selectedThreadIds + thread.threadId
+                                    }
+                                } else {
+                                    onOpenConversation(thread.address, thread.threadId)
+                                }
+                            },
+                            onLongPress = {
+                                if (isSelectionMode) {
+                                    selectedThreadIds = if (thread.threadId in selectedThreadIds) {
+                                        selectedThreadIds - thread.threadId
+                                    } else {
+                                        selectedThreadIds + thread.threadId
+                                    }
+                                } else {
+                                    contextMenuThreadId = null
+                                    selectedThreadIds = setOf(thread.threadId)
+                                }
+                            },
                             onDismissMenu = { contextMenuThreadId = null },
                             onTogglePinned = { onTogglePinned(thread.threadId) },
                             onToggleArchived = { onToggleArchived(thread.threadId) },
@@ -455,6 +553,34 @@ internal fun RealInboxScreen(
             }
 
         }
+    }
+
+    if (showBatchDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteConfirmation = false },
+            title = { Text(stringResource(R.string.thread_delete_title)) },
+            text = {
+                Text(context.resources.getQuantityString(
+                    R.plurals.conversation_delete_body,
+                    selectedThreadIds.size,
+                    selectedThreadIds.size,
+                ))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedThreads.forEach { onDeleteThread(it.threadId, it.address) }
+                    showBatchDeleteConfirmation = false
+                    selectedThreadIds = emptySet()
+                }) {
+                    Text(stringResource(R.string.thread_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteConfirmation = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 }
 }

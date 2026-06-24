@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Email
@@ -81,6 +82,7 @@ internal fun SmsThreadCard(
     isPinned: Boolean,
     isArchived: Boolean,
     isContextMenuOpen: Boolean,
+    isSelected: Boolean = false,
     draft: String = "",
     scheduled: Boolean = false,
     onClick: () -> Unit,
@@ -115,7 +117,7 @@ internal fun SmsThreadCard(
     val isPressed by interactionSource.collectIsPressedAsState()
     val containerColor by animateColorAsState(
         targetValue = when {
-            isContextMenuOpen -> MaterialTheme.colorScheme.surfaceContainerHigh
+            isContextMenuOpen || isSelected -> MaterialTheme.colorScheme.surfaceContainerHigh
             hasUnread -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
             else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
@@ -123,7 +125,7 @@ internal fun SmsThreadCard(
     )
     val outlineColor by animateColorAsState(
         targetValue = when {
-            isContextMenuOpen -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+            isContextMenuOpen || isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
             hasUnread -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
             isPressed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
@@ -183,19 +185,36 @@ internal fun SmsThreadCard(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .combinedClickable(
-                            onClick = {
-                                contactLookupIntent(context, thread.address)
-                                    ?.let { context.startActivity(it) }
-                            },
-                            onLongClick = onLongPress,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    SerafinaAvatar(imageUrl = photoUri?.toString(), initials = initials, hasUnread = hasUnread, size = 48.dp)
+                if (isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .combinedClickable(
+                                onClick = {
+                                    contactLookupIntent(context, thread.address)
+                                        ?.let { context.startActivity(it) }
+                                },
+                                onLongClick = onLongPress,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SerafinaAvatar(imageUrl = photoUri?.toString(), initials = initials, hasUnread = hasUnread, size = 48.dp)
+                    }
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
