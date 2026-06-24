@@ -32,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -546,7 +545,6 @@ private fun ConversationUnreadDivider(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 internal fun ConversationSelectionTopBar(
     selectedCount: Int,
     onClose: () -> Unit,
@@ -555,22 +553,39 @@ internal fun ConversationSelectionTopBar(
     onInfo: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    CenterAlignedTopAppBar(
-        title = { Text(context.resources.getQuantityString(R.plurals.conversation_selected_count, selectedCount, selectedCount)) },
-        navigationIcon = {
+    Surface(
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Close selection",
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-        },
-        actions = {
+            Text(
+                context.resources.getQuantityString(R.plurals.conversation_selected_count, selectedCount, selectedCount),
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             if (selectedCount == 1 && onInfo != null) {
                 IconButton(onClick = onInfo) {
                     Icon(
                         imageVector = Icons.Rounded.Info,
                         contentDescription = stringResource(R.string.message_info_show),
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -579,6 +594,7 @@ internal fun ConversationSelectionTopBar(
                     Icon(
                         imageVector = Icons.Rounded.ContentCopy,
                         contentDescription = "Copy message",
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -589,11 +605,8 @@ internal fun ConversationSelectionTopBar(
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
