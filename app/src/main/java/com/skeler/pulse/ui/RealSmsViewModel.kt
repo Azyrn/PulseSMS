@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -71,6 +74,11 @@ class RealSmsViewModel(
     private val _sendState = MutableStateFlow<SendState>(SendState.Idle)
     val sendState: StateFlow<SendState> = _sendState.asStateFlow()
 
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
+
+    private val cleanupPreferences by lazy { MessageCleanupPreferences(context) }
+
     private var inboxJob: Job? = null
     private var scheduledJob: Job? = null
     private var sendJob: Job? = null
@@ -86,6 +94,14 @@ class RealSmsViewModel(
     private fun observeInbox() {
         inboxJob?.cancel()
         inboxJob = viewModelScope.launch {
+            scheduledJob?.cancel()
+            scheduledJob = launch {
+                scheduledDao.observePending().collect { messages ->
+                    val addresses = messages.map { it.address }.toSet()
+                    _inboxState.update { it.copy(scheduledAddresses = addresses) }
+                }
+            }
+
             try {
                 combine(
                     smsReader.observeThreads(),
@@ -143,16 +159,8 @@ class RealSmsViewModel(
                     archivedThreads = emptyList(),
                     loading = false,
                     showLoadingCard = false,
-                    errorMessage = "Pulse couldn't read your messages right now.",
+                    errorMessage = context.getString(R.string.inbox_read_error_body),
                 )
-            }
-
-            scheduledJob?.cancel()
-            scheduledJob = launch {
-                scheduledDao.observePending().collect { messages ->
-                    val addresses = messages.map { it.address }.toSet()
-                    _inboxState.update { it.copy(scheduledAddresses = addresses) }
-                }
             }
         }
     }
@@ -365,21 +373,7 @@ class RealSmsViewModel(
     fun setMessageReaction(messageId: Long, emoji: String?) {
         val conversationState = _conversationState.value
         val message = conversationState.messages.firstOrNull { it.id == messageId }
-        /*if (emoji != null && message != null && message.body.isNotBlank()) {
-            val reactionText = ReactionParser.encodeReactionSms(emoji, message.body)
-            viewModelScope.launch {
-                try {
-                    smsReader.sendSms(
-                        address = conversationState.address,
-                        body = reactionText,
-                        subscriptionId = null,
-                        waitForDelivery = false,
-                    )
-                } catch (_: Exception) {
-                    // send failed silently — reaction is still stored locally
-                }
-            }
-        }*/
+        // TODO(reaction-sms): send reaction as SMS — blocked by carrier compatibility testing
         val allIds = if (emoji != null && message != null && message.body.isNotBlank()) {
             val ids = mutableListOf(messageId)
             val previous = ReactionParser.findMessageMatch(
@@ -494,20 +488,12 @@ class RealSmsViewModel(
                     android.os.Environment.DIRECTORY_DOWNLOADS
                 )
                 val file = java.io.File(downloadsDir, "PulseSMS_backup_${System.currentTimeMillis()}.xml")
-                java.io.FileOutputStream(file).use { outputStream ->
+                val count = java.io.FileOutputStream(file).use { outputStream ->
                     backupManager.exportSms(outputStream)
                 }
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(R.string.backup_export_success, file.absolutePath),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
+                _userMessage.tryEmit(context.getString(R.string.backup_export_success, count))
             } catch (_: Exception) {
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(R.string.backup_export_failed),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
+                _userMessage.tryEmit(context.getString(R.string.backup_export_failed))
             }
         }
     }
@@ -517,24 +503,12 @@ class RealSmsViewModel(
             try {
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                     val count = backupManager.exportSms(outputStream)
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.backup_export_success, count),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
+                    _userMessage.tryEmit(context.getString(R.string.backup_export_success, count))
                 } ?: run {
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.backup_export_failed),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
+                    _userMessage.tryEmit(context.getString(R.string.backup_export_failed))
                 }
             } catch (_: Exception) {
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(R.string.backup_export_failed),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
+                _userMessage.tryEmit(context.getString(R.string.backup_export_failed))
             }
         }
     }
@@ -544,24 +518,12 @@ class RealSmsViewModel(
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val count = backupManager.importSms(inputStream)
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.backup_import_success, count),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
+                    _userMessage.tryEmit(context.getString(R.string.backup_import_success, count))
                 } ?: run {
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.backup_import_failed),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
+                    _userMessage.tryEmit(context.getString(R.string.backup_import_failed))
                 }
             } catch (_: Exception) {
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(R.string.backup_import_failed),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
+                _userMessage.tryEmit(context.getString(R.string.backup_import_failed))
             }
         }
     }
@@ -682,9 +644,8 @@ class RealSmsViewModel(
 
     fun runCleanupNow(onResult: (Int) -> Unit = {}) {
         viewModelScope.launch {
-            val cleanupPrefs = MessageCleanupPreferences(context)
-            val maxSms = cleanupPrefs.getMaxSmsPerThread()
-            val maxMms = cleanupPrefs.getMaxMmsPerThread()
+            val maxSms = cleanupPreferences.getMaxSmsPerThread()
+            val maxMms = cleanupPreferences.getMaxMmsPerThread()
             if (maxSms == MessageCleanupPreferences.KEEP_ALL &&
                 maxMms == MessageCleanupPreferences.KEEP_ALL
             ) {
@@ -708,17 +669,16 @@ class RealSmsViewModel(
     fun loadDraftForAddress(address: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                draftPreferences.observeDraft(address).collect { draft ->
-                    onResult(draft)
-                    return@collect
-                }
+                onResult(draftPreferences.observeDraft(address).first())
             } catch (_: Exception) { }
         }
     }
 
     override fun onCleared() {
         inboxJob?.cancel()
+        scheduledJob?.cancel()
         conversationJob?.cancel()
+        sendJob?.cancel()
         super.onCleared()
     }
 }
