@@ -146,11 +146,23 @@ private fun QuickComposeSheet(
 
     LaunchedEffect(Unit) {
         val (contacts, number) = withContext(Dispatchers.IO) {
-            loadRecentContacts(context, 8) to
-                QuickComposeNotificationManager.getTargetNumber(context)
+            val loaded = loadRecentContacts(context, 8)
+            val target = QuickComposeNotificationManager.getTargetNumber(context)
+            val normalizedTarget = target?.let { normalizePhoneNumberRaw(it) }
+            val match = if (normalizedTarget != null) {
+                loaded.firstOrNull { normalizePhoneNumberRaw(it.phoneNumber) == normalizedTarget }
+                    ?: searchContacts(context, normalizedTarget).firstOrNull {
+                        normalizePhoneNumberRaw(it.phoneNumber) == normalizedTarget
+                    }
+                    ?: ContactMatch(displayNameFor(context, normalizedTarget), normalizedTarget)
+            } else null
+            Pair(loaded, match)
         }
         recentContacts.addAll(contacts)
-        number?.let { contactQuery = it }
+        number?.let {
+            selectedContact = it
+            contactQuery = it.displayName
+        }
     }
 
     val contactNumber = remember(selectedContact, contactQuery) {
