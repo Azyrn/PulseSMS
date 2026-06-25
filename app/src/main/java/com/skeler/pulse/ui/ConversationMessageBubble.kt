@@ -72,9 +72,13 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -231,6 +235,7 @@ internal fun ConversationMessageBubble(
         )
     }
     val copyableCode = remember(message.body) { copyableMessageCode(message.body) }
+    val linkTargets = remember(message.body) { MessageLinkDetector.detectTargets(message.body) }
 
     val onClickAction: () -> Unit = if (isSelectionMode) ({ onToggleSelection() }) else ({})
     val onLongClickAction: (() -> Unit)? = if (isSelectionMode) ({ onToggleSelection() }) else onLongPress
@@ -323,6 +328,11 @@ internal fun ConversationMessageBubble(
                         code = code,
                         onClick = { onCopyCode(code) },
                     )
+                }
+                linkTargets.let { targets ->
+                    if (targets.isNotEmpty()) {
+                        MessageLinkActionsRow(targets = targets)
+                    }
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -442,14 +452,16 @@ internal fun String.toConversationMessageLinks(linkColor: Color, searchQuery: St
     val searchHighlightColor = Color(0xFFFFEB3B).copy(alpha = 0.4f)
     return AnnotatedString.Builder(this).apply {
         targets.forEach { target ->
-            addLink(
-                url = LinkAnnotation.Url(
-                    url = target.uri,
-                    styles = linkStyles,
-                ),
-                start = target.start,
-                end = target.end,
-            )
+            if (target.type != MessageLinkType.Phone) {
+                addLink(
+                    url = LinkAnnotation.Url(
+                        url = target.uri,
+                        styles = linkStyles,
+                    ),
+                    start = target.start,
+                    end = target.end,
+                )
+            }
         }
         if (searchQuery.isNotBlank()) {
             val lowerText = this.toString().lowercase()
@@ -950,6 +962,147 @@ private fun formatVoiceDuration(ms: Int): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "%d:%02d".format(min, sec)
+}
+
+@Composable
+private fun MessageLinkActionsRow(
+    targets: List<MessageLinkTarget>,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        targets.forEach { target ->
+            var expanded by remember { mutableStateOf(false) }
+
+            Box {
+                FilledTonalButton(
+                    onClick = { expanded = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = target.text,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 160.dp),
+                    )
+                }
+
+                SerafinaContextMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    when (target.type) {
+                        MessageLinkType.Url -> {
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_open),
+                                icon = Icons.Rounded.Language,
+                                onClick = {
+                                    expanded = false
+                                    openInBrowser(context, target.uri)
+                                },
+                            )
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_copy),
+                                icon = Icons.Rounded.ContentCopy,
+                                onClick = {
+                                    expanded = false
+                                    copyToClipboard(context, target.text)
+                                },
+                            )
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_share),
+                                icon = Icons.Rounded.Share,
+                                onClick = {
+                                    expanded = false
+                                    shareText(context, target.text)
+                                },
+                            )
+                        }
+                        MessageLinkType.Phone -> {
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_call),
+                                icon = Icons.Rounded.Phone,
+                                onClick = {
+                                    expanded = false
+                                    openInBrowser(context, target.uri)
+                                },
+                            )
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_send_sms),
+                                icon = Icons.AutoMirrored.Rounded.Send,
+                                onClick = {
+                                    expanded = false
+                                    val number = target.uri.removePrefix("tel:")
+                                    val intent = com.skeler.pulse.MainActivity.createLaunchIntent(
+                                        context = context,
+                                        conversationAddress = number,
+                                    )
+                                    context.startActivity(intent)
+                                },
+                            )
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_copy),
+                                icon = Icons.Rounded.ContentCopy,
+                                onClick = {
+                                    expanded = false
+                                    copyToClipboard(context, target.text)
+                                },
+                            )
+                        }
+                        MessageLinkType.Email -> {
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_send_email),
+                                icon = Icons.Rounded.Email,
+                                onClick = {
+                                    expanded = false
+                                    openInBrowser(context, target.uri)
+                                },
+                            )
+                            SerafinaContextMenuItem(
+                                text = stringResource(R.string.conversation_action_copy),
+                                icon = Icons.Rounded.ContentCopy,
+                                onClick = {
+                                    expanded = false
+                                    copyToClipboard(context, target.text)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openInBrowser(context: android.content.Context, uri: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri))
+        context.startActivity(intent)
+    } catch (_: Exception) {
+    }
+}
+
+private fun copyToClipboard(context: android.content.Context, text: String) {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("label", text))
+}
+
+private fun shareText(context: android.content.Context, text: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, null))
+    } catch (_: Exception) {
+    }
 }
 
 private fun saveMmsImage(context: android.content.Context, uri: Uri): Uri? {

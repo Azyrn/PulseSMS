@@ -23,6 +23,11 @@
     <string name="conversation_action_copy">Copy</string>
     <string name="conversation_action_copy_code">Copy code</string>
     <string name="conversation_copy_code_content_description">Copy code %1$s</string>
+    <string name="conversation_action_open">Open</string>
+    <string name="conversation_action_share">Share</string>
+    <string name="conversation_action_call">Call</string>
+    <string name="conversation_action_send_sms">Send SMS</string>
+    <string name="conversation_action_send_email">Send email</string>
     <string name="conversation_action_forward">Forward</string>
     <string name="conversation_action_block">Block</string>
     <string name="conversation_action_delete">Delete</string>
