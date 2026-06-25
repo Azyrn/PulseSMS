@@ -287,6 +287,7 @@ internal fun ConversationBottomBar(
     onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     onScheduleClick: () -> Unit = {},
     canSchedule: Boolean = false,
+    onForceReply: (() -> Unit)? = null,
 ) {
     if (isReplyable) {
         Column(
@@ -341,7 +342,7 @@ internal fun ConversationBottomBar(
         }
     } else {
         Box(modifier = Modifier.fillMaxWidth()) {
-            ReadOnlyConversationNotice()
+            ReadOnlyConversationNotice(onForceReply = onForceReply)
         }
     }
 }

@@ -246,9 +246,35 @@ internal fun ConversationSendStatusRow(
 @Composable
 internal fun ReadOnlyConversationNotice(
     modifier: Modifier = Modifier,
+    onForceReply: (() -> Unit)? = null,
 ) {
+    var showDialog by remember { mutableStateOf(false) }
     val borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val readOnlyContentDescription = stringResource(R.string.conversation_read_only_content_description)
+
+    if (showDialog && onForceReply != null) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            icon = {
+                Icon(Icons.Outlined.Sms, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            },
+            title = { Text(stringResource(R.string.conversation_read_only_reply_anyway_dialog_title)) },
+            text = { Text(stringResource(R.string.conversation_read_only_reply_anyway_dialog_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    onForceReply()
+                }) {
+                    Text(stringResource(R.string.conversation_read_only_reply_anyway_dialog_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
 
     Surface(
         modifier = modifier
@@ -303,6 +329,18 @@ internal fun ReadOnlyConversationNotice(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (onForceReply != null) {
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(
+                        onClick = { showDialog = true },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.conversation_read_only_reply_anyway),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
             }
         }
     }

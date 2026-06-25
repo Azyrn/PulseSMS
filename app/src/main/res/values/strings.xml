@@ -52,6 +52,10 @@
     <string name="conversation_read_only_content_description">Read only business sender. Replies are disabled.</string>
     <string name="conversation_read_only_title">Read only</string>
     <string name="conversation_read_only_subtitle">Business sender &#8212; replies unavailable</string>
+    <string name="conversation_read_only_reply_anyway">Reply anyway</string>
+    <string name="conversation_read_only_reply_anyway_dialog_title">Reply to business sender?</string>
+    <string name="conversation_read_only_reply_anyway_dialog_body">Business senders may not receive replies. Proceed?</string>
+    <string name="conversation_read_only_reply_anyway_dialog_confirm">Reply</string>
     <string name="conversation_loading_status">Opening thread</string>
     <string name="conversation_load_older_messages">Load older messages</string>
     <string name="conversation_empty_title">No messages yet</string>

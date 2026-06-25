@@ -52,6 +52,10 @@
     <string name="conversation_read_only_content_description">Expéditeur professionnel en lecture seule. Les réponses sont désactivées.</string>
     <string name="conversation_read_only_title">Lecture seule</string>
     <string name="conversation_read_only_subtitle">Expéditeur professionnel — réponses indisponibles</string>
+    <string name="conversation_read_only_reply_anyway">Répondre quand même</string>
+    <string name="conversation_read_only_reply_anyway_dialog_title">Répondre à l\'expéditeur professionnel ?</string>
+    <string name="conversation_read_only_reply_anyway_dialog_body">Les expéditeurs professionnels peuvent ne pas recevoir les réponses. Continuer ?</string>
+    <string name="conversation_read_only_reply_anyway_dialog_confirm">Répondre</string>
     <string name="conversation_loading_status">Ouverture de la conversation</string>
     <string name="conversation_load_older_messages">Charger les messages plus anciens</string>
     <string name="conversation_empty_title">Aucun message</string>

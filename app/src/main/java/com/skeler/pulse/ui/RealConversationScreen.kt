@@ -137,6 +137,8 @@ internal fun RealConversationScreen(
     var draft by rememberSaveable(address) { mutableStateOf("") }
     var shouldShowDiscardDraftDialog by rememberSaveable(address) { mutableStateOf(false) }
     var previousMessageCount by remember(address) { mutableIntStateOf(0) }
+    var forceReplyEnabled by remember { mutableStateOf(false) }
+    val effectiveIsReplyable = isReplyable || forceReplyEnabled
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showAttachmentMenu by remember { mutableStateOf(false) }
     var searchQuery by rememberSaveable(address) { mutableStateOf("") }
@@ -454,7 +456,7 @@ internal fun RealConversationScreen(
                 )
             } else {
                 ConversationBottomBar(
-                    isReplyable = isReplyable,
+                    isReplyable = effectiveIsReplyable,
                     draft = draft,
                     sendState = sendState,
                     simOptions = availableSimOptions,
@@ -501,6 +503,7 @@ internal fun RealConversationScreen(
                     onAttachmentMenuVisibilityChange = { showAttachmentMenu = it },
                     onScheduleClick = { showScheduleDialog = true },
                     canSchedule = draft.isNotBlank() && !isSearching,
+                    onForceReply = { forceReplyEnabled = true },
                 )
             }
         },
