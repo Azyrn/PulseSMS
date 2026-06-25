@@ -208,6 +208,8 @@ internal fun ConversationComposer(
     onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val selectedAttachmentTab = rememberSaveable { mutableStateOf(AttachmentTab.GALLERY) }
+    val isVoiceTabActive = showAttachmentMenu && selectedAttachmentTab.value == AttachmentTab.VOICE
     val reducedMotion = rememberReducedMotionEnabled()
     val isSending = sendState is SendState.Sending
     val canSend by remember(draft, isSending, selectedImageUris) {
@@ -534,7 +536,7 @@ internal fun ConversationComposer(
                                 )
                             }
                         }
-                    } else {
+                    } else if (!isVoiceTabActive) {
                         IconButton(
                             onClick = {
                                 val file = createVoiceFile(context)
@@ -782,8 +784,17 @@ internal fun ConversationComposer(
                             Box(
                                 modifier = Modifier
                                     .size(ConversationComposerTokens.sendButtonSize)
+                                    .graphicsLayer {
+                                        scaleX = sendScale
+                                        scaleY = sendScale
+                                    }
                                     .clip(ConversationPillShape)
-                                    .background(sendContainerColor),
+                                    .background(colors.primary)
+                                    .border(
+                                        width = ConversationComposerTokens.borderWidth,
+                                        color = colors.primary.copy(alpha = 0.48f),
+                                        shape = ConversationPillShape,
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 IconButton(
@@ -794,6 +805,7 @@ internal fun ConversationComposer(
                                         voiceMode = VoiceMode.Hidden
                                     },
                                     modifier = Modifier.fillMaxSize(),
+                                    interactionSource = sendInteractionSource,
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.Send,
@@ -801,7 +813,7 @@ internal fun ConversationComposer(
                                         modifier = Modifier
                                             .size(ConversationComposerTokens.sendIconSize)
                                             .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
-                                        tint = sendContentColor,
+                                        tint = colors.onPrimary,
                                     )
                                 }
                             }
@@ -811,7 +823,6 @@ internal fun ConversationComposer(
             }
         }
         AnimatedVisibility(visible = showAttachmentMenu, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            val selectedAttachmentTab = rememberSaveable { mutableStateOf(AttachmentTab.GALLERY) }
             val mediaPermission = if (Build.VERSION.SDK_INT >= 33) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
