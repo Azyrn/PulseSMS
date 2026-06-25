@@ -12,6 +12,7 @@ internal data class MessageLinkTarget(
 
 internal object MessageLinkDetector {
     private val urlPattern = Regex("\\b((?:https?://|www\\.)[^\\s<>()]+)", RegexOption.IGNORE_CASE)
+    private val bareDomainPattern = Regex("\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s<>()]*)?\\b", RegexOption.IGNORE_CASE)
     private val emailPattern = Regex("\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", RegexOption.IGNORE_CASE)
     private val phonePattern = Regex("(?<![\\w@])(?:\\+?\\d[\\d .()/-]{2,}\\d)(?![\\w@])")
     private val trailingPunctuation = setOf('.', ',', ';', ':', '!', '?', ')', ']')
@@ -23,6 +24,7 @@ internal object MessageLinkDetector {
         collectTargets(messageBody, urlPattern, targets, ::webUriFor, MessageLinkType.Url)
         collectTargets(messageBody, emailPattern, targets, ::emailUriFor, MessageLinkType.Email)
         collectTargets(messageBody, phonePattern, targets, ::phoneUriFor, MessageLinkType.Phone)
+        collectTargets(messageBody, bareDomainPattern, targets, ::webUriFor, MessageLinkType.Url)
         return targets.sortedBy { target -> target.start }
     }
 
