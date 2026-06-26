@@ -86,7 +86,11 @@ object SmsProcessingHelper {
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
                 put(Telephony.Sms.THREAD_ID, Telephony.Threads.getOrCreateThreadId(context, sender))
             }
-            context.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
+            val uri = context.contentResolver.insert(Telephony.Sms.CONTENT_URI, values)
+            if (uri != null) {
+                context.contentResolver.notifyChange(uri, null)
+            }
+            uri
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write SMS to provider", e)
             null
