@@ -115,8 +115,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -658,19 +662,34 @@ private fun MmsImageDialog(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clipToBounds()
-                                .pointerInput(pageScale) {
-                                    if (pageScale > 1f) {
-                                        detectTransformGestures { _, pan, zoom, _ ->
-                                            val newScale = (pageScale * zoom).coerceIn(1f, 5f)
-                                            pageScale = newScale
-                                            if (newScale > 1f) {
-                                                pageOffsetX += pan.x
-                                                pageOffsetY += pan.y
-                                            } else {
-                                                pageOffsetX = 0f
-                                                pageOffsetY = 0f
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        var currentScale = pageScale
+                                        var currentOffsetX = pageOffsetX
+                                        var currentOffsetY = pageOffsetY
+                                        do {
+                                            val event = awaitPointerEvent()
+                                            val zoom = event.calculateZoom()
+                                            val pan = event.calculatePan()
+                                            val isPinching = zoom != 1f
+                                            val isZoomed = currentScale > 1f
+                                            if (isPinching || isZoomed) {
+                                                val newScale = (currentScale * zoom).coerceIn(1f, 5f)
+                                                currentScale = newScale
+                                                if (newScale > 1f) {
+                                                    currentOffsetX += pan.x
+                                                    currentOffsetY += pan.y
+                                                } else {
+                                                    currentOffsetX = 0f
+                                                    currentOffsetY = 0f
+                                                }
+                                                pageScale = currentScale
+                                                pageOffsetX = currentOffsetX
+                                                pageOffsetY = currentOffsetY
+                                                event.changes.forEach { it.consume() }
                                             }
-                                        }
+                                        } while (event.changes.any { it.pressed })
                                     }
                                 }
                                 .pointerInput(Unit) {
