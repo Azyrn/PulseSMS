@@ -134,14 +134,41 @@ class MmsReceiver : BroadcastReceiver() {
             val mmsPrefs = MmsPreferences(context)
             val dsHost = mmsPrefs.getMmsProxy()
             val dsPort = mmsPrefs.getMmsPort()
-            val (proxyHost, proxyPort) = if (!dsHost.isNullOrBlank()) {
-                dsHost to (dsPort?.toIntOrNull() ?: 80)
+            var proxyHost: String
+            var proxyPort: Int
+            if (!dsHost.isNullOrBlank()) {
+                proxyHost = dsHost
+                proxyPort = dsPort?.toIntOrNull() ?: 80
             } else {
                 // Fallback to SharedPreferences (klinker ApnUtils writes there)
                 val sp = context.getSharedPreferences(context.packageName + "_preferences", Context.MODE_PRIVATE)
-                val spHost = sp.getString("mms_proxy", "") ?: ""
-                val spPort = sp.getString("mms_port", "80")?.toIntOrNull() ?: 80
-                spHost to spPort
+                proxyHost = sp.getString("mms_proxy", "") ?: ""
+                proxyPort = sp.getString("mms_port", "80")?.toIntOrNull() ?: 80
+                if (proxyHost.isBlank()) {
+                    // Query system APN provider directly
+                    val subId = try { android.telephony.SubscriptionManager.getDefaultSubscriptionId() } catch (_: Exception) { -1 }
+                    if (subId >= 0) {
+                        val apnUri = Telephony.Carriers.CONTENT_URI.buildUpon()
+                            .appendPath("subId").appendPath(subId.toString()).build()
+                        val cursor = try {
+                            context.contentResolver.query(apnUri, null, "type LIKE '%mms%'", null, null)
+                        } catch (_: Exception) { null }
+                        cursor?.use { c ->
+                            while (c.moveToNext()) {
+                                val mmsProxy = c.getString(c.getColumnIndexOrThrow("mmsproxy")) ?: ""
+                                val mmsPort = c.getString(c.getColumnIndexOrThrow("mmsport")) ?: ""
+                                if (mmsProxy.isNotBlank()) {
+                                    proxyHost = mmsProxy
+                                    proxyPort = mmsPort.toIntOrNull() ?: 80
+                                    runCatching {
+                                        mmsPrefs.setMmsProxy(proxyHost, mmsPort, c.getString(c.getColumnIndexOrThrow("mmsc")))
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
             }
 
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
