@@ -186,6 +186,7 @@
     <string name="quick_compose_sent_toast">Message sent</string>
     <string name="quick_compose_failed_toast">Sending failed</string>
     <string name="quick_compose_recent_label">Recent</string>
+    <string name="quick_compose_open_conversation">Open conversation</string>
 
     <string name="conversation_delete_title">Delete messages</string>
     <plurals name="conversation_delete_body">

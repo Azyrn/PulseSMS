@@ -1,6 +1,7 @@
 package com.skeler.pulse.sms
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.Telephony
@@ -36,9 +37,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -426,6 +429,35 @@ private fun QuickComposeSheet(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.quick_compose_send_action))
+                }
+
+                if (contactNumber != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            keyboardController?.hide()
+                            val intent = com.skeler.pulse.MainActivity.createLaunchIntent(
+                                context = context,
+                                conversationAddress = contactNumber,
+                                draftBody = messageText.trim().ifBlank { null },
+                            )
+                            context.startActivity(intent)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Chat,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(R.string.quick_compose_open_conversation),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(4.dp))

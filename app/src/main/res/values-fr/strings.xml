@@ -186,6 +186,7 @@
     <string name="quick_compose_sent_toast">Message envoyé</string>
     <string name="quick_compose_failed_toast">Envoi échoué</string>
     <string name="quick_compose_recent_label">Récents</string>
+    <string name="quick_compose_open_conversation">Ouvrir la conversation</string>
 
     <string name="conversation_delete_title">Supprimer les messages</string>
     <plurals name="conversation_delete_body">
