@@ -110,6 +110,8 @@ internal fun SmsThreadCard(
     val showAddress = displayName != formattedAddress
     val initials = remember(displayName) { displayName.toAvatarInitials() }
     val hasUnread = thread.unreadCount > 0
+    val hasAudioMms = thread.lastMmsPartUri != null && thread.lastMmsContentType?.startsWith("audio/") == true
+    val hasImageMms = thread.lastMmsPartUri != null && !hasAudioMms
     var shouldShowDeleteConfirmation by rememberSaveable(thread.threadId, thread.address) {
         mutableStateOf(false)
     }
@@ -218,7 +220,7 @@ internal fun SmsThreadCard(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -227,33 +229,32 @@ internal fun SmsThreadCard(
                             else MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        if (isPinned) {
+                            Icon(
+                                imageVector = Icons.Rounded.PushPin,
+                                contentDescription = stringResource(R.string.thread_pinned),
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            )
+                        }
                     }
                     if (showAddress) {
                         Text(
                             text = formattedAddress,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (thread.lastMmsPartUri != null) {
-                        if (thread.lastMmsContentType?.startsWith("audio/") == true) {
-                            AudioWaveformPreview(
-                                uri = thread.lastMmsPartUri,
-                                modifier = Modifier.size(48.dp),
-                            )
-                        } else {
-                            AsyncImage(
-                                model = thread.lastMmsPartUri,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop,
-                            )
-                        }
+                    if (hasAudioMms) {
+                        AudioWaveformPreview(
+                            uri = thread.lastMmsPartUri,
+                            modifier = Modifier.size(48.dp),
+                        )
+                    } else if (hasImageMms) {
                     } else {
                         if (draft.isNotBlank()) {
                             Row(
@@ -315,38 +316,41 @@ internal fun SmsThreadCard(
                     }
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (isPinned) {
-                        Icon(
-                            imageVector = Icons.Rounded.PushPin,
-                            contentDescription = stringResource(R.string.thread_pinned),
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    Text(
-                        text = thread.timestamp.toInboxTimestamp(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Email,
+                    if (hasImageMms) {
+                        AsyncImage(
+                            model = thread.lastMmsPartUri,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop,
                         )
+                    } else {
                         Text(
-                            text = thread.messageCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            text = thread.timestamp.toInboxTimestamp(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                    if (hasUnread) {
-                        Box(
-                            modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Email,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                            Text(
+                                text = thread.messageCount.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        }
+                        if (hasUnread) {
+                            Box(
+                                modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                            }
                         }
                     }
                 }
