@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -176,14 +179,6 @@ private fun QuickComposeSheet(
                 ?.let { normalizePhoneNumberRaw(it) }
     }
 
-    val displayText = remember(selectedContact, contactQuery) {
-        if (selectedContact != null) {
-            "${selectedContact!!.displayName} <${selectedContact!!.phoneNumber}>"
-        } else {
-            contactQuery
-        }
-    }
-
     LaunchedEffect(contactQuery) {
         if (contactQuery.isBlank() || selectedContact != null) {
             suggestions.clear()
@@ -230,7 +225,7 @@ private fun QuickComposeSheet(
             shadowElevation = 24.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
@@ -241,7 +236,7 @@ private fun QuickComposeSheet(
                         .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)),
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -261,17 +256,17 @@ private fun QuickComposeSheet(
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 if (recentContacts.isNotEmpty() && contactQuery.isBlank() && selectedContact == null) {
                     Text(
                         text = stringResource(R.string.quick_compose_recent_label),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp).fillMaxWidth(),
+                        modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth(),
                     )
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(recentContacts) { contact ->
@@ -285,7 +280,7 @@ private fun QuickComposeSheet(
                                 tonalElevation = 2.dp,
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
@@ -297,7 +292,7 @@ private fun QuickComposeSheet(
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         text = contact.displayName,
-                                        style = MaterialTheme.typography.labelLarge,
+                                        style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                                         maxLines = 1,
                                     )
@@ -307,21 +302,54 @@ private fun QuickComposeSheet(
                     }
                 }
 
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = displayText,
-                        onValueChange = { newValue ->
-                            if (selectedContact != null) {
-                                selectedContact = null
-                                contactQuery = if (newValue.length > displayText.length) {
-                                    newValue.last().toString()
-                                } else {
-                                    ""
+                if (selectedContact != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        InputChip(
+                            selected = false,
+                            onClick = { },
+                            label = {
+                                Text(
+                                    text = "${selectedContact!!.displayName} <${selectedContact!!.phoneNumber}>",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        selectedContact = null
+                                        contactQuery = ""
+                                    },
+                                    modifier = Modifier.size(18.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = stringResource(R.string.action_close),
+                                        modifier = Modifier.size(14.dp),
+                                    )
                                 }
-                            } else {
-                                contactQuery = newValue
-                            }
-                        },
+                            },
+                            colors = InputChipDefaults.inputChipColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                leadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                trailingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                        )
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = contactQuery,
+                        onValueChange = { contactQuery = it },
                         label = { Text(stringResource(R.string.quick_compose_to_label)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -333,7 +361,7 @@ private fun QuickComposeSheet(
                     )
 
                     AnimatedVisibility(
-                        visible = suggestions.isNotEmpty() && selectedContact == null,
+                        visible = suggestions.isNotEmpty(),
                         enter = fadeIn(),
                         exit = fadeOut(),
                     ) {
@@ -342,7 +370,7 @@ private fun QuickComposeSheet(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 220.dp),
+                                    .heightIn(max = 200.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 ),
@@ -379,7 +407,7 @@ private fun QuickComposeSheet(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
 
                 OutlinedTextField(
                     value = messageText,
@@ -390,6 +418,28 @@ private fun QuickComposeSheet(
                         .heightIn(min = 80.dp)
                         .focusRequester(messageFocusRequester),
                     maxLines = 6,
+                    trailingIcon = {
+                        val canSend = contactNumber != null && messageText.isNotBlank()
+                        IconButton(
+                            onClick = {
+                                if (canSend && !isSending) {
+                                    isSending = true
+                                    keyboardController?.hide()
+                                    onSend(contactNumber, messageText.trim())
+                                }
+                            },
+                            enabled = canSend && !isSending,
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = stringResource(R.string.quick_compose_send_action),
+                                tint = if (canSend && !isSending)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            )
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
                         imeAction = ImeAction.Send,
@@ -406,33 +456,8 @@ private fun QuickComposeSheet(
                     enabled = !isSending,
                 )
 
-                Spacer(Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        keyboardController?.hide()
-                        contactNumber?.let { addr ->
-                            isSending = true
-                            onSend(addr, messageText.trim())
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    enabled = contactNumber != null && messageText.isNotBlank() && !isSending,
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.quick_compose_send_action))
-                }
-
                 if (contactNumber != null) {
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(2.dp))
                     TextButton(
                         onClick = {
                             keyboardController?.hide()
@@ -444,18 +469,22 @@ private fun QuickComposeSheet(
                             context.startActivity(intent)
                             onDismiss()
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
                     ) {
                         Icon(
                             Icons.Rounded.Chat,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             stringResource(R.string.quick_compose_open_conversation),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         )
                     }
                 }
