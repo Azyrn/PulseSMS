@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -43,12 +44,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.InputChip
-import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -70,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -303,49 +302,54 @@ private fun QuickComposeSheet(
                 }
 
                 if (selectedContact != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                    val contact = selectedContact!!
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        tonalElevation = 2.dp,
                     ) {
-                        InputChip(
-                            selected = false,
-                            onClick = { },
-                            label = {
-                                Text(
-                                    text = "${selectedContact!!.displayName} <${selectedContact!!.phoneNumber}>",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            },
-                            leadingIcon = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Person,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .padding(start = 12.dp)
+                                    .size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = contact.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 200.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            IconButton(
+                                onClick = {
+                                    selectedContact = null
+                                    contactQuery = ""
+                                },
+                                modifier = Modifier.size(20.dp),
+                            ) {
                                 Icon(
-                                    Icons.Rounded.Person,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
+                                    Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.action_close),
+                                    modifier = Modifier.size(14.dp),
                                 )
-                            },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        selectedContact = null
-                                        contactQuery = ""
-                                    },
-                                    modifier = Modifier.size(18.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.Close,
-                                        contentDescription = stringResource(R.string.action_close),
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                }
-                            },
-                            colors = InputChipDefaults.inputChipColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                leadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                trailingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            ),
-                        )
+                            }
+                        }
                     }
+                    Text(
+                        text = contact.phoneNumber,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                    )
                 } else {
                     OutlinedTextField(
                         value = contactQuery,
@@ -436,7 +440,7 @@ private fun QuickComposeSheet(
                                 tint = if (canSend && !isSending)
                                     MaterialTheme.colorScheme.primary
                                 else
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             )
                         }
                     },
