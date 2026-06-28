@@ -299,18 +299,34 @@ internal fun SmsThreadCard(
                                 )
                             }
                         } else {
-                            Text(
-                                text = thread.snippet,
-                                style = if (hasUnread) {
-                                    MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                                } else {
-                                    MaterialTheme.typography.bodyMedium
-                                },
-                                color = if (hasUnread) MaterialTheme.colorScheme.onSecondaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = thread.snippet,
+                                    style = if (hasUnread) {
+                                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium
+                                    },
+                                    color = if (hasUnread) MaterialTheme.colorScheme.onSecondaryContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (hasImageMms) {
+                                    AsyncImage(
+                                        model = thread.lastMmsPartUri,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -340,16 +356,6 @@ internal fun SmsThreadCard(
                         ) {
                             Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
                         }
-                    }
-                    if (hasImageMms) {
-                        AsyncImage(
-                            model = thread.lastMmsPartUri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
                     }
                 }
             }
