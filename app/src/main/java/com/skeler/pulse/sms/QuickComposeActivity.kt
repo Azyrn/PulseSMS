@@ -303,53 +303,55 @@ private fun QuickComposeSheet(
 
                 if (selectedContact != null) {
                     val contact = selectedContact!!
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        tonalElevation = 2.dp,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            tonalElevation = 2.dp,
                         ) {
-                            Icon(
-                                Icons.Rounded.Person,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .padding(start = 12.dp)
-                                    .size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = contact.displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 200.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            IconButton(
-                                onClick = {
-                                    selectedContact = null
-                                    contactQuery = ""
-                                },
-                                modifier = Modifier.size(20.dp),
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Icon(
-                                    Icons.Rounded.Close,
-                                    contentDescription = stringResource(R.string.action_close),
-                                    modifier = Modifier.size(14.dp),
+                                    Icons.Rounded.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .padding(start = 12.dp)
+                                        .size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = contact.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 200.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = {
+                                        selectedContact = null
+                                        contactQuery = ""
+                                    },
+                                    modifier = Modifier.size(20.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = stringResource(R.string.action_close),
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
                             }
                         }
+                        Text(
+                            text = contact.phoneNumber,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                        )
                     }
-                    Text(
-                        text = contact.phoneNumber,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                    )
                 } else {
                     OutlinedTextField(
                         value = contactQuery,
