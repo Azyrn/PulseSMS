@@ -254,7 +254,6 @@ internal fun SmsThreadCard(
                             uri = thread.lastMmsPartUri,
                             modifier = Modifier.size(48.dp),
                         )
-                    } else if (hasImageMms) {
                     } else {
                         if (draft.isNotBlank()) {
                             Row(
@@ -316,42 +315,41 @@ internal fun SmsThreadCard(
                     }
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = thread.timestamp.toInboxTimestamp(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Icon(
+                            imageVector = Icons.Rounded.Email,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        )
+                        Text(
+                            text = thread.messageCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        )
+                    }
+                    if (hasUnread) {
+                        Box(
+                            modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
                     if (hasImageMms) {
                         AsyncImage(
                             model = thread.lastMmsPartUri,
                             contentDescription = null,
                             modifier = Modifier
-                                .size(56.dp)
+                                .size(52.dp)
                                 .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Crop,
                         )
-                    } else {
-                        Text(
-                            text = thread.timestamp.toInboxTimestamp(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (hasUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Email,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            )
-                            Text(
-                                text = thread.messageCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            )
-                        }
-                        if (hasUnread) {
-                            Box(
-                                modifier = Modifier.size(20.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
-                            }
-                        }
                     }
                 }
             }
