@@ -185,7 +185,7 @@ internal fun SmsThreadCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top,
             ) {
                 if (isSelected) {
                     Box(
