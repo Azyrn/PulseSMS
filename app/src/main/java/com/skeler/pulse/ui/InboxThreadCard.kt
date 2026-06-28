@@ -298,6 +298,15 @@ internal fun SmsThreadCard(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
+                        } else if (hasImageMms) {
+                            AsyncImage(
+                                model = thread.lastMmsPartUri,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
                         } else {
                             Text(
                                 text = thread.snippet,
@@ -340,16 +349,6 @@ internal fun SmsThreadCard(
                         ) {
                             Text(thread.unreadCount.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
                         }
-                    }
-                    if (hasImageMms) {
-                        AsyncImage(
-                            model = thread.lastMmsPartUri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
                     }
                 }
             }
