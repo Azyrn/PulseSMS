@@ -171,15 +171,9 @@ internal fun ConversationTopBar(
                     },
                 )
             } else {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = ConversationVisualTokens.topBarTitleShape,
-                    color = titleContainerColor,
-                    tonalElevation = 0.dp,
-                ) {
+                Column {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
@@ -200,13 +194,10 @@ internal fun ConversationTopBar(
                                 contentColor = avatarColors.contentColor,
                             )
                         }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = title,
-                                modifier = Modifier.fillMaxWidth(),
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                                 color = topBarContentColor,
                                 maxLines = 1,
@@ -222,23 +213,68 @@ internal fun ConversationTopBar(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            val resources = context.resources
-                            val metaParts = buildList {
-                                add(resources.getString(
-                                    R.string.conversation_messages_label,
-                                    if (totalMessageCount > 0) totalMessageCount else messages.size,
-                                ))
-                                if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
-                                if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
+                        }
+                        if (!isSearching) {
+                            IconButton(onClick = onSearchToggle) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Search,
+                                    contentDescription = stringResource(R.string.conversation_search_placeholder),
+                                    tint = topBarContentColor,
+                                )
                             }
-                            val metaLabel = metaParts.joinToString(" · ")
-                            Text(
-                                text = metaLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = topBarContentColor.copy(alpha = 0.78f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            if (shouldShowCallAction) {
+                                FilledTonalIconButton(
+                                    onClick = onCallAddress,
+                                    modifier = Modifier
+                                        .padding(end = 4.dp)
+                                        .size(ConversationCallButtonSize),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Call,
+                                        contentDescription = stringResource(R.string.action_call_contact, title),
+                                        tint = topBarContentColor,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 54.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val resources = context.resources
+                        val metaParts = buildList {
+                            add(resources.getString(
+                                R.string.conversation_messages_label,
+                                if (totalMessageCount > 0) totalMessageCount else messages.size,
+                            ))
+                            if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
+                            if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
+                        }
+                        val metaLabel = metaParts.joinToString(" · ")
+                        Text(
+                            text = metaLabel,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = topBarContentColor.copy(alpha = 0.78f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (!isSearching) {
+                            IconButton(onClick = onToggleActions) {
+                                Icon(
+                                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = stringResource(
+                                        if (showActions) R.string.inbox_hide_actions
+                                        else R.string.inbox_show_actions
+                                    ),
+                                    tint = topBarContentColor,
+                                    modifier = Modifier
+                                        .rotate(if (showActions) 180f else 0f),
+                                )
+                            }
                         }
                     }
                 }
@@ -252,43 +288,7 @@ internal fun ConversationTopBar(
             navigationIconContentColor = topBarContentColor,
             titleContentColor = topBarContentColor,
         ),
-        actions = {
-            if (!isSearching) {
-                IconButton(onClick = onSearchToggle) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = stringResource(R.string.conversation_search_placeholder),
-                        tint = topBarContentColor,
-                    )
-                }
-                if (shouldShowCallAction) {
-                    FilledTonalIconButton(
-                        onClick = onCallAddress,
-                        modifier = Modifier
-                            .padding(end = 12.dp)
-                            .size(ConversationCallButtonSize),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Call,
-                            contentDescription = stringResource(R.string.action_call_contact, title),
-                            tint = topBarContentColor,
-                        )
-                    }
-                }
-                IconButton(onClick = onToggleActions) {
-                    Icon(
-                        imageVector = Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = stringResource(
-                            if (showActions) R.string.inbox_hide_actions
-                            else R.string.inbox_show_actions
-                        ),
-                        tint = topBarContentColor,
-                        modifier = Modifier
-                            .rotate(if (showActions) 180f else 0f),
-                    )
-                }
-            }
-        },
+        actions = {},
     )
 }
 
@@ -666,6 +666,7 @@ internal fun ConversationActionStrip(
                         imageVector = if (isMuted) Icons.Rounded.NotificationsOff else Icons.Rounded.Notifications,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -673,6 +674,7 @@ internal fun ConversationActionStrip(
                             if (isMuted) R.string.thread_unmute
                             else R.string.thread_mute
                         ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 TextButton(onClick = onBlock) {
@@ -680,9 +682,10 @@ internal fun ConversationActionStrip(
                         imageVector = Icons.Rounded.Block,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.thread_block))
+                    Text(stringResource(R.string.thread_block), color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
                 }
                 TextButton(onClick = onDelete) {
                     Icon(
