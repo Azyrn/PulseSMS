@@ -285,6 +285,11 @@ fun PulseAppShell(
                         onCancelScheduledMessage = smsViewModel::cancelScheduledMessage,
                         onDeleteMessage = smsViewModel::deleteMessage,
                         onDeleteMessages = smsViewModel::deleteMessages,
+                        onDeleteConversation = {
+                            smsViewModel.deleteThread(null, activeAddress)
+                            smsViewModel.closeConversation()
+                            backStack = listOf(DESTINATION_INBOX)
+                        },
                         onBlockConversation = {
                             smsViewModel.blockThread(activeAddress)
                             smsViewModel.closeConversation()

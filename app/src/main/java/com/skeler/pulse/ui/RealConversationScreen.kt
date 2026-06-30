@@ -121,6 +121,7 @@ internal fun RealConversationScreen(
     onCancelScheduledMessage: (Long) -> Unit = {},
     onDeleteMessage: (Long) -> Unit,
     onDeleteMessages: (List<SystemSms>) -> Unit,
+    onDeleteConversation: () -> Unit,
     onBlockConversation: () -> Unit,
     onForwardMessage: (String) -> Unit,
     onCallAddress: () -> Unit,
@@ -261,6 +262,8 @@ internal fun RealConversationScreen(
     }
     var selectedMessages by remember { mutableStateOf<Set<SystemSms>>(emptySet()) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
+    var showConversationActions by rememberSaveable(address) { mutableStateOf(false) }
+    var showDeleteConversationDialog by rememberSaveable(address) { mutableStateOf(false) }
     var infoSheetMessage by remember { mutableStateOf<SystemSms?>(null) }
     var reactionPickerMessageId by remember { mutableStateOf<Long?>(null) }
     val clipboardMessageLabel = stringResource(R.string.conversation_clipboard_message_label)
@@ -298,7 +301,9 @@ internal fun RealConversationScreen(
     }
 
     BackHandler {
-        if (showAttachmentMenu) {
+        if (showConversationActions) {
+            showConversationActions = false
+        } else if (showAttachmentMenu) {
             showAttachmentMenu = false
         } else if (selectedMessages.isNotEmpty()) {
             selectedMessages = emptySet()
@@ -390,6 +395,27 @@ internal fun RealConversationScreen(
         )
     }
 
+    if (showDeleteConversationDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConversationDialog = false },
+            title = { Text(stringResource(R.string.thread_delete_title)) },
+            text = { Text(stringResource(R.string.thread_delete_body, title)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConversationDialog = false
+                    onDeleteConversation()
+                }) {
+                    Text(stringResource(R.string.thread_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConversationDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     if (showScheduleDialog) {
         ScheduleMessageDialog(
             onDismiss = { showScheduleDialog = false },
@@ -409,39 +435,49 @@ internal fun RealConversationScreen(
             .background(conversationBackdropBrush),
         containerColor = Color.Transparent,
         topBar = {
-            if (selectedMessages.isNotEmpty()) {
-                ConversationSelectionTopBar(
-                    selectedCount = selectedMessages.size,
-                    onClose = { selectedMessages = emptySet() },
-                    onCopy = {
-                        val selectedTextMessages = messages.filter { it in selectedMessages }
-                        val text = selectedTextMessages.joinToString("\n\n") { it.body }
-                        if (text.isNotEmpty()) {
-                            @Suppress("UseOfSetterInsteadOfPropertyAccess")
-                            clipboardManager?.setPrimaryClip(
-                                ClipData.newPlainText(clipboardMessageLabel, text)
-                            )
-                        }
-                    },
-                    onDelete = { showDeleteSelectedDialog = true },
-                    onInfo = { infoSheetMessage = selectedMessages.firstOrNull() },
-                )
-            } else {
-                ConversationTopBar(
-                    title = title,
-                    address = address,
-                    messages = messages,
-                    unreadCount = unreadCount,
-                    importantCount = importantCount,
-                    totalMessageCount = totalMessageCount,
-                    avatarColors = conversationAvatarColors,
-                    isSearching = isSearching,
-                    searchQuery = searchQuery,
-                    searchMatchCount = searchMatchCount,
-                    onBack = ::requestBackNavigation,
-                    onCallAddress = onCallAddress,
-                    onSearchQueryChange = { searchQuery = it },
-                    onSearchToggle = { isSearching = !isSearching },
+            Column {
+                if (selectedMessages.isNotEmpty()) {
+                    ConversationSelectionTopBar(
+                        selectedCount = selectedMessages.size,
+                        onClose = { selectedMessages = emptySet() },
+                        onCopy = {
+                            val selectedTextMessages = messages.filter { it in selectedMessages }
+                            val text = selectedTextMessages.joinToString("\n\n") { it.body }
+                            if (text.isNotEmpty()) {
+                                @Suppress("UseOfSetterInsteadOfPropertyAccess")
+                                clipboardManager?.setPrimaryClip(
+                                    ClipData.newPlainText(clipboardMessageLabel, text)
+                                )
+                            }
+                        },
+                        onDelete = { showDeleteSelectedDialog = true },
+                        onInfo = { infoSheetMessage = selectedMessages.firstOrNull() },
+                    )
+                } else {
+                    ConversationTopBar(
+                        title = title,
+                        address = address,
+                        messages = messages,
+                        unreadCount = unreadCount,
+                        importantCount = importantCount,
+                        totalMessageCount = totalMessageCount,
+                        avatarColors = conversationAvatarColors,
+                        isSearching = isSearching,
+                        searchQuery = searchQuery,
+                        searchMatchCount = searchMatchCount,
+                        showActions = showConversationActions,
+                        onBack = ::requestBackNavigation,
+                        onCallAddress = onCallAddress,
+                        onSearchQueryChange = { searchQuery = it },
+                        onSearchToggle = { isSearching = !isSearching },
+                        onToggleActions = { showConversationActions = !showConversationActions },
+                    )
+                }
+
+                ConversationActionStrip(
+                    showActions = showConversationActions && selectedMessages.isEmpty() && !isSearching,
+                    onBlock = onBlockConversation,
+                    onDelete = { showDeleteConversationDialog = true },
                 )
             }
         },

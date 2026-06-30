@@ -98,6 +98,8 @@
     <string name="inbox_filter_status">%1$s filter</string>
     <string name="inbox_filter_empty_body">This filter is clear right now. Switch back to the full inbox to see every thread again.</string>
     <string name="inbox_show_all">Show all</string>
+    <string name="inbox_show_actions">Show actions</string>
+    <string name="inbox_hide_actions">Hide actions</string>
     <string name="inbox_unavailable">Inbox unavailable</string>
     <string name="inbox_read_problem">Read problem</string>
     <string name="inbox_try_again">Try again</string>

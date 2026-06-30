@@ -19,8 +19,15 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
@@ -69,6 +76,8 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.getValue
@@ -94,10 +103,12 @@ internal fun ConversationTopBar(
     isSearching: Boolean = false,
     searchQuery: String = "",
     searchMatchCount: Int = 0,
+    showActions: Boolean = false,
     onBack: () -> Unit,
     onCallAddress: () -> Unit,
     onSearchQueryChange: (String) -> Unit = {},
     onSearchToggle: () -> Unit = {},
+    onToggleActions: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val photoUri = remember(address) { contactPhotoUriFor(context, address) }
@@ -261,6 +272,18 @@ internal fun ConversationTopBar(
                             tint = topBarContentColor,
                         )
                     }
+                }
+                IconButton(onClick = onToggleActions) {
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = stringResource(
+                            if (showActions) R.string.inbox_hide_actions
+                            else R.string.inbox_show_actions
+                        ),
+                        tint = topBarContentColor,
+                        modifier = Modifier
+                            .rotate(if (showActions) 180f else 0f),
+                    )
                 }
             }
         },
@@ -606,6 +629,53 @@ internal fun ConversationSelectionTopBar(
                     contentDescription = "Delete selected",
                     tint = MaterialTheme.colorScheme.error,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ConversationActionStrip(
+    showActions: Boolean,
+    onBlock: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = showActions,
+        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBlock) {
+                    Icon(
+                        imageVector = Icons.Rounded.Block,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.thread_block))
+                }
+                TextButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.thread_delete), color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }

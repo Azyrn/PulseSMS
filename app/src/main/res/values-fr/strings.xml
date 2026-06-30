@@ -98,6 +98,8 @@
     <string name="inbox_filter_status">Filtre %1$s</string>
     <string name="inbox_filter_empty_body">Ce filtre est vide pour le moment. Revenez à la boîte complète pour voir toutes les conversations.</string>
     <string name="inbox_show_all">Tout afficher</string>
+    <string name="inbox_show_actions">Afficher les actions</string>
+    <string name="inbox_hide_actions">Masquer les actions</string>
     <string name="inbox_unavailable">Boîte de réception indisponible</string>
     <string name="inbox_read_problem">Problème de lecture</string>
     <string name="inbox_try_again">Réessayer</string>
