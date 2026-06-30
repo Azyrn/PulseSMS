@@ -28,6 +28,8 @@ import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
@@ -637,6 +639,8 @@ internal fun ConversationSelectionTopBar(
 @Composable
 internal fun ConversationActionStrip(
     showActions: Boolean,
+    isMuted: Boolean,
+    onMute: () -> Unit,
     onBlock: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -657,6 +661,20 @@ internal fun ConversationActionStrip(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                TextButton(onClick = onMute) {
+                    Icon(
+                        imageVector = if (isMuted) Icons.Rounded.NotificationsOff else Icons.Rounded.Notifications,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        stringResource(
+                            if (isMuted) R.string.thread_unmute
+                            else R.string.thread_mute
+                        ),
+                    )
+                }
                 TextButton(onClick = onBlock) {
                     Icon(
                         imageVector = Icons.Rounded.Block,

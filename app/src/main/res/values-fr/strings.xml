@@ -150,6 +150,9 @@
     <string name="thread_unarchive">Désarchiver</string>
     <string name="thread_mark_read">Marquer comme lu</string>
     <string name="thread_mark_unread">Marquer comme non lu</string>
+    <string name="thread_mute">Ne plus notifier</string>
+    <string name="thread_unmute">Notifier</string>
+    <string name="thread_muted">Silencieux</string>
     <string name="thread_block">Bloquer</string>
     <string name="thread_delete">Supprimer</string>
     <string name="thread_delete_title">Supprimer la conversation ?</string>

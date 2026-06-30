@@ -150,6 +150,9 @@
     <string name="thread_unarchive">Unarchive</string>
     <string name="thread_mark_read">Mark as read</string>
     <string name="thread_mark_unread">Mark as unread</string>
+    <string name="thread_mute">Mute</string>
+    <string name="thread_unmute">Unmute</string>
+    <string name="thread_muted">Muted</string>
     <string name="thread_block">Block</string>
     <string name="thread_delete">Delete</string>
     <string name="thread_delete_title">Delete conversation?</string>

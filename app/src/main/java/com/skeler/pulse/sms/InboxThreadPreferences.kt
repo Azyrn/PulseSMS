@@ -10,6 +10,7 @@ import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.contact.toCanonicalBlockedSenderKeys
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class InboxThreadPreferences(
@@ -37,6 +38,11 @@ class InboxThreadPreferences(
     val blockedAddresses: Flow<Set<String>> =
         store.data.map { prefs ->
             prefs[KEY_BLOCKED_ADDRESSES].orEmpty().toCanonicalBlockedSenderKeys()
+        }
+
+    val mutedAddresses: Flow<Set<String>> =
+        store.data.map { prefs ->
+            prefs[KEY_MUTED_ADDRESSES].orEmpty().toCanonicalBlockedSenderKeys()
         }
 
     val threadEmojis: Flow<Map<Long, String>> =
@@ -120,6 +126,33 @@ class InboxThreadPreferences(
         }
     }
 
+    suspend fun muteAddress(address: String) {
+        val key = address.toBlockedSenderKeyOrNull() ?: return
+        store.edit { prefs ->
+            val current = prefs[KEY_MUTED_ADDRESSES].orEmpty().toMutableSet()
+            current.removeAll { existing -> existing.matchesBlockedSenderKey(key) }
+            current.add(key)
+            prefs[KEY_MUTED_ADDRESSES] = current
+        }
+    }
+
+    suspend fun unmuteAddress(address: String) {
+        val key = address.toBlockedSenderKeyOrNull() ?: return
+        store.edit { prefs ->
+            val current = prefs[KEY_MUTED_ADDRESSES].orEmpty().toMutableSet()
+            if (current.removeAll { existing -> existing.matchesBlockedSenderKey(key) }) {
+                prefs[KEY_MUTED_ADDRESSES] = current
+            }
+        }
+    }
+
+    suspend fun isAddressMuted(address: String): Boolean {
+        val senderKey = address.toBlockedSenderKeyOrNull() ?: return false
+        return store.data.first().let { prefs ->
+            prefs[KEY_MUTED_ADDRESSES].orEmpty().any { stored -> stored.matchesBlockedSenderKey(senderKey) }
+        }
+    }
+
     suspend fun setThreadEmoji(threadId: Long, emoji: String?) {
         val id = threadId.toString()
         store.edit { prefs ->
@@ -152,6 +185,7 @@ class InboxThreadPreferences(
         private val KEY_PINNED_THREAD_IDS = stringSetPreferencesKey("pinned_thread_ids")
         private val KEY_ARCHIVED_THREAD_IDS = stringSetPreferencesKey("archived_thread_ids")
         private val KEY_BLOCKED_ADDRESSES = stringSetPreferencesKey("blocked_addresses")
+        private val KEY_MUTED_ADDRESSES = stringSetPreferencesKey("muted_addresses")
         private val KEY_THREAD_EMOJIS = stringSetPreferencesKey("thread_emojis")
     }
 }

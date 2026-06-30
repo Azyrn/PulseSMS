@@ -108,13 +108,21 @@ class RealSmsViewModel(
                     inboxThreadPreferences.pinnedThreadIds,
                     inboxThreadPreferences.archivedThreadIds,
                     inboxThreadPreferences.blockedAddresses,
+                    inboxThreadPreferences.mutedAddresses,
                     inboxThreadPreferences.threadEmojis,
-                ) { threads, pinnedIds, archivedIds, blockedAddresses, threadEmojis ->
+                ) { args ->
+                    val threads = args[0] as List<SmsThread>
+                    val pinnedIds = args[1] as Set<Long>
+                    val archivedIds = args[2] as Set<Long>
+                    val blockedAddresses = args[3] as Set<String>
+                    val mutedAddresses = args[4] as Set<String>
+                    val threadEmojis = args[5] as Map<Long, String>
                     InboxThreadPreferenceSnapshot(
                         threads = threads,
                         pinnedIds = pinnedIds,
                         archivedIds = archivedIds,
                         blockedAddresses = blockedAddresses,
+                        mutedAddresses = mutedAddresses,
                         threadEmojis = threadEmojis,
                     )
                 }.collectLatest { snapshot ->
@@ -145,6 +153,7 @@ class RealSmsViewModel(
                         pinnedThreadIds = snapshot.pinnedIds,
                         archivedThreadIds = snapshot.archivedIds,
                         blockedAddresses = snapshot.blockedAddresses,
+                        mutedAddresses = snapshot.mutedAddresses,
                         threadEmojis = snapshot.threadEmojis,
                         loading = false,
                         showLoadingCard = false,
@@ -628,6 +637,33 @@ class RealSmsViewModel(
         }
     }
 
+    fun muteThread(address: String) {
+        val key = address.toBlockedSenderKeyOrNull() ?: return
+        _inboxState.value = _inboxState.value.let { current ->
+            val mutedAddresses = current.mutedAddresses
+                .filterNot { existing -> existing.matchesBlockedSenderKey(key) }
+                .toSet() + key
+            current.copy(mutedAddresses = mutedAddresses)
+        }
+        viewModelScope.launch {
+            inboxThreadPreferences.muteAddress(address)
+        }
+    }
+
+    fun unmuteThread(address: String) {
+        val key = address.toBlockedSenderKeyOrNull() ?: return
+        _inboxState.value = _inboxState.value.let { current ->
+            current.copy(
+                mutedAddresses = current.mutedAddresses
+                    .filterNot { existing -> existing.matchesBlockedSenderKey(key) }
+                    .toSet(),
+            )
+        }
+        viewModelScope.launch {
+            inboxThreadPreferences.unmuteAddress(address)
+        }
+    }
+
     fun unblockThread(address: String) {
         val blockedKey = address.toBlockedSenderKeyOrNull() ?: return
         _inboxState.value = _inboxState.value.let { current ->
@@ -700,5 +736,6 @@ private data class InboxThreadPreferenceSnapshot(
     val pinnedIds: Set<Long>,
     val archivedIds: Set<Long>,
     val blockedAddresses: Set<String>,
+    val mutedAddresses: Set<String>,
     val threadEmojis: Map<Long, String>,
 )

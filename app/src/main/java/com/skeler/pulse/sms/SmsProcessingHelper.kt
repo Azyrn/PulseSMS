@@ -47,23 +47,26 @@ object SmsProcessingHelper {
             } catch (e: Exception) {
                 true
             }
+            val isMuted = InboxThreadPreferences(context).isAddressMuted(sender)
             val persistedUri = writeSmsToProvider(context, sender, body, parts.first())
-            if (persistedUri != null) {
-                val messageId = ContentUris.parseId(persistedUri)
-                SmsNotificationHelper.notifyIncomingSms(
-                    context = context,
-                    sender = sender,
-                    body = body,
-                    messageId = messageId,
-                    quickReplyEnabled = quickReplyEnabled,
-                )
-            } else {
-                SmsNotificationHelper.notifyIncomingSms(
-                    context = context,
-                    sender = sender,
-                    body = context.getString(R.string.sms_body_save_failed),
-                    quickReplyEnabled = quickReplyEnabled,
-                )
+            if (!isMuted) {
+                if (persistedUri != null) {
+                    val messageId = ContentUris.parseId(persistedUri)
+                    SmsNotificationHelper.notifyIncomingSms(
+                        context = context,
+                        sender = sender,
+                        body = body,
+                        messageId = messageId,
+                        quickReplyEnabled = quickReplyEnabled,
+                    )
+                } else {
+                    SmsNotificationHelper.notifyIncomingSms(
+                        context = context,
+                        sender = sender,
+                        body = context.getString(R.string.sms_body_save_failed),
+                        quickReplyEnabled = quickReplyEnabled,
+                    )
+                }
             }
         }
     }

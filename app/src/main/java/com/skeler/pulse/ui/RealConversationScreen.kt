@@ -122,6 +122,8 @@ internal fun RealConversationScreen(
     onDeleteMessage: (Long) -> Unit,
     onDeleteMessages: (List<SystemSms>) -> Unit,
     onDeleteConversation: () -> Unit,
+    onMuteConversation: () -> Unit,
+    isMuted: Boolean = false,
     onBlockConversation: () -> Unit,
     onForwardMessage: (String) -> Unit,
     onCallAddress: () -> Unit,
@@ -476,6 +478,8 @@ internal fun RealConversationScreen(
 
                 ConversationActionStrip(
                     showActions = showConversationActions && selectedMessages.isEmpty() && !isSearching,
+                    isMuted = isMuted,
+                    onMute = onMuteConversation,
                     onBlock = onBlockConversation,
                     onDelete = { showDeleteConversationDialog = true },
                 )

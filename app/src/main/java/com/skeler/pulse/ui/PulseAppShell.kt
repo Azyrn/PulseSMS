@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.PulseLaunchRequest
 import com.skeler.pulse.contact.displayNameFor
+import com.skeler.pulse.contact.matchesBlockedSenderKey
+import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.design.util.rememberReducedMotionEnabled
 import com.skeler.pulse.security.auth.checkBiometricAvailability
@@ -195,6 +197,10 @@ fun PulseAppShell(
                             onSetArchived = smsViewModel::setThreadArchived,
                             onSetThreadUnread = smsViewModel::setThreadUnread,
                             onBlockThread = smsViewModel::blockThread,
+                            onSetThreadMuted = { address, muted ->
+                                if (muted) smsViewModel.muteThread(address)
+                                else smsViewModel.unmuteThread(address)
+                            },
                             onDeleteThread = smsViewModel::deleteThread,
                         )
                     }
@@ -225,6 +231,7 @@ fun PulseAppShell(
                 DESTINATION_CONVERSATION -> {
                     val conversationState by smsViewModel.conversationState.collectAsState()
                     val sendState by smsViewModel.sendState.collectAsState()
+                    val inboxState by smsViewModel.inboxState.collectAsState()
                     LaunchedEffect(activeAddress, conversationState.messages.size) {
                         if (!conversationState.loading && activeAddress.isNotBlank()) {
                             NotificationManagerCompat.from(context).cancel(activeAddress.hashCode() and 0x7fffffff)
@@ -289,6 +296,20 @@ fun PulseAppShell(
                             smsViewModel.deleteThread(null, activeAddress)
                             smsViewModel.closeConversation()
                             backStack = listOf(DESTINATION_INBOX)
+                        },
+                        onMuteConversation = {
+                            val mutedKey = activeAddress.toBlockedSenderKeyOrNull()
+                            val isCurrentlyMuted = mutedKey != null &&
+                                inboxState.mutedAddresses.any { it.matchesBlockedSenderKey(mutedKey) }
+                            if (isCurrentlyMuted) {
+                                smsViewModel.unmuteThread(activeAddress)
+                            } else {
+                                smsViewModel.muteThread(activeAddress)
+                            }
+                        },
+                        isMuted = inboxState.mutedAddresses.let { muted ->
+                            val mutedKey = activeAddress.toBlockedSenderKeyOrNull()
+                            mutedKey != null && muted.any { it.matchesBlockedSenderKey(mutedKey) }
                         },
                         onBlockConversation = {
                             smsViewModel.blockThread(activeAddress)

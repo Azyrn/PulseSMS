@@ -47,6 +47,7 @@ data class RealInboxState(
     val pinnedThreadIds: Set<Long> = emptySet(),
     val archivedThreadIds: Set<Long> = emptySet(),
     val blockedAddresses: Set<String> = emptySet(),
+    val mutedAddresses: Set<String> = emptySet(),
     val threadEmojis: Map<Long, String> = emptyMap(),
     val loading: Boolean = true,
     val showLoadingCard: Boolean = false,

@@ -50,6 +50,8 @@ import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.MarkunreadMailbox
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -111,6 +113,8 @@ import androidx.compose.ui.zIndex
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.R
 import com.skeler.pulse.contact.displayNameFor
+import com.skeler.pulse.contact.matchesBlockedSenderKey
+import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
 import com.skeler.pulse.design.component.StatusPill
@@ -149,6 +153,7 @@ internal fun RealInboxScreen(
     onSetArchived: (Long, Boolean) -> Unit,
     onSetThreadUnread: (Long?, String, Boolean) -> Unit,
     onBlockThread: (String) -> Unit,
+    onSetThreadMuted: (String, Boolean) -> Unit,
     onDeleteThread: (Long?, String) -> Unit,
 ) {
     var selectedFilter by rememberSaveable { mutableIntStateOf(0) }
@@ -214,6 +219,13 @@ internal fun RealInboxScreen(
     }
     val allPinned = remember(selectedThreads, state.pinnedThreadIds) {
         selectedThreads.isNotEmpty() && selectedThreads.all { it.threadId in state.pinnedThreadIds }
+    }
+    val allMuted = remember(selectedThreads, state.mutedAddresses) {
+        selectedThreads.isNotEmpty() && selectedThreads.all { thread ->
+            thread.address.toBlockedSenderKeyOrNull()?.let { key ->
+                state.mutedAddresses.any { it.matchesBlockedSenderKey(key) }
+            } ?: false
+        }
     }
 
     LaunchedEffect(normalizedQuery, selectedFilter) {
@@ -318,6 +330,21 @@ internal fun RealInboxScreen(
                                     leadingIcon = {
                                         Icon(
                                             imageVector = if (allPinned) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(if (allMuted) R.string.thread_unmute else R.string.thread_mute)) },
+                                    onClick = {
+                                        showOverflow = false
+                                        val muted = !allMuted
+                                        selectedThreads.forEach { onSetThreadMuted(it.address, muted) }
+                                        selectedThreadIds = emptySet()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (allMuted) Icons.Rounded.NotificationsOff else Icons.Rounded.Notifications,
                                             contentDescription = null,
                                         )
                                     },
@@ -545,6 +572,9 @@ internal fun RealInboxScreen(
                             thread = thread,
                             isPinned = thread.threadId in state.pinnedThreadIds,
                             isArchived = thread.threadId in state.archivedThreadIds,
+                            isMuted = thread.address.toBlockedSenderKeyOrNull()?.let { key ->
+                                state.mutedAddresses.any { it.matchesBlockedSenderKey(key) }
+                            } ?: false,
                             isContextMenuOpen = isMenuOpenForThread,
                             isSelected = thread.threadId in selectedThreadIds,
                             draft = state.drafts[thread.address].orEmpty(),

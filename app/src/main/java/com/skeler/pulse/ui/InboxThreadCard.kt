@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.MarkunreadMailbox
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -81,6 +82,7 @@ internal fun SmsThreadCard(
     thread: SmsThread,
     isPinned: Boolean,
     isArchived: Boolean,
+    isMuted: Boolean = false,
     isContextMenuOpen: Boolean,
     isSelected: Boolean = false,
     draft: String = "",
@@ -237,6 +239,14 @@ internal fun SmsThreadCard(
                                 contentDescription = stringResource(R.string.thread_pinned),
                                 modifier = Modifier.size(14.dp),
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            )
+                        }
+                        if (isMuted) {
+                            Icon(
+                                imageVector = Icons.Rounded.NotificationsOff,
+                                contentDescription = stringResource(R.string.thread_muted),
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                             )
                         }
                     }
