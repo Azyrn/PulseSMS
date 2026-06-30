@@ -117,7 +117,6 @@ internal fun ConversationTopBar(
     val hasUnreadMessages = unreadCount > 0
     val colors = MaterialTheme.colorScheme
     val topBarChromeContainerColor = conversationTopBarChromeContainerColor(hasUnreadMessages)
-    val titleContainerColor = conversationTopBarTitleContainerColor(colors, hasUnreadMessages)
     val topBarContentColor = conversationTopBarContentColor(colors, hasUnreadMessages)
     val shouldShowCallAction = shouldShowConversationCallAction(address)
     val searchFocusRequester = remember { FocusRequester() }
@@ -213,6 +212,23 @@ internal fun ConversationTopBar(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
+                            val resources = context.resources
+                            val metaParts = buildList {
+                                add(resources.getString(
+                                    R.string.conversation_messages_label,
+                                    if (totalMessageCount > 0) totalMessageCount else messages.size,
+                                ))
+                                if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
+                                if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
+                            }
+                            val metaLabel = metaParts.joinToString(" · ")
+                            Text(
+                                text = metaLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = topBarContentColor.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                         if (!isSearching) {
                             IconButton(onClick = onSearchToggle) {
@@ -238,31 +254,24 @@ internal fun ConversationTopBar(
                             }
                         }
                     }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 54.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val resources = context.resources
-                        val metaParts = buildList {
-                            add(resources.getString(
-                                R.string.conversation_messages_label,
-                                if (totalMessageCount > 0) totalMessageCount else messages.size,
-                            ))
-                            if (unreadCount > 0) add(resources.getString(R.string.conversation_unread_label, unreadCount))
-                            if (importantCount > 0) add(resources.getString(R.string.conversation_kept_label, importantCount))
-                        }
-                        val metaLabel = metaParts.joinToString(" · ")
-                        Text(
-                            text = metaLabel,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = topBarContentColor.copy(alpha = 0.78f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (!isSearching) {
+                    if (!isSearching) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 54.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (showActions) R.string.inbox_hide_actions
+                                    else R.string.inbox_show_actions
+                                ),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = topBarContentColor.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                             IconButton(onClick = onToggleActions) {
                                 Icon(
                                     imageVector = Icons.Rounded.KeyboardArrowDown,
