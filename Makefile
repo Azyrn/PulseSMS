@@ -71,11 +71,22 @@ help:
 # --- Verification ADB ---
 .PHONY: check-adb
 check-adb:
-	@if ! $(ADB) devices | grep -q "device$$"; then \
-		printf "$(RED)Erreur : Aucun appareil Android connecte ou debogage USB non active.$(NC)\n"; \
-		printf "   -> Branchez un appareil et activez le $(BOLD)debogage USB$(NC).\n"; \
-		printf "   -> Essayez : $(BOLD)adb kill-server && adb start-server$(NC)\n"; \
-		exit 1; \
+	@devices=$$($(ADB) devices 2>/dev/null | tr -d '\r' | sed '1d' | awk '$$2 == "device" {count++; print $$1}'); \
+	if [ -z "$$devices" ]; then \
+		printf "$(YELLOW)ADB : aucun appareil detecte, tentative de redemarrage du serveur...$(NC)\n"; \
+		$(ADB) kill-server 2>/dev/null; \
+		sleep 1; \
+		$(ADB) start-server 2>/dev/null; \
+		sleep 2; \
+		devices=$$($(ADB) devices 2>/dev/null | tr -d '\r' | sed '1d' | awk '$$2 == "device" {count++; print $$1}'); \
+		if [ -z "$$devices" ]; then \
+			printf "$(RED)Erreur : Aucun appareil Android connecte ou debogage USB non active.$(NC)\n"; \
+			printf "   -> Branchez un appareil et activez le $(BOLD)debogage USB$(NC).\n"; \
+			printf "   -> Verifiez le cable et les permissions USB.\n"; \
+			exit 1; \
+		fi; \
+		printf "$(GREEN)Appareil detecte apres redemarrage ADB :$(NC)\n"; \
+		printf "$$devices\n"; \
 	fi
 
 # --- Nettoyage build (Configuration Cache conserve) ---
