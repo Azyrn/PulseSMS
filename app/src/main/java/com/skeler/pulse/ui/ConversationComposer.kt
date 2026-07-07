@@ -368,6 +368,7 @@ internal fun ConversationComposer(
                 if (cf != null) {
                     cf.delete()
                 }
+                VoiceRecordingService.resetState()
             }
         }
         if (selectedImageUris.isNotEmpty()) {
@@ -752,6 +753,7 @@ internal fun ConversationComposer(
                                 onClick = {
                                     previewFile.delete()
                                     completedRecordingFile = null
+                                    VoiceRecordingService.resetState()
                                 },
                                 modifier = Modifier.size(36.dp),
                             ) {
@@ -783,6 +785,7 @@ internal fun ConversationComposer(
                                         mediaPlayer = null
                                         onVoiceRecorded(previewUri)
                                         completedRecordingFile = null
+                                        VoiceRecordingService.resetState()
                                     },
                                     modifier = Modifier.fillMaxSize(),
                                     interactionSource = sendInteractionSource,
@@ -1249,6 +1252,7 @@ private fun VoiceRecordingContent(
             if (cf != null) {
                 cf.delete()
             }
+            VoiceRecordingService.resetState()
         }
     }
 
@@ -1487,6 +1491,7 @@ private fun VoiceRecordingContent(
                         onClick = {
                             s.file.delete()
                             completedRecordingFile = null
+                            VoiceRecordingService.resetState()
                         },
                         modifier = Modifier.size(48.dp),
                     ) {
@@ -1499,6 +1504,8 @@ private fun VoiceRecordingContent(
                     IconButton(
                         onClick = {
                             onVoiceRecorded(uri)
+                            completedRecordingFile = null
+                            VoiceRecordingService.resetState()
                         },
                         modifier = Modifier
                             .size(56.dp)

@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -52,6 +54,10 @@ class VoiceRecordingService : Service() {
 
         fun isRecording(): Boolean = _state.value is VoiceRecordingState.Recording
 
+        fun resetState() {
+            _state.value = VoiceRecordingState.Idle
+        }
+
         fun createChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
@@ -72,15 +78,17 @@ class VoiceRecordingService : Service() {
     private var currentFile: File? = null
     private var startMs: Long = 0L
     private var isServiceDestroyed = false
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var stopPendingIntent: PendingIntent? = null
+    private var cancelPendingIntent: PendingIntent? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startRecording()
-            ACTION_STOP -> stopRecording(false)
-            ACTION_CANCEL -> stopRecording(true)
+            ACTION_STOP -> stopRecording(deleteFile = false)
+            ACTION_CANCEL -> stopRecording(deleteFile = true)
         }
         return START_NOT_STICKY
     }
@@ -125,41 +133,80 @@ class VoiceRecordingService : Service() {
                 start()
             }
             mediaRecorder = rec
+
+            stopPendingIntent = PendingIntent.getService(
+                this, 0,
+                Intent(this, VoiceRecordingService::class.java).apply { action = ACTION_STOP },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            cancelPendingIntent = PendingIntent.getService(
+                this, 1,
+                Intent(this, VoiceRecordingService::class.java).apply { action = ACTION_CANCEL },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+            )
+
             _state.value = VoiceRecordingState.Recording(
                 startMs = startMs,
                 amplitudes = emptyList(),
                 file = file,
             )
 
-            startForeground(NOTIFICATION_ID, buildNotification())
-
-            serviceScope.launch {
-                val stopIntent = Intent(this@VoiceRecordingService, VoiceRecordingService::class.java).apply {
-                    action = ACTION_STOP
-                }
-                val cancelIntent = Intent(this@VoiceRecordingService, VoiceRecordingService::class.java).apply {
-                    action = ACTION_CANCEL
-                }
-                val stopPendingIntent = PendingIntent.getService(
-                    this@VoiceRecordingService, 0, stopIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-                val cancelPendingIntent = PendingIntent.getService(
-                    this@VoiceRecordingService, 1, cancelIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
+            serviceScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     delay(50.milliseconds)
-                    if (isServiceDestroyed || mediaRecorder == null) break
+                    if (isServiceDestroyed) break
                     val current = _state.value
                     if (current !is VoiceRecordingState.Recording) break
-                    val amp = mediaRecorder?.maxAmplitude ?: 0
+                    if (mediaRecorder == null) break
+                    val amp = try {
+                        mediaRecorder?.maxAmplitude ?: 0
+                    } catch (_: IllegalStateException) {
+                        0
+                    }
                     val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
                     val amps = (current.amplitudes + normalized).takeLast(120)
                     _state.value = current.copy(amplitudes = amps)
-                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                    nm.notify(NOTIFICATION_ID, buildNotification(amps, stopPendingIntent, cancelPendingIntent))
+                }
+            }
+
+            serviceScope.launch {
+                var tick = 0
+                val nm = getSystemService(NotificationManager::class.java)
+                while (isActive) {
+                    tick++
+                    delay(1.seconds)
+                    if (isServiceDestroyed) break
+                    val current = _state.value
+                    if (current !is VoiceRecordingState.Recording) break
+                    val elapsed = (System.currentTimeMillis() - current.startMs) / 1000
+                    val minutes = elapsed / 60
+                    val seconds = elapsed % 60
+                    val timeText = "%d:%02d".format(minutes, seconds)
+                    val notification = NotificationCompat.Builder(this@VoiceRecordingService, CHANNEL_ID)
+                        .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        .setContentTitle(getString(R.string.voice_recording_notification_title))
+                        .setContentText(timeText)
+                        .setOngoing(true)
+                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                        .setSilent(true)
+                        .addAction(
+                            android.R.drawable.ic_media_pause,
+                            getString(R.string.voice_recording_stop),
+                            stopPendingIntent,
+                        )
+                        .addAction(
+                            android.R.drawable.ic_menu_close_clear_cancel,
+                            getString(R.string.action_cancel),
+                            cancelPendingIntent,
+                        )
+                        .build()
+                    nm.notify(NOTIFICATION_ID, notification)
                 }
             }
         } catch (e: Exception) {
@@ -173,6 +220,8 @@ class VoiceRecordingService : Service() {
     }
 
     private fun stopRecording(deleteFile: Boolean) {
+        serviceScope.coroutineContext.cancelChildren()
+
         val file = currentFile
         val rec = mediaRecorder
         if (rec != null) {
@@ -197,41 +246,24 @@ class VoiceRecordingService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(
-        amplitudes: List<Float> = emptyList(),
-        stopPendingIntent: PendingIntent? = null,
-        cancelPendingIntent: PendingIntent? = null,
-    ): Notification {
-        val elapsedMs = if (startMs > 0) System.currentTimeMillis() - startMs else 0L
-        val totalSec = elapsedMs / 1000
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        val timeText = "%d:%02d".format(min, sec)
-
+    private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(getString(R.string.voice_recording_notification_title))
-            .setContentText(timeText)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setSilent(true)
-            .apply {
-                if (stopPendingIntent != null) {
-                    addAction(
-                        android.R.drawable.ic_media_pause,
-                        getString(R.string.voice_recording_stop),
-                        stopPendingIntent,
-                    )
-                }
-                if (cancelPendingIntent != null) {
-                    addAction(
-                        android.R.drawable.ic_menu_close_clear_cancel,
-                        getString(R.string.action_cancel),
-                        cancelPendingIntent,
-                    )
-                }
-            }
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                getString(R.string.voice_recording_stop),
+                stopPendingIntent,
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                getString(R.string.action_cancel),
+                cancelPendingIntent,
+            )
             .build()
     }
 
