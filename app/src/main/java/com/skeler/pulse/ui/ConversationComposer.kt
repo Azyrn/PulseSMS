@@ -4,8 +4,8 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.media.MediaPlayer
-import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -120,6 +120,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -174,6 +175,8 @@ import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.OtpCodeExtractor
 import coil.compose.AsyncImage
 import com.skeler.pulse.sms.SystemSms
+import com.skeler.pulse.sms.VoiceRecordingService
+import com.skeler.pulse.sms.VoiceRecordingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -329,73 +332,42 @@ internal fun ConversationComposer(
                 )
             }
         }
-        var voiceMode by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
-        val voiceRecorder = remember { mutableStateOf<MediaRecorder?>(null) }
+        var completedRecordingFile by remember { mutableStateOf<java.io.File?>(null) }
+        val serviceState by VoiceRecordingService.state.collectAsState()
+
+        val voiceMode: VoiceMode = when (val s = serviceState) {
+            is VoiceRecordingState.Idle -> {
+                val pf = completedRecordingFile
+                if (pf != null) VoiceMode.Preview(pf) else VoiceMode.Hidden
+            }
+            is VoiceRecordingState.Recording -> VoiceMode.Recording(
+                startMs = s.startMs,
+                amplitudes = s.amplitudes,
+                file = s.file,
+            )
+            is VoiceRecordingState.Completed -> {
+                completedRecordingFile = s.file
+                VoiceMode.Preview(s.file)
+            }
+        }
 
         LaunchedEffect(isFocused) {
             if (isFocused) onAttachmentMenuVisibilityChange(false)
         }
-        LaunchedEffect(voiceMode) {
-            if (voiceMode is VoiceMode.Recording) {
-                val s = voiceMode as VoiceMode.Recording
-                var amps = s.amplitudes
-                while (isActive) {
-                    delay(50.milliseconds)
-                    if (voiceMode !is VoiceMode.Recording) break
-                    val amp = voiceRecorder.value?.maxAmplitude ?: 0
-                    val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
-                    amps = (amps + normalized).takeLast(120)
-                    voiceMode = s.copy(amplitudes = amps)
-                }
-            }
-        }
 
         DisposableEffect(Unit) {
             onDispose {
-                val rec = voiceRecorder.value
-                if (rec != null) {
-                    @Suppress("DEPRECATION")
-                    try {
-                        try { rec.stop() } catch (_: IllegalStateException) {}
-                    } finally {
-                        rec.release()
-                    }
-                }
-                voiceRecorder.value = null
-                val vm = voiceMode
-                if (vm is VoiceMode.Preview) {
-                    vm.file.delete()
-                }
-            }
-        }
-
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_PAUSE && voiceMode is VoiceMode.Recording) {
-                    val rec = voiceRecorder.value
-                    if (rec != null) {
-                        @Suppress("DEPRECATION")
-                        try {
-                            try { rec.stop() } catch (_: IllegalStateException) {}
-                        } finally {
-                            rec.release()
+                if (VoiceRecordingService.isRecording()) {
+                    context.startService(
+                        Intent(context, VoiceRecordingService::class.java).apply {
+                            action = VoiceRecordingService.ACTION_CANCEL
                         }
-                    }
-                    voiceRecorder.value = null
-                    val s = voiceMode as VoiceMode.Recording
-                    val file = s.file
-                    if (file.exists() && file.length() > 0) {
-                        voiceMode = VoiceMode.Preview(file)
-                    } else {
-                        file.delete()
-                        voiceMode = VoiceMode.Hidden
-                    }
+                    )
                 }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                lifecycleOwner.lifecycle.removeObserver(observer)
+                val cf = completedRecordingFile
+                if (cf != null) {
+                    cf.delete()
+                }
             }
         }
         if (selectedImageUris.isNotEmpty()) {
@@ -571,23 +543,11 @@ internal fun ConversationComposer(
                     } else if (!isVoiceTabActive) {
                         IconButton(
                             onClick = {
-                                val file = createVoiceFile(context)
-                                try {
-                                    @Suppress("DEPRECATION")
-                                    val rec = MediaRecorder().apply {
-                                        setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                                        setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-                                        setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                                        setOutputFile(file.absolutePath)
-                                        prepare()
-                                        start()
+                                context.startService(
+                                    Intent(context, VoiceRecordingService::class.java).apply {
+                                        action = VoiceRecordingService.ACTION_START
                                     }
-                                    voiceRecorder.value = rec
-                                    voiceMode = VoiceMode.Recording(file = file)
-                                } catch (e: Exception) {
-                                    Log.e("VoiceRecording", "Failed to start recording", e)
-                                    file.delete()
-                                }
+                                )
                             },
                             modifier = Modifier.size(ConversationComposerTokens.sendButtonSize),
                         ) {
@@ -602,7 +562,7 @@ internal fun ConversationComposer(
                 }
 
                 is VoiceMode.Recording -> {
-                    val s = voiceMode as VoiceMode.Recording
+                    val s = voiceMode
                     val elapsedMs = System.currentTimeMillis() - s.startMs
                     Row(
                         modifier = Modifier
@@ -633,23 +593,11 @@ internal fun ConversationComposer(
                     }
                     IconButton(
                         onClick = {
-                            val rec = voiceRecorder.value
-                            if (rec != null) {
-                                @Suppress("DEPRECATION")
-                                try {
-                                    try { rec.stop() } catch (_: IllegalStateException) {}
-                                } finally {
-                                    rec.release()
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_STOP
                                 }
-                                voiceRecorder.value = null
-                            }
-                            val file = s.file
-                            if (file.exists() && file.length() > 0) {
-                                voiceMode = VoiceMode.Preview(file)
-                            } else {
-                                file.delete()
-                                voiceMode = VoiceMode.Hidden
-                            }
+                            )
                         },
                         modifier = Modifier
                             .size(ConversationComposerTokens.sendButtonSize)
@@ -666,7 +614,7 @@ internal fun ConversationComposer(
                 }
 
                 is VoiceMode.Preview -> {
-                    val previewFile = (voiceMode as VoiceMode.Preview).file
+                    val previewFile = voiceMode.file
                     val previewUri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", previewFile)
                     var isPlaying by remember(previewFile) { mutableStateOf(false) }
                     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -803,7 +751,7 @@ internal fun ConversationComposer(
                             FilledTonalIconButton(
                                 onClick = {
                                     previewFile.delete()
-                                    voiceMode = VoiceMode.Hidden
+                                    completedRecordingFile = null
                                 },
                                 modifier = Modifier.size(36.dp),
                             ) {
@@ -834,7 +782,7 @@ internal fun ConversationComposer(
                                         mediaPlayer?.release()
                                         mediaPlayer = null
                                         onVoiceRecorded(previewUri)
-                                        voiceMode = VoiceMode.Hidden
+                                        completedRecordingFile = null
                                     },
                                     modifier = Modifier.fillMaxSize(),
                                     interactionSource = sendInteractionSource,
@@ -1261,9 +1209,24 @@ private fun VoiceRecordingContent(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var state by remember { mutableStateOf<VoiceMode>(VoiceMode.Hidden) }
-    var audioFile by remember { mutableStateOf<java.io.File?>(null) }
-    val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
+    var completedRecordingFile by remember { mutableStateOf<java.io.File?>(null) }
+    val serviceState by VoiceRecordingService.state.collectAsState()
+
+    val state: VoiceMode = when (val s = serviceState) {
+        is VoiceRecordingState.Idle -> {
+            val pf = completedRecordingFile
+            if (pf != null) VoiceMode.Preview(pf) else VoiceMode.Hidden
+        }
+        is VoiceRecordingState.Recording -> VoiceMode.Recording(
+            startMs = s.startMs,
+            amplitudes = s.amplitudes,
+            file = s.file,
+        )
+        is VoiceRecordingState.Completed -> {
+            completedRecordingFile = s.file
+            VoiceMode.Preview(s.file)
+        }
+    }
 
     val hasRecordPermission = remember {
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -1273,68 +1236,19 @@ private fun VoiceRecordingContent(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> recordPermissionGranted = granted }
 
-    LaunchedEffect(state) {
-        if (state is VoiceMode.Recording) {
-            val s = state as VoiceMode.Recording
-            var amps = s.amplitudes
-            while (isActive) {
-                delay(50.milliseconds)
-                if (state !is VoiceMode.Recording) break
-                val amp = recorder.value?.maxAmplitude ?: 0
-                val normalized = (amp.toFloat() / 32767f).coerceIn(0f, 1f)
-                amps = (amps + normalized).takeLast(120)
-                state = s.copy(amplitudes = amps)
-            }
-        }
-    }
-
     DisposableEffect(Unit) {
         onDispose {
-            val rec = recorder.value
-            if (rec != null) {
-                @Suppress("DEPRECATION")
-                try {
-                    try { rec.stop() } catch (_: IllegalStateException) {}
-                } finally {
-                    rec.release()
-                }
-            }
-            recorder.value = null
-            val s = state
-            if (s is VoiceMode.Preview) {
-                s.file.delete()
-            }
-        }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE && state is VoiceMode.Recording) {
-                val rec = recorder.value
-                if (rec != null) {
-                    @Suppress("DEPRECATION")
-                    try {
-                        try { rec.stop() } catch (_: IllegalStateException) {}
-                    } finally {
-                        rec.release()
+            if (VoiceRecordingService.isRecording()) {
+                context.startService(
+                    Intent(context, VoiceRecordingService::class.java).apply {
+                        action = VoiceRecordingService.ACTION_CANCEL
                     }
-                }
-                recorder.value = null
-                val s = state as VoiceMode.Recording
-                val file = s.file
-                if (file.exists() && file.length() > 0) {
-                    state = VoiceMode.Preview(file)
-                } else {
-                    file.delete()
-                    audioFile = null
-                    state = VoiceMode.Hidden
-                }
+                )
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            val cf = completedRecordingFile
+            if (cf != null) {
+                cf.delete()
+            }
         }
     }
 
@@ -1361,25 +1275,11 @@ private fun VoiceRecordingContent(
                     Spacer(Modifier.height(16.dp))
                     IconButton(
                         onClick = {
-                            val file = createVoiceFile(context)
-                            audioFile = file
-                            try {
-                                @Suppress("DEPRECATION")
-                                val rec = MediaRecorder().apply {
-                                    setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                                    setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-                                    setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                                    setOutputFile(file.absolutePath)
-                                    prepare()
-                                    start()
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_START
                                 }
-                                recorder.value = rec
-                                state = VoiceMode.Recording(file = file)
-                            } catch (e: Exception) {
-                                Log.e("VoiceRecording", "Failed to start recording", e)
-                                file.delete()
-                                audioFile = null
-                            }
+                            )
                         },
                         modifier = Modifier
                             .size(80.dp)
@@ -1430,24 +1330,11 @@ private fun VoiceRecordingContent(
                 ) {
                     IconButton(
                         onClick = {
-                            val rec = recorder.value
-                            if (rec != null) {
-                                @Suppress("DEPRECATION")
-                                try {
-                                    try { rec.stop() } catch (_: IllegalStateException) {}
-                                } finally {
-                                    rec.release()
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_STOP
                                 }
-                                recorder.value = null
-                            }
-                            val file = audioFile
-                            if (file != null && file.exists() && file.length() > 0) {
-                                state = VoiceMode.Preview(file)
-                            } else {
-                                audioFile?.delete()
-                                audioFile = null
-                                state = VoiceMode.Hidden
-                            }
+                            )
                         },
                         modifier = Modifier
                             .size(56.dp)
@@ -1599,8 +1486,7 @@ private fun VoiceRecordingContent(
                     FilledTonalIconButton(
                         onClick = {
                             s.file.delete()
-                            audioFile = null
-                            state = VoiceMode.Hidden
+                            completedRecordingFile = null
                         },
                         modifier = Modifier.size(48.dp),
                     ) {

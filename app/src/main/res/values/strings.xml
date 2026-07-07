@@ -47,6 +47,9 @@
     <string name="voice_recording_permission_required">Microphone permission required to record voice</string>
     <string name="voice_recording_start">Start recording</string>
     <string name="voice_recording_stop">Stop recording</string>
+    <string name="voice_recording_channel_name">Voice recording</string>
+    <string name="voice_recording_channel_description">Ongoing voice recording notification</string>
+    <string name="voice_recording_notification_title">Recording voice message…</string>
     <string name="conversation_send_status_sending_title">Sending message</string>
     <string name="conversation_send_status_sent_title">Message sent</string>
     <string name="conversation_send_status_failed_title">Send failed</string>

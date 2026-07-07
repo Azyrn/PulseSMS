@@ -11,6 +11,7 @@ import com.skeler.pulse.sms.NotificationPreferences
 import com.skeler.pulse.sms.QuickComposeNotificationManager
 import com.skeler.pulse.sms.SmsNotificationHelper
 import com.skeler.pulse.sms.SmsProcessingHelper
+import com.skeler.pulse.sms.VoiceRecordingService
 import com.skeler.pulse.sms.SmsReceiver
 import com.skeler.pulse.sync.worker.SyncWorkerDependenciesHolder
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,7 @@ class PulseApplication : Application() {
         }
         SmsNotificationHelper.createNotificationChannel(this)
         QuickComposeNotificationManager.createChannel(this)
+        VoiceRecordingService.createChannel(this)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {

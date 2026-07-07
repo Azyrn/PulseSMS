@@ -47,6 +47,9 @@
     <string name="voice_recording_permission_required">Autorisation du microphone requise pour enregistrer un message vocal</string>
     <string name="voice_recording_start">Démarrer l\'enregistrement</string>
     <string name="voice_recording_stop">Arrêter l\'enregistrement</string>
+    <string name="voice_recording_channel_name">Enregistrement vocal</string>
+    <string name="voice_recording_channel_description">Notification d\'enregistrement vocal en cours</string>
+    <string name="voice_recording_notification_title">Enregistrement vocal en cours…</string>
     <string name="conversation_send_status_sending_title">Envoi en cours</string>
     <string name="conversation_send_status_sent_title">Message envoyé</string>
     <string name="conversation_send_status_failed_title">Échec d\'envoi</string>
