@@ -19,6 +19,8 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
@@ -364,6 +366,36 @@ internal fun ConversationComposer(
                 if (vm is VoiceMode.Preview) {
                     vm.file.delete()
                 }
+            }
+        }
+
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE && voiceMode is VoiceMode.Recording) {
+                    val rec = voiceRecorder.value
+                    if (rec != null) {
+                        @Suppress("DEPRECATION")
+                        try {
+                            try { rec.stop() } catch (_: IllegalStateException) {}
+                        } finally {
+                            rec.release()
+                        }
+                    }
+                    voiceRecorder.value = null
+                    val s = voiceMode as VoiceMode.Recording
+                    val file = s.file
+                    if (file.exists() && file.length() > 0) {
+                        voiceMode = VoiceMode.Preview(file)
+                    } else {
+                        file.delete()
+                        voiceMode = VoiceMode.Hidden
+                    }
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
             }
         }
         if (selectedImageUris.isNotEmpty()) {
@@ -1272,6 +1304,37 @@ private fun VoiceRecordingContent(
             if (s is VoiceMode.Preview) {
                 s.file.delete()
             }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && state is VoiceMode.Recording) {
+                val rec = recorder.value
+                if (rec != null) {
+                    @Suppress("DEPRECATION")
+                    try {
+                        try { rec.stop() } catch (_: IllegalStateException) {}
+                    } finally {
+                        rec.release()
+                    }
+                }
+                recorder.value = null
+                val s = state as VoiceMode.Recording
+                val file = s.file
+                if (file.exists() && file.length() > 0) {
+                    state = VoiceMode.Preview(file)
+                } else {
+                    file.delete()
+                    audioFile = null
+                    state = VoiceMode.Hidden
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
