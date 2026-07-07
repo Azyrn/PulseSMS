@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.skeler.pulse.R
+import com.skeler.pulse.contact.contactNameOrNull
 
 object QuickComposeNotificationManager {
 
@@ -43,7 +44,12 @@ object QuickComposeNotificationManager {
             getLastContactedNumber(context)?.let { setTargetNumber(context, it) }
         }
         val targetNumber = getTargetNumber(context)
-        val targetDisplay = targetNumber ?: context.getString(R.string.quick_compose_no_contact)
+        val targetDisplay = if (targetNumber != null) {
+            val contactName = contactNameOrNull(context, targetNumber)
+            if (contactName != null) "$contactName ($targetNumber)" else targetNumber
+        } else {
+            context.getString(R.string.quick_compose_no_contact)
+        }
         val contentText = "${context.getString(R.string.quick_compose_to_label)} $targetDisplay"
 
         val openIntent = Intent(context, QuickComposeActivity::class.java)

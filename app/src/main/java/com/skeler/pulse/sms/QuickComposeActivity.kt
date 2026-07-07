@@ -73,6 +73,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.skeler.pulse.R
+import com.skeler.pulse.contact.contactNameOrNull
 import com.skeler.pulse.contact.displayNameFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -83,6 +84,7 @@ import kotlin.time.Duration.Companion.milliseconds
 private data class ContactMatch(
     val displayName: String,
     val phoneNumber: String,
+    val isContact: Boolean = false,
 )
 
 class QuickComposeActivity : ComponentActivity() {
@@ -161,7 +163,14 @@ private fun QuickComposeSheet(
                     ?: searchContacts(context, normalizedTarget).firstOrNull {
                         normalizePhoneNumberRaw(it.phoneNumber) == normalizedTarget
                     }
-                    ?: ContactMatch(displayNameFor(context, normalizedTarget), normalizedTarget)
+                    ?: run {
+                        val contactName = contactNameOrNull(context, normalizedTarget)
+                        ContactMatch(
+                            displayName = contactName ?: normalizedTarget,
+                            phoneNumber = normalizedTarget,
+                            isContact = contactName != null,
+                        )
+                    }
             } else null
             Pair(loaded, match)
         }
@@ -345,12 +354,14 @@ private fun QuickComposeSheet(
                                 }
                             }
                         }
-                        Text(
-                            text = contact.phoneNumber,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                        )
+                        if (contact.isContact) {
+                            Text(
+                                text = contact.phoneNumber,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                            )
+                        }
                     }
                 } else {
                     OutlinedTextField(
@@ -525,7 +536,7 @@ private fun searchContacts(context: Context, query: String): List<ContactMatch> 
                 val key = "$name:$number"
                 if (key !in seen) {
                     seen.add(key)
-                    results.add(ContactMatch(name, number))
+                    results.add(ContactMatch(name, number, isContact = true))
                 }
             }
         }
@@ -555,7 +566,8 @@ private fun loadRecentContacts(context: Context, limit: Int): List<ContactMatch>
                 if (normalized !in seen) {
                     seen.add(normalized)
                     val displayName = displayNameFor(context, address)
-                    results.add(ContactMatch(displayName, address))
+                    val isContact = contactNameOrNull(context, address) != null
+                    results.add(ContactMatch(displayName, address, isContact))
                 }
             }
         }

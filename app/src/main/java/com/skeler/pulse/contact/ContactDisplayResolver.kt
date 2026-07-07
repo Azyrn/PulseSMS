@@ -39,6 +39,33 @@ internal fun displayNameFor(context: Context, address: String): String {
     return displayName
 }
 
+internal fun contactNameOrNull(context: Context, address: String): String? {
+    val trimmedAddress = address.trim()
+    val normalizedAddress = trimmedAddress.normalizeAddressForDisplay()
+    if (normalizedAddress.isBlank()) return null
+    val lookupUri = Uri.withAppendedPath(
+        ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+        Uri.encode(normalizedAddress),
+    )
+    return try {
+        context.contentResolver.query(
+            lookupUri,
+            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)?.trim()?.ifBlank { null }
+            } else {
+                null
+            }
+        }
+    } catch (_: SecurityException) {
+        null
+    }
+}
+
 internal fun contactPhotoUriFor(context: Context, address: String): Uri? {
     val trimmedAddress = address.trim()
     val normalizedAddress = trimmedAddress.normalizeAddressForDisplay()
