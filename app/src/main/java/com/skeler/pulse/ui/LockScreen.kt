@@ -36,11 +36,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.skeler.pulse.R
 import com.skeler.pulse.design.theme.verifySecurityPassword
 import com.skeler.pulse.security.auth.BiometricAuthResult
 import com.skeler.pulse.security.auth.BiometricAvailability
@@ -68,19 +70,19 @@ internal fun LockScreen(
         val activity = context.findFragmentActivity() ?: return
         authError = null
         if (biometricAvailability != BiometricAvailability.Available) {
-            authError = biometricAvailability.lockScreenMessage()
+            authError = biometricAvailability.lockScreenMessage(context.resources)
             return
         }
         showBiometricPrompt(
             activity = activity,
-            title = "Unlock Pulse",
-            subtitle = "Authenticate to access your messages",
+            title = context.getString(R.string.lock_biometric_prompt_title),
+            subtitle = context.getString(R.string.lock_biometric_prompt_subtitle),
         ) { result ->
             when (result) {
                 is BiometricAuthResult.Success -> onAuthenticated()
                 is BiometricAuthResult.Cancelled -> onCancel()
                 is BiometricAuthResult.Failed -> {
-                    authError = "Authentication failed. Try again."
+                    authError = context.getString(R.string.security_fingerprint_auth_failed)
                 }
                 is BiometricAuthResult.Error -> {
                     authError = result.message
@@ -96,7 +98,7 @@ internal fun LockScreen(
             authError = null
             onAuthenticated()
         } else {
-            authError = "Incorrect password. Try again."
+            authError = context.getString(R.string.lock_screen_password_incorrect)
             passwordInput = ""
         }
     }
@@ -107,7 +109,7 @@ internal fun LockScreen(
     LaunchedEffect(biometricEnabled, biometricAvailability) {
         if (!biometricEnabled || hasAutoPrompted) return@LaunchedEffect
         if (biometricAvailability != BiometricAvailability.Available) {
-            authError = biometricAvailability.lockScreenMessage()
+            authError = biometricAvailability.lockScreenMessage(context.resources)
             return@LaunchedEffect
         }
         hasAutoPrompted = true
@@ -135,16 +137,16 @@ internal fun LockScreen(
                     tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Pulse is locked",
+                    text = stringResource(R.string.lock_screen_title),
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = authError ?: when {
-                        biometricEnabled && passwordEnabled -> "Use fingerprint or password"
-                        biometricEnabled -> "Use fingerprint to unlock"
-                        passwordEnabled -> "Enter your password"
-                        else -> "No unlock method is configured"
+                        biometricEnabled && passwordEnabled -> stringResource(R.string.lock_screen_hint_both)
+                        biometricEnabled -> stringResource(R.string.lock_screen_hint_biometric)
+                        passwordEnabled -> stringResource(R.string.lock_screen_hint_password)
+                        else -> stringResource(R.string.lock_screen_hint_none)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = authError?.let { MaterialTheme.colorScheme.error }
@@ -155,7 +157,7 @@ internal fun LockScreen(
                         value = passwordInput,
                         onValueChange = { newValue -> passwordInput = newValue.filter { it.isLetterOrDigit() } },
                         modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth(),
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.security_password_title)) },
                         singleLine = true,
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
@@ -164,7 +166,7 @@ internal fun LockScreen(
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
                                     imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                    contentDescription = if (passwordVisible) stringResource(R.string.security_password_hide) else stringResource(R.string.security_password_show),
                                 )
                             }
                         },
@@ -177,7 +179,7 @@ internal fun LockScreen(
                     ) {
                         Icon(Icons.Rounded.Key, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Unlock")
+                        Text(stringResource(R.string.lock_screen_unlock_button))
                     }
                 }
                 if (biometricEnabled) {
@@ -187,7 +189,7 @@ internal fun LockScreen(
                     ) {
                         Icon(Icons.Rounded.Fingerprint, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Use fingerprint")
+                        Text(stringResource(R.string.lock_screen_use_fingerprint_button))
                     }
                 }
             }

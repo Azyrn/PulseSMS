@@ -24,8 +24,8 @@ class ComposeSmsActivity : ComponentActivity() {
         val recipient = extractRecipient(data)
         val body = intent?.getStringExtra("sms_body")
             ?: intent?.getStringExtra(Intent.EXTRA_TEXT)
-            ?: data?.getQueryParameter("body")
-            ?: data?.getQueryParameter("sms_body")
+            ?: safeQueryParameter(data, "body")
+            ?: safeQueryParameter(data, "sms_body")
             ?: ""
 
         val launchIntent = MainActivity.createLaunchIntent(
@@ -40,6 +40,15 @@ class ComposeSmsActivity : ComponentActivity() {
     /**
      * Extracts the phone number from `sms:+1234567890` or `smsto:+1234567890` URIs.
      */
+    private fun safeQueryParameter(uri: Uri?, key: String): String? {
+        if (uri?.isHierarchical != true) return null
+        return try {
+            uri.getQueryParameter(key)
+        } catch (_: UnsupportedOperationException) {
+            null
+        }
+    }
+
     private fun extractRecipient(uri: Uri?): String {
         if (uri == null) return ""
         return uri.schemeSpecificPart

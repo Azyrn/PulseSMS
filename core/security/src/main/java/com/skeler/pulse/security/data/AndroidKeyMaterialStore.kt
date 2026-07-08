@@ -100,6 +100,7 @@ class AndroidKeyMaterialStore(
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun verifyHardwareBacking(alias: String, key: SecretKey) {
         try {
             val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEY_STORE)

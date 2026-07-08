@@ -15,6 +15,7 @@ class MessageLinkDetectorTest {
                     uri = "https://pulse.example/status",
                     start = 12,
                     end = 40,
+                    type = MessageLinkType.Url,
                 ),
             ),
             targets,
@@ -32,18 +33,21 @@ class MessageLinkDetectorTest {
                     uri = "https://www.pulse.example",
                     start = 4,
                     end = 21,
+                    type = MessageLinkType.Url,
                 ),
                 MessageLinkTarget(
                     text = "help@pulse.example",
                     uri = "mailto:help@pulse.example",
                     start = 25,
                     end = 43,
+                    type = MessageLinkType.Email,
                 ),
                 MessageLinkTarget(
                     text = "+1 (415) 555-0184",
                     uri = "tel:+14155550184",
                     start = 47,
                     end = 64,
+                    type = MessageLinkType.Phone,
                 ),
             ),
             targets,
@@ -51,9 +55,27 @@ class MessageLinkDetectorTest {
     }
 
     @Test
-    fun should_not_treat_short_verification_code_as_phone_number() {
-        val targets = MessageLinkDetector.detectTargets("Your verification code is 493827")
+    fun should_not_treat_very_short_code_as_phone_number() {
+        val targets = MessageLinkDetector.detectTargets("Your verification code is 827")
 
         assertEquals(emptyList<MessageLinkTarget>(), targets)
+    }
+
+    @Test
+    fun should_detect_shortcode_as_phone_number() {
+        val targets = MessageLinkDetector.detectTargets("Send STOP to 38180")
+
+        assertEquals(
+            listOf(
+                MessageLinkTarget(
+                    text = "38180",
+                    uri = "tel:38180",
+                    start = 13,
+                    end = 18,
+                    type = MessageLinkType.Phone,
+                ),
+            ),
+            targets,
+        )
     }
 }

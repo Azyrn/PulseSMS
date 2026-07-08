@@ -19,8 +19,10 @@ import com.skeler.pulse.sync.di.SyncComponent
 import com.skeler.pulse.sync.di.SyncComponentFactory
 import com.skeler.pulse.ui.PulseHomeViewModel
 import com.skeler.pulse.ui.RealSmsViewModel
+import com.skeler.pulse.sms.EncryptionPreferences
 import com.skeler.pulse.sms.ImportantMessagePreferences
 import com.skeler.pulse.sms.InboxThreadPreferences
+import com.skeler.pulse.sms.MessageReactionPreferences
 import com.skeler.pulse.sms.SystemSmsReader
 
 class AppContainer(
@@ -87,9 +89,12 @@ class AppContainer(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             RealSmsViewModel(
+                context = appContext,
                 smsReader = SystemSmsReader(appContext),
                 importantMessagePreferences = ImportantMessagePreferences(appContext),
                 inboxThreadPreferences = InboxThreadPreferences(appContext),
+                messageReactionPreferences = MessageReactionPreferences(appContext),
+                encryptionPreferences = EncryptionPreferences(appContext),
             ) as T
     }
 }

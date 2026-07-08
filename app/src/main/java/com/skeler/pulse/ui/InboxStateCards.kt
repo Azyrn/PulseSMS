@@ -1,106 +1,40 @@
 package com.skeler.pulse.ui
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddComment
-import androidx.compose.material.icons.rounded.Archive
-import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.Bookmark
-import androidx.compose.material.icons.rounded.BookmarkBorder
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
-import androidx.compose.material.icons.rounded.Key
-import androidx.compose.material.icons.rounded.MarkunreadMailbox
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
-import com.skeler.pulse.InboxAccessState
-import com.skeler.pulse.contact.displayNameFor
-import com.skeler.pulse.design.component.SerafinaAvatar
+import com.skeler.pulse.R
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
 import com.skeler.pulse.design.component.StatusPill
-import com.skeler.pulse.design.util.elasticOverscroll
-import com.skeler.pulse.design.util.motionAnimateItemModifier
-import com.skeler.pulse.design.util.rememberEntranceModifier
-import com.skeler.pulse.design.util.rememberReducedMotionEnabled
-import com.skeler.pulse.design.util.rememberSmoothFlingBehavior
-import com.skeler.pulse.sms.SmsThread
 
 
 
@@ -110,11 +44,11 @@ internal fun InboxLoadingStateCard(
     modifier: Modifier = Modifier,
 ) {
     InboxStateCard(
-        title = "Loading your threads",
-        body = "Pulse is syncing with Android so your latest messages appear in one place.",
-        statusLabel = "Inbox refresh",
+        title = stringResource(R.string.inbox_loading_title),
+        body = stringResource(R.string.inbox_loading_body),
+        statusLabel = stringResource(R.string.inbox_loading_status),
         icon = Icons.Rounded.HourglassTop,
-        actionLabel = "Refresh",
+        actionLabel = stringResource(R.string.inbox_loading_action),
         onAction = onRefreshInbox,
         modifier = modifier,
     ) {
@@ -128,11 +62,11 @@ internal fun InboxEmptyStateCard(
     modifier: Modifier = Modifier,
 ) {
     InboxStateCard(
-        title = "Your inbox is ready",
-        body = "There are no SMS threads here yet. Start a new conversation and Pulse will keep the lane warm for you.",
-        statusLabel = "Zero threads",
+        title = stringResource(R.string.inbox_empty_title),
+        body = stringResource(R.string.inbox_empty_body),
+        statusLabel = stringResource(R.string.inbox_empty_status),
         icon = Icons.Rounded.AddComment,
-        actionLabel = "New chat",
+        actionLabel = stringResource(R.string.inbox_empty_action),
         onAction = onOpenNewChat,
         modifier = modifier,
     )
@@ -145,11 +79,11 @@ internal fun InboxFilteredEmptyStateCard(
     modifier: Modifier = Modifier,
 ) {
     InboxStateCard(
-        title = "Nothing in $activeFilter",
-        body = "This filter is clear right now. Switch back to the full inbox to see every thread again.",
-        statusLabel = "$activeFilter filter",
+        title = stringResource(R.string.inbox_nothing_in_filter, activeFilter),
+        body = stringResource(R.string.inbox_filter_empty_body),
+        statusLabel = stringResource(R.string.inbox_filter_status, activeFilter),
         icon = Icons.Rounded.Search,
-        actionLabel = "Show all",
+        actionLabel = stringResource(R.string.inbox_show_all),
         onAction = onShowAll,
         modifier = modifier,
     )
@@ -162,11 +96,11 @@ internal fun InboxErrorStateCard(
     modifier: Modifier = Modifier,
 ) {
     InboxStateCard(
-        title = "Inbox unavailable",
+        title = stringResource(R.string.inbox_unavailable),
         body = message,
-        statusLabel = "Read problem",
+        statusLabel = stringResource(R.string.inbox_read_problem),
         icon = Icons.Rounded.ErrorOutline,
-        actionLabel = "Try again",
+        actionLabel = stringResource(R.string.inbox_try_again),
         onAction = onRetry,
         modifier = modifier,
     )

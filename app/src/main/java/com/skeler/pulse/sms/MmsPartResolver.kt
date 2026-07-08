@@ -1,0 +1,144 @@
+package com.skeler.pulse.sms
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import androidx.core.content.FileProvider
+import java.io.File
+
+internal object MmsPartResolver {
+
+    private const val TEXT_PLAIN = "text/plain"
+    private const val TEXT_HTML = "text/html"
+    private const val TAG = "MmsPartResolver"
+
+    data class MmsPartsResult(
+        val textBody: String?,
+        val attachmentUris: List<Uri> = emptyList(),
+        val attachmentMimeTypes: List<String> = emptyList(),
+    ) {
+        val attachmentUri: Uri? get() = attachmentUris.firstOrNull()
+        val attachmentMimeType: String? get() = attachmentMimeTypes.firstOrNull()
+    }
+
+    fun resolveParts(context: Context, mmsId: Long): MmsPartsResult {
+        val parts = queryParts(context, mmsId) ?: return MmsPartsResult(null)
+
+        var textBody: String? = null
+        val uris = mutableListOf<Uri>()
+        val mimeTypes = mutableListOf<String>()
+
+        for (entry in parts) {
+            when (entry.mimeType) {
+                TEXT_PLAIN, TEXT_HTML -> if (textBody == null) {
+                    textBody = readPartContent(context, entry.id, entry.text)
+                }
+                "application/smil" -> { /* skip SMIL manifest */ }
+                else -> {
+                    val cacheFile = File(context.cacheDir, "mms_parts/${entry.id}")
+                    val uri = if (cacheFile.exists()) {
+                        FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.mmsfileprovider",
+                            cacheFile,
+                        )
+                    } else {
+                        Uri.parse("content://mms/part/${entry.id}")
+                    }
+                    uris.add(uri)
+                    mimeTypes.add(entry.mimeType)
+                    Log.i(TAG, "Attachment URI: $uri (${entry.mimeType})")
+                }
+            }
+        }
+
+        return MmsPartsResult(
+            textBody = textBody,
+            attachmentUris = uris,
+            attachmentMimeTypes = mimeTypes,
+        )
+    }
+
+    fun resolveTextBody(context: Context, mmsId: Long): String? {
+        val parts = queryParts(context, mmsId) ?: return null
+        return parts.firstOrNull { entry ->
+            entry.mimeType == TEXT_PLAIN || entry.mimeType == TEXT_HTML
+        }?.let { entry ->
+            readPartContent(context, entry.id, entry.text)
+        }
+    }
+
+    fun resolveFirstAttachmentUri(context: Context, mmsId: Long): Uri? =
+        resolveFirstAttachmentInfo(context, mmsId)?.first
+
+    fun resolveFirstAttachmentInfo(context: Context, mmsId: Long): Pair<Uri, String>? {
+        val parts = queryParts(context, mmsId) ?: return null
+        val entry = parts.firstOrNull { entry ->
+            entry.mimeType != TEXT_PLAIN &&
+                entry.mimeType != TEXT_HTML &&
+                entry.mimeType != "application/smil"
+        } ?: return null
+
+        val uri = run {
+            val cacheFile = File(context.cacheDir, "mms_parts/${entry.id}")
+            if (cacheFile.exists()) {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.mmsfileprovider",
+                    cacheFile,
+                ).also {
+                    Log.i(TAG, "Attachment URI (cached): $it (${entry.mimeType})")
+                }
+            } else {
+                Uri.parse("content://mms/part/${entry.id}").also {
+                    Log.i(TAG, "Attachment URI (mms provider): $it (${entry.mimeType})")
+                }
+            }
+        }
+
+        return uri to entry.mimeType
+    }
+
+    private fun queryParts(context: Context, mmsId: Long): List<PartEntry>? {
+        val uri = Uri.parse("content://mms/$mmsId/part")
+        Log.i(TAG, "Querying parts from $uri")
+        val cursor = context.contentResolver.query(
+            uri,
+            arrayOf("_id", "ct", "name", "text"),
+            null,
+            null,
+            null,
+        ) ?: return null.also { Log.w(TAG, "Parts query returned null for mmsId=$mmsId") }
+
+        return cursor.use { c ->
+            val entries = mutableListOf<PartEntry>()
+            while (c.moveToNext()) {
+                val id = c.getLong(c.getColumnIndexOrThrow("_id"))
+                val mimeType = c.getString(c.getColumnIndexOrThrow("ct")) ?: ""
+                val textCol = c.getString(c.getColumnIndexOrThrow("text"))
+                Log.i(TAG, "Found part: id=$id ct=$mimeType text=${textCol?.take(50)} for mmsId=$mmsId")
+                entries.add(PartEntry(id, mimeType, textCol))
+            }
+            if (entries.isEmpty()) Log.w(TAG, "No entries found for mmsId=$mmsId")
+            entries
+        }
+    }
+
+    private fun readPartContent(context: Context, partId: Long, storedText: String?): String? {
+        if (!storedText.isNullOrBlank()) return storedText
+        val uri = Uri.parse("content://mms/part/$partId")
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                stream.bufferedReader().readText()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private data class PartEntry(
+        val id: Long,
+        val mimeType: String,
+        val text: String? = null,
+    )
+}

@@ -1,25 +1,30 @@
 package com.skeler.pulse.ui
 
+internal enum class MessageLinkType { Url, Email, Phone }
+
 internal data class MessageLinkTarget(
     val text: String,
     val uri: String,
     val start: Int,
     val end: Int,
+    val type: MessageLinkType,
 )
 
 internal object MessageLinkDetector {
     private val urlPattern = Regex("\\b((?:https?://|www\\.)[^\\s<>()]+)", RegexOption.IGNORE_CASE)
+    private val bareDomainPattern = Regex("\\b(?:[a-zA-Z0-9-]{2,}\\.)+[a-zA-Z]{2,}(?:/[^\\s<>()]*)?\\b", RegexOption.IGNORE_CASE)
     private val emailPattern = Regex("\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", RegexOption.IGNORE_CASE)
-    private val phonePattern = Regex("(?<![\\w@])(?:\\+?\\d[\\d .()/-]{5,}\\d)(?![\\w@])")
+    private val phonePattern = Regex("(?<![\\w@])(?:\\+?\\d[\\d .()/-]{2,}\\d)(?![\\w@])")
     private val trailingPunctuation = setOf('.', ',', ';', ':', '!', '?', ')', ']')
 
     fun detectTargets(messageBody: String): List<MessageLinkTarget> {
         if (messageBody.isBlank()) return emptyList()
 
         val targets = mutableListOf<MessageLinkTarget>()
-        collectTargets(messageBody, urlPattern, targets, ::webUriFor)
-        collectTargets(messageBody, emailPattern, targets, ::emailUriFor)
-        collectTargets(messageBody, phonePattern, targets, ::phoneUriFor)
+        collectTargets(messageBody, urlPattern, targets, ::webUriFor, MessageLinkType.Url)
+        collectTargets(messageBody, emailPattern, targets, ::emailUriFor, MessageLinkType.Email)
+        collectTargets(messageBody, phonePattern, targets, ::phoneUriFor, MessageLinkType.Phone)
+        collectTargets(messageBody, bareDomainPattern, targets, ::webUriFor, MessageLinkType.Url)
         return targets.sortedBy { target -> target.start }
     }
 
@@ -28,6 +33,7 @@ internal object MessageLinkDetector {
         pattern: Regex,
         targets: MutableList<MessageLinkTarget>,
         uriFor: (String) -> String?,
+        type: MessageLinkType,
     ) {
         pattern.findAll(messageBody).forEach { match ->
             val normalized = messageBody.normalizedTarget(match.range.first, match.range.last + 1)
@@ -39,6 +45,7 @@ internal object MessageLinkDetector {
                     uri = uri,
                     start = normalized.first,
                     end = normalized.second,
+                    type = type,
                 )
             }
         }
@@ -78,5 +85,5 @@ internal object MessageLinkDetector {
         return "tel:$normalized"
     }
 
-    private const val MIN_PHONE_DIGITS = 7
+    private const val MIN_PHONE_DIGITS = 3
 }

@@ -33,7 +33,7 @@ class RespondViaMessageService : Service() {
             if (!recipient.isNullOrBlank() && !body.isNullOrBlank()) {
                 serviceScope.launch {
                     try {
-                        SystemSmsReader(applicationContext).sendSms(recipient, body)
+                        SystemSmsSender(applicationContext, Dispatchers.IO).sendSms(recipient, body)
                     } finally {
                         stopSelf(startId)
                     }

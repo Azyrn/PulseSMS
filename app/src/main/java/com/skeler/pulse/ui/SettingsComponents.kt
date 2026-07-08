@@ -71,12 +71,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.skeler.pulse.R
 import com.skeler.pulse.design.theme.SerafinaPalette
 import com.skeler.pulse.design.theme.SerafinaThemeMode
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
@@ -111,7 +113,7 @@ internal fun SettingsTopBar(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "Close",
+                    contentDescription = stringResource(R.string.action_close),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }

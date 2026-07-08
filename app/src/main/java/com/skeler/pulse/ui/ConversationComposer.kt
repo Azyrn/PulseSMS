@@ -1,8 +1,29 @@
 package com.skeler.pulse.ui
+
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.pm.PackageManager
+import android.content.Intent
+import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.provider.Telephony
-import androidx.activity.compose.BackHandler
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -11,17 +32,22 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,7 +68,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -53,14 +82,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
-import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
 import androidx.compose.material.icons.rounded.SimCard
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -81,9 +118,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -93,13 +134,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -115,6 +159,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.skeler.pulse.R
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
@@ -127,28 +173,52 @@ import com.skeler.pulse.design.util.rememberReducedMotionEnabled
 import com.skeler.pulse.design.util.rememberSmoothFlingBehavior
 import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.OtpCodeExtractor
+import coil.compose.AsyncImage
 import com.skeler.pulse.sms.SystemSms
+import com.skeler.pulse.sms.VoiceRecordingService
+import com.skeler.pulse.sms.VoiceRecordingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import java.time.Instant
 
+private sealed interface VoiceMode {
+    data object Hidden : VoiceMode
+    data class Recording(
+        val startMs: Long = System.currentTimeMillis(),
+        val amplitudes: List<Float> = emptyList(),
+        val file: java.io.File,
+    ) : VoiceMode
+    data class Preview(val file: java.io.File) : VoiceMode
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ConversationComposer(
     draft: String,
     sendState: SendState,
     simOptions: List<NewChatSimOption>,
     selectedSimKey: String?,
+    selectedImageUris: List<Uri> = emptyList(),
     onSimOptionClick: (NewChatSimOption) -> Unit,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    onImageSelected: (List<Uri>) -> Unit = {},
+    onImagePickFromGallery: () -> Unit = {},
+    onTakePhoto: () -> Unit = {},
+    onVoiceRecorded: (Uri) -> Unit = {},
+    showAttachmentMenu: Boolean = false,
+    onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val selectedAttachmentTab = rememberSaveable { mutableStateOf(AttachmentTab.GALLERY) }
+    val isVoiceTabActive = showAttachmentMenu && selectedAttachmentTab.value == AttachmentTab.VOICE
     val reducedMotion = rememberReducedMotionEnabled()
     val isSending = sendState is SendState.Sending
-    val canSend by remember(draft, isSending) {
-        derivedStateOf { draft.isNotBlank() && !isSending }
+    val canSend by remember(draft, isSending, selectedImageUris) {
+        derivedStateOf { (draft.isNotBlank() || selectedImageUris.isNotEmpty()) && !isSending }
     }
     val selectedSim = remember(simOptions, selectedSimKey) {
         simOptions.firstOrNull { option -> option.key == selectedSimKey } ?: simOptions.firstOrNull()
@@ -197,7 +267,7 @@ internal fun ConversationComposer(
         targetValue = if (canSend) {
             colors.primary
         } else {
-            colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.surfaceAlpha)
+            colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.SURFACE_ALPHA)
         },
         animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
         label = "send_container",
@@ -215,29 +285,27 @@ internal fun ConversationComposer(
         targetValue = if (canSend) {
             colors.onPrimary
         } else {
-            colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.disabledSendIconAlpha)
+            colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.DISABLED_SEND_ICON_ALPHA)
         },
         animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
         label = "send_content",
     )
-    val capsuleShape = ConversationPillShape
+    val capsuleShape = ConversationCapsuleShape
+    val context = LocalContext.current
+    val hasCounter = characterCounter?.let { c ->
+        c.segmentCount > 1 || c.remainingCharacters < 20
+    } == true
+    val counterText = characterCounter?.let { c ->
+        if (c.segmentCount > 1) {
+            "${c.remainingCharacters} / ${c.segmentCount}"
+        } else {
+            "${c.remainingCharacters}"
+        }
+    }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer { translationY = containerLift }
-            .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            colors.primary.copy(alpha = if (isFocused) 0.18f else 0.10f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(size.width * 0.86f, size.height * 0.50f),
-                        radius = size.height * 1.35f,
-                    ),
-                )
-            }
             .padding(
                 start = ConversationComposerTokens.outerHorizontalPadding,
                 top = ConversationComposerTokens.outerTopPadding,
@@ -245,133 +313,1269 @@ internal fun ConversationComposer(
                 bottom = ConversationComposerTokens.outerBottomPadding,
             ),
     ) {
+        if (hasCounter) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = ConversationComposerTokens.attachmentButtonSize +
+                            ConversationComposerTokens.contentSpacing,
+                        bottom = 2.dp,
+                    ),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Text(
+                    text = counterText!!,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                )
+            }
+        }
+        var completedRecordingFile by remember { mutableStateOf<java.io.File?>(null) }
+        val serviceState by VoiceRecordingService.state.collectAsState()
+
+        val voiceMode: VoiceMode = when (val s = serviceState) {
+            is VoiceRecordingState.Idle -> {
+                val pf = completedRecordingFile
+                if (pf != null) VoiceMode.Preview(pf) else VoiceMode.Hidden
+            }
+            is VoiceRecordingState.Recording -> VoiceMode.Recording(
+                startMs = s.startMs,
+                amplitudes = s.amplitudes,
+                file = s.file,
+            )
+            is VoiceRecordingState.Completed -> {
+                completedRecordingFile = s.file
+                VoiceMode.Preview(s.file)
+            }
+        }
+
+        LaunchedEffect(isFocused) {
+            if (isFocused) onAttachmentMenuVisibilityChange(false)
+        }
+
+        DisposableEffect(Unit) {
+            onDispose {
+                if (VoiceRecordingService.isRecording()) {
+                    context.startService(
+                        Intent(context, VoiceRecordingService::class.java).apply {
+                            action = VoiceRecordingService.ACTION_CANCEL
+                        }
+                    )
+                }
+                val cf = completedRecordingFile
+                if (cf != null) {
+                    cf.delete()
+                }
+                VoiceRecordingService.resetState()
+            }
+        }
+        if (selectedImageUris.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                selectedImageUris.forEach { uri ->
+                    Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp))) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = stringResource(R.string.conversation_attach_content_description),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                        IconButton(
+                            onClick = { onImageSelected(selectedImageUris - uri) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(22.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                                contentDescription = stringResource(R.string.action_remove),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        val keyboardController = LocalSoftwareKeyboardController.current
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
-            Row(
+            IconButton(
+                onClick = {
+                    onAttachmentMenuVisibilityChange(!showAttachmentMenu)
+                    if (!showAttachmentMenu) keyboardController?.hide()
+                },
+                enabled = !isSending,
                 modifier = Modifier
-                    .weight(1f)
-                    .clip(capsuleShape)
-                    .background(conversationComposerCapsuleBrush(isFocused))
-                    .border(
-                        width = ConversationComposerTokens.borderWidth,
-                        color = capsuleBorderColor,
-                        shape = capsuleShape,
-                    )
-                    .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
-                    .padding(
-                        horizontal = ConversationComposerTokens.capsuleHorizontalPadding,
-                        vertical = ConversationComposerTokens.capsuleVerticalPadding,
-                    ),
-                horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
-                verticalAlignment = Alignment.CenterVertically,
+                    .size(ConversationComposerTokens.attachmentButtonSize),
             ) {
-                ConversationSimSelector(
-                    simOptions = simOptions,
-                    selectedSim = selectedSim,
-                    enabled = !isSending,
-                    onSimOptionClick = onSimOptionClick,
+                Icon(
+                    imageVector = if (showAttachmentMenu) Icons.Rounded.Close else Icons.Rounded.Add,
+                    contentDescription = stringResource(R.string.conversation_attach_content_description),
+                    modifier = Modifier.size(ConversationComposerTokens.attachmentIconSize),
+                    tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
                 )
-                CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = onDraftChange,
+            }
+            when (voiceMode) {
+                is VoiceMode.Hidden -> {
+                    Row(
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = ConversationComposerTokens.textFieldMinHeight),
-                        enabled = !isSending,
-                        interactionSource = fieldInteractionSource,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = colors.onSurface,
-                        ),
-                        cursorBrush = SolidColor(colors.primary),
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Sentences,
-                            imeAction = ImeAction.Send,
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (canSend) {
-                                    onSend()
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
+                            .padding(
+                                horizontal = ConversationComposerTokens.capsuleHorizontalPadding,
+                                vertical = ConversationComposerTokens.capsuleVerticalPadding,
+                            ),
+                        horizontalArrangement = Arrangement.spacedBy(ConversationComposerTokens.contentSpacing),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (simOptions.size > 1) {
+                            ConversationSimSelector(
+                                simOptions = simOptions,
+                                selectedSim = selectedSim,
+                                enabled = !isSending,
+                                onSimOptionClick = onSimOptionClick,
+                            )
+                        }
+                        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+                            BasicTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = ConversationComposerTokens.textFieldMinHeight),
+                                enabled = !isSending,
+                                interactionSource = fieldInteractionSource,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = colors.onSurface,
+                                ),
+                                cursorBrush = SolidColor(colors.primary),
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Sentences,
+                                    imeAction = ImeAction.Send,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSend = {
+                                        if (canSend) {
+                                            onSend()
+                                        }
+                                    },
+                                ),
+                                maxLines = 5,
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = ConversationComposerTokens.textFieldHorizontalPadding,
+                                                vertical = ConversationComposerTokens.textFieldVerticalPadding,
+                                            ),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        if (draft.isBlank()) {
+                                            Text(
+                                                text = if (isSending) {
+                                                    stringResource(R.string.conversation_composer_sending)
+                                                } else {
+                                                    stringResource(R.string.conversation_composer_placeholder)
+                                                },
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = colors.onSurfaceVariant.copy(
+                                                    alpha = ConversationComposerTokens.PLACEHOLDER_ALPHA,
+                                                ),
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    if (canSend) {
+                        Box(
+                            modifier = Modifier
+                                .size(ConversationComposerTokens.sendButtonSize)
+                                .graphicsLayer {
+                                    scaleX = sendScale
+                                    scaleY = sendScale
                                 }
+                                .clip(ConversationPillShape)
+                                .background(sendContainerColor)
+                                .border(
+                                    width = ConversationComposerTokens.borderWidth,
+                                    color = sendBorderColor,
+                                    shape = ConversationPillShape,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            IconButton(
+                                onClick = onSend,
+                                modifier = Modifier.fillMaxSize(),
+                                interactionSource = sendInteractionSource,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                                    contentDescription = stringResource(R.string.conversation_send_message_content_description),
+                                    modifier = Modifier
+                                        .size(ConversationComposerTokens.sendIconSize)
+                                        .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
+                                    tint = sendContentColor,
+                                )
+                            }
+                        }
+                    } else if (!isVoiceTabActive) {
+                        IconButton(
+                            onClick = {
+                                context.startService(
+                                    Intent(context, VoiceRecordingService::class.java).apply {
+                                        action = VoiceRecordingService.ACTION_START
+                                    }
+                                )
                             },
-                        ),
-                        maxLines = 5,
-                        decorationBox = { innerTextField ->
+                            modifier = Modifier.size(ConversationComposerTokens.sendButtonSize),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = stringResource(R.string.voice_recording_start),
+                                modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                                tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
+                            )
+                        }
+                    }
+                }
+
+                is VoiceMode.Recording -> {
+                    val s = voiceMode
+                    val elapsedMs = System.currentTimeMillis() - s.startMs
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .heightIn(min = ConversationComposerTokens.capsuleMinHeight)
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = formatRecordingDuration(elapsedMs),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Box(modifier = Modifier.weight(1f).height(40.dp)) {
+                            LiveRecordingWaveform(
+                                amplitudes = s.amplitudes,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = {
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_STOP
+                                }
+                            )
+                        },
+                        modifier = Modifier
+                            .size(ConversationComposerTokens.sendButtonSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.voice_recording_stop),
+                            modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+
+                is VoiceMode.Preview -> {
+                    val previewFile = voiceMode.file
+                    val previewUri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", previewFile)
+                    var isPlaying by remember(previewFile) { mutableStateOf(false) }
+                    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+                    var durationMs by remember { mutableIntStateOf(0) }
+                    var currentPositionMs by remember { mutableIntStateOf(0) }
+                    val previewProgress = if (durationMs > 0) {
+                        (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                    } else 0f
+
+                    LaunchedEffect(previewUri) {
+                        try {
+                            val tempPlayer = MediaPlayer().apply {
+                                setDataSource(context, previewUri)
+                                prepare()
+                            }
+                            durationMs = tempPlayer.duration
+                            tempPlayer.release()
+                        } catch (_: Exception) { }
+                    }
+
+                    DisposableEffect(previewUri) {
+                        onDispose {
+                            mediaPlayer?.release()
+                            mediaPlayer = null
+                        }
+                    }
+
+                    LaunchedEffect(isPlaying) {
+                        while (isActive) {
+                            if (isPlaying) {
+                                mediaPlayer?.let { mp ->
+                                    currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
+                                }
+                                delay(33.milliseconds)
+                            } else {
+                                delay(100.milliseconds)
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(capsuleShape)
+                            .background(conversationComposerCapsuleBrush(isFocused))
+                            .border(
+                                width = ConversationComposerTokens.borderWidth,
+                                color = capsuleBorderColor,
+                                shape = capsuleShape,
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) {
+                                        mediaPlayer?.pause()
+                                        isPlaying = false
+                                    } else {
+                                        if (mediaPlayer == null) {
+                                            try {
+                                                val newPlayer = MediaPlayer().apply {
+                                                    setDataSource(context, previewUri)
+                                                    prepare()
+                                                    durationMs = duration
+                                                    setOnCompletionListener {
+                                                        isPlaying = false
+                                                        currentPositionMs = 0
+                                                        seekTo(0)
+                                                    }
+                                                }
+                                                mediaPlayer = newPlayer
+                                                newPlayer.start()
+                                                isPlaying = true
+                                            } catch (e: Exception) {
+                                                Log.e("VoicePreview", "Failed to create MediaPlayer", e)
+                                            }
+                                        } else {
+                                            mediaPlayer?.seekTo(currentPositionMs)
+                                            mediaPlayer?.start()
+                                            isPlaying = true
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            AudioWaveformPreview(
+                                uri = previewUri,
+                                activeColor = MaterialTheme.colorScheme.primary,
+                                inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                targetBars = 32,
+                                progress = previewProgress,
+                                onSeek = { fraction ->
+                                    val newPos = (fraction * durationMs).toInt()
+                                    mediaPlayer?.seekTo(newPos)
+                                    currentPositionMs = newPos
+                                },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 4.dp, end = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = formatVoiceDuration(currentPositionMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                            Text(
+                                text = formatVoiceDuration(durationMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    previewFile.delete()
+                                    completedRecordingFile = null
+                                    VoiceRecordingService.resetState()
+                                },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Delete,
+                                    contentDescription = stringResource(R.string.action_cancel),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = ConversationComposerTokens.textFieldHorizontalPadding,
-                                        vertical = ConversationComposerTokens.textFieldVerticalPadding,
+                                    .size(ConversationComposerTokens.sendButtonSize)
+                                    .graphicsLayer {
+                                        scaleX = sendScale
+                                        scaleY = sendScale
+                                    }
+                                    .clip(ConversationPillShape)
+                                    .background(colors.primary)
+                                    .border(
+                                        width = ConversationComposerTokens.borderWidth,
+                                        color = colors.primary.copy(alpha = 0.48f),
+                                        shape = ConversationPillShape,
                                     ),
-                                contentAlignment = Alignment.CenterStart,
+                                contentAlignment = Alignment.Center,
                             ) {
-                                if (draft.isBlank()) {
-                                    Text(
-                                        text = if (isSending) {
-                                            stringResource(R.string.conversation_composer_sending)
-                                        } else {
-                                            stringResource(R.string.conversation_composer_placeholder)
-                                        },
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = colors.onSurfaceVariant.copy(
-                                            alpha = ConversationComposerTokens.placeholderAlpha,
-                                        ),
+                                IconButton(
+                                    onClick = {
+                                        mediaPlayer?.release()
+                                        mediaPlayer = null
+                                        onVoiceRecorded(previewUri)
+                                        completedRecordingFile = null
+                                        VoiceRecordingService.resetState()
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                    interactionSource = sendInteractionSource,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                                        contentDescription = stringResource(R.string.quick_compose_send_action),
+                                        modifier = Modifier
+                                            .size(ConversationComposerTokens.sendIconSize)
+                                            .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
+                                        tint = colors.onPrimary,
                                     )
                                 }
-                                innerTextField()
                             }
-                        },
-                    )
-                }
-                characterCounter?.let { counter ->
-                    Text(
-                        text = "${counter.remainingCharacters} / ${counter.segmentCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+                        }
+                    }
                 }
             }
-            Box(
-                modifier = Modifier
-                    .size(ConversationComposerTokens.sendButtonSize)
-                    .graphicsLayer {
-                        scaleX = sendScale
-                        scaleY = sendScale
-                    }
-                    .clip(ConversationPillShape)
-                    .background(sendContainerColor)
-                    .border(
-                        width = ConversationComposerTokens.borderWidth,
-                        color = sendBorderColor,
-                        shape = ConversationPillShape,
-                    ),
-                contentAlignment = Alignment.Center,
+        }
+        AnimatedVisibility(visible = showAttachmentMenu, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            val mediaPermission = if (Build.VERSION.SDK_INT >= 33) {
+                Manifest.permission.READ_MEDIA_IMAGES
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            var mediaPermissionGranted by remember { mutableStateOf(false) }
+
+            LaunchedEffect(showAttachmentMenu, mediaPermissionGranted) {
+                mediaPermissionGranted = ContextCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
+            }
+            val mediaPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted -> mediaPermissionGranted = granted }
+            val recentPhotos by produceState<List<Uri>>(
+                initialValue = emptyList(),
+                key1 = showAttachmentMenu,
+                key2 = mediaPermissionGranted,
             ) {
-                IconButton(
-                    onClick = {
-                        if (canSend) {
-                            onSend()
+                if (!mediaPermissionGranted) return@produceState
+                value = withContext(Dispatchers.IO) {
+                    val uris = mutableListOf<Uri>()
+                    try {
+                        context.contentResolver.query(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            arrayOf(MediaStore.Images.Media._ID),
+                            null, null,
+                            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                        )?.use { cursor ->
+                            while (cursor.moveToNext()) {
+                                val id = cursor.getLong(0)
+                                uris.add(
+                                    Uri.withAppendedPath(
+                                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                        id.toString()
+                                    )
+                                )
+                            }
                         }
-                    },
-                    enabled = canSend,
-                    modifier = Modifier.fillMaxSize(),
-                    interactionSource = sendInteractionSource,
+                    } catch (e: SecurityException) {
+                        Log.w("ConversationComposer", "MediaStore query denied", e)
+                    }
+                    uris
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(16.dp),
+                    ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = stringResource(R.string.conversation_send_message_content_description),
-                        modifier = Modifier
-                            .size(ConversationComposerTokens.sendIconSize)
-                            .offset(x = ConversationComposerTokens.sendIconHorizontalOffset),
-                        tint = sendContentColor,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 12.dp),
+                    ) {
+                        AttachmentOption(
+                            icon = Icons.Rounded.CameraAlt,
+                            label = stringResource(R.string.attachment_camera),
+                            selected = selectedAttachmentTab.value == AttachmentTab.CAMERA,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.CAMERA },
+                        )
+                        AttachmentOption(
+                            icon = Icons.Rounded.Photo,
+                            label = stringResource(R.string.attachment_gallery),
+                            selected = selectedAttachmentTab.value == AttachmentTab.GALLERY,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.GALLERY },
+                        )
+                        AttachmentOption(
+                            icon = Icons.Rounded.Mic,
+                            label = stringResource(R.string.attachment_voice),
+                            selected = selectedAttachmentTab.value == AttachmentTab.VOICE,
+                            iconOnly = true,
+                            onClick = { selectedAttachmentTab.value = AttachmentTab.VOICE },
+                        )
+                    }
+                    var pendingGallerySelection by remember(showAttachmentMenu) { mutableStateOf(emptySet<Uri>()) }
+                    when (selectedAttachmentTab.value) {
+                        AttachmentTab.CAMERA -> {
+                            CameraPreviewContent(
+                                onPhotoTaken = { uri ->
+                                    onImageSelected(selectedImageUris + uri)
+                                    onAttachmentMenuVisibilityChange(false)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(max = 320.dp),
+                            )
+                        }
+                        AttachmentTab.VOICE -> {
+                            VoiceRecordingContent(
+                                onVoiceRecorded = { uri ->
+                                    onAttachmentMenuVisibilityChange(false)
+                                    onVoiceRecorded(uri)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(max = 320.dp),
+                            )
+                        }
+                        AttachmentTab.GALLERY -> {
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (!mediaPermissionGranted) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.attachment_allow_access),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        FilledTonalButton(
+                                            onClick = { mediaPermissionLauncher.launch(mediaPermission) },
+                                        ) {
+                                            Text(stringResource(R.string.attachment_grant_permission))
+                                        }
+                                    }
+                                } else if (recentPhotos.isNotEmpty()) {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(3),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 240.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        recentPhotos.forEach { uri ->
+                                            item(key = uri.toString()) {
+                                                Box(modifier = Modifier.aspectRatio(1f)) {
+                                                    AsyncImage(
+                                                        model = uri,
+                                                        contentDescription = null,
+                                                        modifier = Modifier
+                                                            .matchParentSize()
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                pendingGallerySelection = if (uri in pendingGallerySelection) {
+                                                                    pendingGallerySelection - uri
+                                                                } else {
+                                                                    pendingGallerySelection + uri
+                                                                }
+                                                            },
+                                                        contentScale = ContentScale.Crop,
+                                                    )
+                                                    if (uri in pendingGallerySelection) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .matchParentSize()
+                                                                .background(Color.Black.copy(alpha = 0.3f))
+                                                                .clip(RoundedCornerShape(4.dp)),
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.CheckCircle,
+                                                                contentDescription = stringResource(R.string.attachment_selected),
+                                                                modifier = Modifier
+                                                                    .align(Alignment.TopEnd)
+                                                                    .padding(3.dp)
+                                                                    .size(20.dp),
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 100.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.attachment_no_recent_photos),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (pendingGallerySelection.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                onImageSelected(selectedImageUris + pendingGallerySelection.toList())
+                                                onAttachmentMenuVisibilityChange(false)
+                                            },
+                                        ) {
+                                            Text(stringResource(R.string.attachment_gallery_add, pendingGallerySelection.size))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+private enum class AttachmentTab { CAMERA, GALLERY, VOICE }
+
+@Composable
+private fun AttachmentOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean = false,
+    iconOnly: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .combinedClickable(
+                onClick = onClick,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+            )
+            .padding(if (iconOnly) 10.dp else 24.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(if (iconOnly) 28.dp else 40.dp),
+            tint = tint,
+        )
+        if (selected) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .width(if (iconOnly) 18.dp else 24.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+        if (!iconOnly) {
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = tint,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CameraPreviewContent(
+    onPhotoTaken: (Uri) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val hasCameraPermission = remember {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
+    var cameraPermissionGranted by remember { mutableStateOf(hasCameraPermission) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> cameraPermissionGranted = granted }
+
+    if (!cameraPermissionGranted) {
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.camera_permission_required),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            FilledTonalButton(
+                onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+            ) {
+                Text(stringResource(R.string.attachment_grant_permission))
+            }
+        }
+        return
+    }
+
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var useFrontCamera by remember { mutableStateOf(false) }
+    val cameraSelector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+    var previewViewProvider by remember { mutableStateOf<PreviewView?>(null) }
+
+    LaunchedEffect(cameraSelector) {
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            val provider = future.get()
+            val pv = previewViewProvider ?: return@addListener
+            val preview = Preview.Builder().build().also { it.surfaceProvider = pv.surfaceProvider }
+            val capture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+            imageCapture = capture
+            provider.unbindAll()
+            provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, capture)
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clipToBounds(),
+        ) {
+            key(cameraSelector) {
+                AndroidView(
+                    factory = { ctx ->
+                        PreviewView(ctx).also { previewViewProvider = it }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    val capture = imageCapture ?: return@IconButton
+                    val photoFile = createCameraImageFile(context)
+                    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+                    capture.takePicture(
+                        outputOptions,
+                        ContextCompat.getMainExecutor(context),
+                        object : ImageCapture.OnImageSavedCallback {
+                            override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                onPhotoTaken(FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", photoFile))
+                            }
+                            override fun onError(exception: ImageCaptureException) {
+                                Log.e("CameraPreview", "Photo capture failed", exception)
+                            }
+                        },
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.85f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CameraAlt,
+                    contentDescription = stringResource(R.string.attachment_take_photo),
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Black,
+                )
+            }
+
+            IconButton(
+                onClick = { useFrontCamera = !useFrontCamera },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.FlipCameraAndroid,
+                    contentDescription = "Switch camera",
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+}
+
+internal fun createCameraImageFile(context: android.content.Context): java.io.File {
+    val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+    val imageDir = java.io.File(context.cacheDir, "camera_photos")
+    imageDir.mkdirs()
+    return java.io.File(imageDir, "MMS_$timeStamp.jpg")
+}
+
+@Composable
+private fun VoiceRecordingContent(
+    onVoiceRecorded: (Uri) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var completedRecordingFile by remember { mutableStateOf<java.io.File?>(null) }
+    val serviceState by VoiceRecordingService.state.collectAsState()
+
+    val state: VoiceMode = when (val s = serviceState) {
+        is VoiceRecordingState.Idle -> {
+            val pf = completedRecordingFile
+            if (pf != null) VoiceMode.Preview(pf) else VoiceMode.Hidden
+        }
+        is VoiceRecordingState.Recording -> VoiceMode.Recording(
+            startMs = s.startMs,
+            amplitudes = s.amplitudes,
+            file = s.file,
+        )
+        is VoiceRecordingState.Completed -> {
+            completedRecordingFile = s.file
+            VoiceMode.Preview(s.file)
+        }
+    }
+
+    val hasRecordPermission = remember {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+    var recordPermissionGranted by remember { mutableStateOf(hasRecordPermission) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> recordPermissionGranted = granted }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (VoiceRecordingService.isRecording()) {
+                context.startService(
+                    Intent(context, VoiceRecordingService::class.java).apply {
+                        action = VoiceRecordingService.ACTION_CANCEL
+                    }
+                )
+            }
+            val cf = completedRecordingFile
+            if (cf != null) {
+                cf.delete()
+            }
+            VoiceRecordingService.resetState()
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        when (val s = state) {
+            is VoiceMode.Hidden -> {
+                if (!recordPermissionGranted) {
+                    Text(
+                        text = stringResource(R.string.voice_recording_permission_required),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(
+                        onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    ) {
+                        Text(stringResource(R.string.attachment_grant_permission))
+                    }
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                    IconButton(
+                        onClick = {
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_START
+                                }
+                            )
+                        },
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Mic,
+                            contentDescription = stringResource(R.string.voice_recording_start),
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.voice_recording_start),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            is VoiceMode.Recording -> {
+                val elapsedMs = System.currentTimeMillis() - s.startMs
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = formatRecordingDuration(elapsedMs),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .padding(horizontal = 24.dp),
+                ) {
+                    LiveRecordingWaveform(
+                        amplitudes = s.amplitudes,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = {
+                            context.startService(
+                                Intent(context, VoiceRecordingService::class.java).apply {
+                                    action = VoiceRecordingService.ACTION_STOP
+                                }
+                            )
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.voice_recording_stop),
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            is VoiceMode.Preview -> {
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", s.file)
+                var isPlaying by remember { mutableStateOf(false) }
+                var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+                var durationMs by remember { mutableIntStateOf(0) }
+                var currentPositionMs by remember { mutableIntStateOf(0) }
+                val progress = if (durationMs > 0) {
+                    (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                } else 0f
+
+                DisposableEffect(uri) {
+                    onDispose {
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                    }
+                }
+
+                LaunchedEffect(uri) {
+                    try {
+                        val tempPlayer = MediaPlayer().apply {
+                            setDataSource(context, uri)
+                            prepare()
+                        }
+                        durationMs = tempPlayer.duration
+                        tempPlayer.release()
+                    } catch (_: Exception) { }
+                }
+
+                LaunchedEffect(isPlaying) {
+                    while (isActive) {
+                        if (isPlaying) {
+                            mediaPlayer?.let { mp ->
+                                currentPositionMs = try { mp.currentPosition } catch (_: Exception) { 0 }
+                            }
+                            delay(33.milliseconds)
+                        } else {
+                            delay(100.milliseconds)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (isPlaying) {
+                                mediaPlayer?.pause()
+                                isPlaying = false
+                            } else {
+                                val player = mediaPlayer
+                                if (player == null) {
+                                    try {
+                                        val newPlayer = MediaPlayer().apply {
+                                            setDataSource(context, uri)
+                                            prepare()
+                                            durationMs = duration
+                                            setOnCompletionListener {
+                                                isPlaying = false
+                                                currentPositionMs = 0
+                                                seekTo(0)
+                                            }
+                                        }
+                                        mediaPlayer = newPlayer
+                                        newPlayer.start()
+                                        isPlaying = true
+                                    } catch (e: Exception) {
+                                        Log.e("VoicePreview", "Failed to create MediaPlayer", e)
+                                    }
+                                } else {
+                                    player.seekTo(currentPositionMs)
+                                    player.start()
+                                    isPlaying = true
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) stringResource(R.string.voice_message_stop) else stringResource(R.string.voice_message_play),
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    AudioWaveformPreview(
+                        uri = uri,
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(64.dp),
+                        targetBars = 56,
+                        progress = progress,
+                        onSeek = { fraction ->
+                            val newPos = (fraction * durationMs).toInt()
+                            mediaPlayer?.seekTo(newPos)
+                            currentPositionMs = newPos
+                        },
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = formatVoiceDuration(
+                            if (isPlaying || currentPositionMs > 0) currentPositionMs else 0
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                    Text(
+                        text = formatVoiceDuration(durationMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            s.file.delete()
+                            completedRecordingFile = null
+                            VoiceRecordingService.resetState()
+                        },
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = stringResource(R.string.action_cancel),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            onVoiceRecorded(uri)
+                            completedRecordingFile = null
+                            VoiceRecordingService.resetState()
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
+                            contentDescription = stringResource(R.string.quick_compose_send_action),
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveRecordingWaveform(
+    amplitudes: List<Float>,
+    modifier: Modifier = Modifier,
+) {
+    val color = MaterialTheme.colorScheme.error
+    Canvas(modifier = modifier.clip(RoundedCornerShape(8.dp))) {
+        if (amplitudes.isEmpty()) return@Canvas
+        val barCount = amplitudes.size
+        val w = size.width
+        val h = size.height
+        val midY = h / 2f
+        val maxBarHeight = h * 0.96f
+
+        val barWidth = w / barCount
+        val gap = barWidth * 0.22f
+        val drawWidth = (barWidth - gap).coerceAtLeast(1f)
+        val radius = CornerRadius(drawWidth / 2f)
+
+        for (i in amplitudes.indices) {
+            val amp = amplitudes[i].coerceIn(0f, 1f)
+            val barHeight = maxOf(amp * maxBarHeight, 1f)
+            val x = i * barWidth + gap / 2f
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(x, midY - barHeight / 2f),
+                size = Size(drawWidth, barHeight),
+                cornerRadius = radius,
+            )
+        }
+    }
+}
+
+private fun createVoiceFile(context: android.content.Context): java.io.File {
+    val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+    val voiceDir = java.io.File(context.cacheDir, "voice_messages")
+    voiceDir.mkdirs()
+    return java.io.File(voiceDir, "voice_$timeStamp.amr")
+}
+
+private fun formatRecordingDuration(ms: Long): String {
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
+}
+
+private fun formatVoiceDuration(ms: Int): String {
+    val totalSec = ms / 1000
+    val min = totalSec / 60
+    val sec = totalSec % 60
+    return "%d:%02d".format(min, sec)
 }

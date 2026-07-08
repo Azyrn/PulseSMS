@@ -138,8 +138,10 @@ class NewChatContactSelectionTest {
 
     @Test
     fun should_offset_conversation_timeline_scroll_target_after_header() {
-        assertEquals(1, conversationTimelineLazyListIndex(timelineIndex = 0))
-        assertEquals(5, conversationTimelineLazyListIndex(timelineIndex = 4))
+        assertEquals(1, conversationTimelineLazyListIndex(timelineIndex = 0, hasLoadMoreItem = false))
+        assertEquals(5, conversationTimelineLazyListIndex(timelineIndex = 4, hasLoadMoreItem = false))
+        assertEquals(2, conversationTimelineLazyListIndex(timelineIndex = 0, hasLoadMoreItem = true))
+        assertEquals(6, conversationTimelineLazyListIndex(timelineIndex = 4, hasLoadMoreItem = true))
     }
 
     @Test

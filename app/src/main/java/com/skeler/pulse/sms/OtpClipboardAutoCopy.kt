@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.runBlocking
 
 internal object OtpClipboardAutoCopy {
     private const val LOG_TAG = "OtpClipboardAutoCopy"
@@ -15,15 +14,14 @@ internal object OtpClipboardAutoCopy {
         return OtpCodeExtractor.extractCode(body)
     }
 
-    fun copyIncomingCodeIfEnabled(context: Context, body: String): Boolean {
+    suspend fun copyIncomingCodeIfEnabled(context: Context, body: String): Boolean {
         val appContext = context.applicationContext
-        val isEnabled = runBlocking {
-            MessageAutomationPreferences(appContext).isAutoCopyOtpCodesEnabled()
-        }
+        val isEnabled = MessageAutomationPreferences(appContext).isAutoCopyOtpCodesEnabled()
         val code = codeToCopy(body = body, isEnabled = isEnabled) ?: return false
         val clipboardManager = appContext.getSystemService(ClipboardManager::class.java) ?: return false
 
         return runCatching {
+            @Suppress("UseOfSetterInsteadOfPropertyAccess")
             clipboardManager.setPrimaryClip(ClipData.newPlainText(CLIPBOARD_LABEL, code))
             true
         }.getOrElse { error ->

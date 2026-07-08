@@ -60,10 +60,15 @@ class ThemePreferences(private val context: Context) {
     val password: Flow<String> =
         state.map { themeState -> themeState.password }.distinctUntilChanged()
 
+    val selectedLocale: Flow<String> =
+        state.map { themeState -> themeState.selectedLocale }.distinctUntilChanged()
+
     suspend fun currentState(): SerafinaThemeState {
         migrateLegacySecurityPassword()
         return preferencesToState(store.data.first())
     }
+
+    suspend fun currentLocale(): String = preferencesToState(store.data.first()).selectedLocale
 
     suspend fun setDynamicColorEnabled(enabled: Boolean) {
         store.edit { prefs -> prefs[KEY_DYNAMIC_COLOR] = enabled }
@@ -99,6 +104,10 @@ class ThemePreferences(private val context: Context) {
         }
     }
 
+    suspend fun setSelectedLocale(locale: String) {
+        store.edit { prefs -> prefs[KEY_LOCALE] = locale }
+    }
+
     companion object {
         private val Context.dataStore by preferencesDataStore(name = "serafina_theme_prefs")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color_enabled")
@@ -108,6 +117,7 @@ class ThemePreferences(private val context: Context) {
         private val KEY_REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
         private val KEY_FINGERPRINT_ENABLED = booleanPreferencesKey("fingerprint_enabled")
         private val KEY_PASSWORD = stringPreferencesKey("security_password")
+        private val KEY_LOCALE = stringPreferencesKey("selected_locale")
     }
 
     private fun preferencesToState(prefs: Preferences): SerafinaThemeState {
@@ -124,6 +134,7 @@ class ThemePreferences(private val context: Context) {
             reduceMotion = prefs[KEY_REDUCE_MOTION] ?: false,
             fingerprintEnabled = prefs[KEY_FINGERPRINT_ENABLED] ?: false,
             password = prefs[KEY_PASSWORD] ?: "",
+            selectedLocale = prefs[KEY_LOCALE] ?: "system",
         )
     }
 

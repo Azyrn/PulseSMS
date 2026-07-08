@@ -1,5 +1,6 @@
 package com.skeler.pulse.sms
 
+import android.net.Uri
 import android.provider.Telephony
 import androidx.compose.runtime.Immutable
 import java.time.Instant
@@ -15,13 +16,23 @@ internal fun callbackRequestCode(token: String, partIndex: Int): Int {
 @Immutable
 data class SystemSms(
     val id: Long,
+    val isMms: Boolean = false,
     val address: String,
     val body: String,
     val date: Long,
     val type: Int,
     val read: Boolean,
     val threadId: Long,
+    val status: Int = Telephony.Sms.STATUS_NONE,
+    val mmsPartUris: List<Uri> = emptyList(),
+    val mmsContentTypes: List<String> = emptyList(),
+    val priority: Int? = null,
+    val dateSent: Long? = null,
+    val fromAddress: String? = null,
+    val toAddress: String? = null,
 ) {
+    val mmsPartUri: Uri? get() = mmsPartUris.firstOrNull()
+    val mmsContentType: String? get() = mmsContentTypes.firstOrNull()
     val isInbound: Boolean get() = type == Telephony.Sms.MESSAGE_TYPE_INBOX
     val isOutbound: Boolean
         get() = type == Telephony.Sms.MESSAGE_TYPE_SENT ||
@@ -39,6 +50,8 @@ data class SmsThread(
     val date: Long,
     val messageCount: Int,
     val unreadCount: Int,
+    val lastMmsPartUri: Uri? = null,
+    val lastMmsContentType: String? = null,
 ) {
     val timestamp: Instant get() = Instant.ofEpochMilli(date)
 }

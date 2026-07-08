@@ -35,6 +35,7 @@ class ConversationTopBarLayoutTest {
                         messages = emptyList(),
                         unreadCount = 0,
                         importantCount = 0,
+                        totalMessageCount = 0,
                         avatarColors = avatarColors,
                         onBack = {},
                         onCallAddress = {},

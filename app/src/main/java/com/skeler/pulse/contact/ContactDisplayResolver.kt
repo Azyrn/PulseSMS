@@ -1,6 +1,7 @@
 package com.skeler.pulse.contact
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract
 import android.telephony.PhoneNumberUtils
@@ -11,6 +12,12 @@ import java.util.Collections
 private val displayNameCache: MutableMap<String, String> = Collections.synchronizedMap(
     object : LinkedHashMap<String, String>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<String, String>): Boolean = size > 500
+    }
+)
+
+private val photoUriCache: MutableMap<String, Uri?> = Collections.synchronizedMap(
+    object : LinkedHashMap<String, Uri?>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, Uri?>): Boolean = size > 500
     }
 )
 
@@ -30,6 +37,99 @@ internal fun displayNameFor(context: Context, address: String): String {
 
     displayNameCache[normalizedAddress] = displayName
     return displayName
+}
+
+internal fun contactNameOrNull(context: Context, address: String): String? {
+    val trimmedAddress = address.trim()
+    val normalizedAddress = trimmedAddress.normalizeAddressForDisplay()
+    if (normalizedAddress.isBlank()) return null
+    val lookupUri = Uri.withAppendedPath(
+        ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+        Uri.encode(normalizedAddress),
+    )
+    return try {
+        context.contentResolver.query(
+            lookupUri,
+            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)?.trim()?.ifBlank { null }
+            } else {
+                null
+            }
+        }
+    } catch (_: SecurityException) {
+        null
+    }
+}
+
+internal fun contactPhotoUriFor(context: Context, address: String): Uri? {
+    val trimmedAddress = address.trim()
+    val normalizedAddress = trimmedAddress.normalizeAddressForDisplay()
+    if (normalizedAddress.isBlank()) return null
+
+    photoUriCache[normalizedAddress]?.let { return it }
+
+    val lookupUri = Uri.withAppendedPath(
+        ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+        Uri.encode(normalizedAddress),
+    )
+    val photoUri = try {
+        context.contentResolver.query(
+            lookupUri,
+            arrayOf(ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)?.trim()?.takeIf(String::isNotBlank)?.let(Uri::parse)
+            } else {
+                null
+            }
+        }
+    } catch (_: SecurityException) {
+        null
+    }
+    photoUriCache[normalizedAddress] = photoUri
+    return photoUri
+}
+
+internal fun contactLookupIntent(context: Context, address: String): Intent? {
+    val normalizedAddress = address.trim().normalizeAddressForDisplay()
+    if (normalizedAddress.isBlank()) return null
+
+    val lookupUri = Uri.withAppendedPath(
+        ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+        Uri.encode(normalizedAddress),
+    )
+    return try {
+        context.contentResolver.query(
+            lookupUri,
+            arrayOf(ContactsContract.PhoneLookup._ID, ContactsContract.PhoneLookup.LOOKUP_KEY),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val contactId = cursor.getLong(0)
+                val lookupKey = cursor.getString(1)?.trim()?.takeIf(String::isNotBlank)
+                val contactUri = if (lookupKey != null) {
+                    ContactsContract.Contacts.getLookupUri(contactId, lookupKey)
+                } else {
+                    Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI, contactId.toString())
+                }
+                Intent(Intent.ACTION_VIEW).apply { data = contactUri }
+            } else {
+                null
+            }
+        }
+    } catch (_: SecurityException) {
+        null
+    }
 }
 
 internal fun String.normalizeAddressForDisplay(): String {
@@ -129,6 +229,13 @@ private fun lookupContactDisplayName(
 }
 
 private fun String.isLikelyBusinessSender(): Boolean = any(Char::isLetter)
+
+internal fun formatPhoneNumberForDisplay(address: String): String = formatPhoneNumber(address)
+
+internal fun formatAddressForDisplay(address: String): String {
+    val phone = address.removeBlockedKeyPrefix("phone:") ?: address
+    return formatPhoneNumber(phone)
+}
 
 private fun formatPhoneNumber(address: String): String {
     val trimmed = address.trim()

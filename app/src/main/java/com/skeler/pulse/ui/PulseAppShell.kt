@@ -3,9 +3,10 @@ package com.skeler.pulse.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.net.Uri as AndroidUri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.core.app.NotificationManagerCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,9 +34,12 @@ import androidx.compose.ui.platform.LocalContext
 import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.PulseLaunchRequest
 import com.skeler.pulse.contact.displayNameFor
+import com.skeler.pulse.contact.matchesBlockedSenderKey
+import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.design.util.rememberReducedMotionEnabled
 import com.skeler.pulse.security.auth.checkBiometricAvailability
+import com.skeler.pulse.R
 import com.skeler.pulse.shouldHandleOpenNewChatRequest
 
 @Composable
@@ -47,7 +52,7 @@ fun PulseAppShell(
     onRequestNewChat: () -> Unit = {},
     onRequestSmsPermissions: () -> Unit = {},
     onOpenConversation: (String, Long?) -> Unit,
-    onSendMessage: (String, String, Int?) -> Unit,
+    onSendMessage: (String, String, List<AndroidUri>, Int?) -> Unit,
     themeViewModel: SerafinaThemeViewModel,
     onRequestDefaultSms: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -60,7 +65,10 @@ fun PulseAppShell(
     var pendingForwardDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var newChatQuery by rememberSaveable { mutableStateOf("") }
     var lastHandledNewChatRequestKey by rememberSaveable { mutableIntStateOf(0) }
-    var consumedLaunchRequest by rememberSaveable { mutableStateOf(false) }
+    var consumedLaunchRequest by remember { mutableStateOf(false) }
+    LaunchedEffect(launchRequest) {
+        if (launchRequest != null) consumedLaunchRequest = false
+    }
     var isAuthenticated by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val shellThemeState by themeViewModel.state.collectAsState()
@@ -77,6 +85,7 @@ fun PulseAppShell(
     val settingsListState = rememberLazyListState()
     val blockedNumbersListState = rememberLazyListState()
     val newChatListState = rememberLazyListState()
+    val scheduledMessagesListState = rememberLazyListState()
 
     LaunchedEffect(launchRequest, accessState, consumedLaunchRequest) {
         if (!accessState.isReady || consumedLaunchRequest) return@LaunchedEffect
@@ -88,6 +97,7 @@ fun PulseAppShell(
             activeAddress = requestedAddress
             activeConversationTitle = request.conversationTitle.ifBlank { displayNameFor(context, requestedAddress) }
             activeSubscriptionId = null
+            NotificationManagerCompat.from(context).cancel(requestedAddress.hashCode() and 0x7fffffff)
             onOpenConversation(requestedAddress, null)
             backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
         } else {
@@ -169,21 +179,28 @@ fun PulseAppShell(
                                 activeConversationTitle = displayNameFor(context, address)
                                 activeSubscriptionId = null
                                 conversationDraftSeed = ""
+                                NotificationManagerCompat.from(context).cancel(address.hashCode() and 0x7fffffff)
                                 onOpenConversation(address, threadId)
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
+                                backStack = backStack + DESTINATION_CONVERSATION
                             },
                             onOpenArchivedChats = {
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_ARCHIVED)
+                                backStack = backStack + DESTINATION_ARCHIVED
                             },
                             onOpenSettings = {
-                                backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS)
+                                backStack = backStack + DESTINATION_SETTINGS
                             },
                             onOpenNewChat = onRequestNewChat,
                             onRefreshInbox = smsViewModel::refreshInbox,
                             onTogglePinned = smsViewModel::toggleThreadPinned,
+                            onSetPinned = smsViewModel::setThreadPinned,
                             onToggleArchived = smsViewModel::toggleThreadArchived,
+                            onSetArchived = smsViewModel::setThreadArchived,
                             onSetThreadUnread = smsViewModel::setThreadUnread,
                             onBlockThread = smsViewModel::blockThread,
+                            onSetThreadMuted = { address, muted ->
+                                if (muted) smsViewModel.muteThread(address)
+                                else smsViewModel.unmuteThread(address)
+                            },
                             onDeleteThread = smsViewModel::deleteThread,
                         )
                     }
@@ -197,7 +214,7 @@ fun PulseAppShell(
                         query = newChatQuery,
                         onQueryChange = { newChatQuery = it },
                         onBack = {
-                            backStack = listOf(DESTINATION_INBOX)
+                            navigateBack()
                         },
                         onStartConversation = { recipient, subscriptionId ->
                             activeAddress = recipient.address
@@ -206,7 +223,7 @@ fun PulseAppShell(
                             conversationDraftSeed = pendingForwardDraft.orEmpty()
                             pendingForwardDraft = null
                             onOpenConversation(recipient.address, null)
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT, DESTINATION_CONVERSATION)
+                            backStack = backStack + DESTINATION_CONVERSATION
                         },
                     )
                 }
@@ -214,6 +231,12 @@ fun PulseAppShell(
                 DESTINATION_CONVERSATION -> {
                     val conversationState by smsViewModel.conversationState.collectAsState()
                     val sendState by smsViewModel.sendState.collectAsState()
+                    val inboxState by smsViewModel.inboxState.collectAsState()
+                    LaunchedEffect(activeAddress, conversationState.messages.size) {
+                        if (!conversationState.loading && activeAddress.isNotBlank()) {
+                            NotificationManagerCompat.from(context).cancel(activeAddress.hashCode() and 0x7fffffff)
+                        }
+                    }
                     RealConversationScreen(
                         title = activeConversationTitle.ifBlank { displayNameFor(context, activeAddress) },
                         address = activeAddress,
@@ -230,22 +253,64 @@ fun PulseAppShell(
                         } else {
                             emptySet()
                         },
+                        messageReactions = if (conversationState.address == activeAddress) {
+                            conversationState.messageReactions
+                        } else {
+                            emptyMap()
+                        },
+                        unmatchedReactions = if (conversationState.address == activeAddress) {
+                            conversationState.unmatchedReactions
+                        } else {
+                            emptyList()
+                        },
                         isReplyable = conversationReplyabilityForActiveRoute(
                             activeAddress = activeAddress,
                             conversationState = conversationState,
                         ),
+                        hasMoreMessages = conversationState.hasMoreMessages,
+                        loadingMore = conversationState.loadingMore,
+                        totalMessageCount = conversationState.totalMessageCount,
                         sendState = sendState,
+                        scheduledMessages = conversationState.scheduledMessages,
                         onBack = {
                             navigateBack()
                         },
                         onSubscriptionIdChange = { activeSubscriptionId = it },
-                        onSend = { body ->
-                            onSendMessage(activeAddress, body, activeSubscriptionId)
+                        onSend = { body, imageUris ->
+                            onSendMessage(activeAddress, body, imageUris, activeSubscriptionId)
+                        },
+                        onSendVoice = { uri ->
+                            smsViewModel.sendVoiceMessage(activeAddress, uri)
                         },
                         onRetrySend = smsViewModel::retrySend,
                         onClearSendState = smsViewModel::clearSendState,
                         onDraftConsumed = { conversationDraftSeed = "" },
+                        onDraftChange = { text -> smsViewModel.saveDraft(activeAddress, text) },
+                        onScheduleMessage = { body, time ->
+                            smsViewModel.scheduleMessage(activeAddress, body, time, activeSubscriptionId)
+                        },
+                        onCancelScheduledMessage = smsViewModel::cancelScheduledMessage,
                         onDeleteMessage = smsViewModel::deleteMessage,
+                        onDeleteMessages = smsViewModel::deleteMessages,
+                        onDeleteConversation = {
+                            smsViewModel.deleteThread(null, activeAddress)
+                            smsViewModel.closeConversation()
+                            backStack = listOf(DESTINATION_INBOX)
+                        },
+                        onMuteConversation = {
+                            val mutedKey = activeAddress.toBlockedSenderKeyOrNull()
+                            val isCurrentlyMuted = mutedKey != null &&
+                                inboxState.mutedAddresses.any { it.matchesBlockedSenderKey(mutedKey) }
+                            if (isCurrentlyMuted) {
+                                smsViewModel.unmuteThread(activeAddress)
+                            } else {
+                                smsViewModel.muteThread(activeAddress)
+                            }
+                        },
+                        isMuted = inboxState.mutedAddresses.let { muted ->
+                            val mutedKey = activeAddress.toBlockedSenderKeyOrNull()
+                            mutedKey != null && muted.any { it.matchesBlockedSenderKey(mutedKey) }
+                        },
                         onBlockConversation = {
                             smsViewModel.blockThread(activeAddress)
                             smsViewModel.closeConversation()
@@ -259,6 +324,8 @@ fun PulseAppShell(
                         onCallAddress = {
                             openDialer(context, activeAddress)
                         },
+                        onLoadMoreMessages = smsViewModel::loadMoreMessages,
+                        onSetMessageReaction = smsViewModel::setMessageReaction,
                     )
                 }
 
@@ -274,14 +341,16 @@ fun PulseAppShell(
                         },
                         onRequestDefaultSms = onRequestDefaultSms,
                         onOpenArchivedChats = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED)
+                            backStack = backStack + DESTINATION_ARCHIVED
                         },
                         onOpenSecurity = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_SECURITY)
+                            backStack = backStack + DESTINATION_SECURITY
                         },
                         onOpenBlockedNumbers = {
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_BLOCKED_NUMBERS)
+                            backStack = backStack + DESTINATION_BLOCKED_NUMBERS
                         },
+                        onExportBackup = { uri -> smsViewModel.exportBackupToUri(uri) },
+                        onImportBackup = { uri -> smsViewModel.importBackupFromUri(uri) },
                         isDefaultSmsApp = inboxState.isDefaultSmsApp,
                     )
                 }
@@ -289,6 +358,8 @@ fun PulseAppShell(
                 DESTINATION_ARCHIVED -> {
                     val inboxState by smsViewModel.inboxState.collectAsState()
                     ArchivedChatsScreen(
+                        drafts = inboxState.drafts,
+                        scheduledAddresses = inboxState.scheduledAddresses,
                         threads = inboxState.archivedThreads,
                         pinnedThreadIds = inboxState.pinnedThreadIds,
                         archivedThreadIds = inboxState.archivedThreadIds,
@@ -304,11 +375,13 @@ fun PulseAppShell(
                             activeSubscriptionId = null
                             conversationDraftSeed = ""
                             onOpenConversation(address, threadId)
-                            backStack = listOf(DESTINATION_INBOX, DESTINATION_SETTINGS, DESTINATION_ARCHIVED, DESTINATION_CONVERSATION)
+                            backStack = backStack + DESTINATION_CONVERSATION
                         },
                         onRefreshInbox = smsViewModel::refreshInbox,
                         onTogglePinned = smsViewModel::toggleThreadPinned,
+                        onSetPinned = smsViewModel::setThreadPinned,
                         onToggleArchived = smsViewModel::toggleThreadArchived,
+                        onSetArchived = smsViewModel::setThreadArchived,
                         onSetThreadUnread = smsViewModel::setThreadUnread,
                         onBlockThread = smsViewModel::blockThread,
                         onDeleteThread = smsViewModel::deleteThread,
@@ -357,11 +430,11 @@ fun PulseAppShell(
 
 private fun openDialer(context: Context, address: String) {
     val dialableNumber = address.toDialablePhoneNumberOrNull() ?: return
-    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", dialableNumber, null))
+    val dialIntent = Intent(Intent.ACTION_DIAL, AndroidUri.fromParts("tel", dialableNumber, null))
     try {
         context.startActivity(dialIntent)
     } catch (exception: ActivityNotFoundException) {
-        Toast.makeText(context, "No call app available", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.no_call_app_available), Toast.LENGTH_SHORT).show()
     }
 }
 
