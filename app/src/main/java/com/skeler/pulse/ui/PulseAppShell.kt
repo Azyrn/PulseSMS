@@ -35,6 +35,7 @@ import com.skeler.pulse.InboxAccessState
 import com.skeler.pulse.PulseLaunchRequest
 import com.skeler.pulse.contact.displayNameFor
 import com.skeler.pulse.contact.matchesBlockedSenderKey
+import com.skeler.pulse.contact.normalizeAddressForDisplay
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
 import com.skeler.pulse.design.util.rememberReducedMotionEnabled
@@ -91,7 +92,7 @@ fun PulseAppShell(
         if (!accessState.isReady || consumedLaunchRequest) return@LaunchedEffect
         val request = launchRequest ?: return@LaunchedEffect
         consumedLaunchRequest = true
-        val requestedAddress = request.conversationAddress
+        val requestedAddress = request.conversationAddress.normalizeAddressForDisplay()
         conversationDraftSeed = request.draftBody
         if (requestedAddress.isNotBlank()) {
             activeAddress = requestedAddress
@@ -217,12 +218,12 @@ fun PulseAppShell(
                             navigateBack()
                         },
                         onStartConversation = { recipient, subscriptionId ->
-                            activeAddress = recipient.address
+                            activeAddress = recipient.address.normalizeAddressForDisplay()
                             activeConversationTitle = displayNameFor(context, recipient.address)
                             activeSubscriptionId = subscriptionId
                             pendingForwardDraft?.let { conversationDraftSeed = it }
                             pendingForwardDraft = null
-                            onOpenConversation(recipient.address, null)
+                            onOpenConversation(recipient.address.normalizeAddressForDisplay(), null)
                             backStack = backStack + DESTINATION_CONVERSATION
                         },
                     )
