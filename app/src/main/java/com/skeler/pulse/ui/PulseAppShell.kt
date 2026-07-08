@@ -105,6 +105,7 @@ fun PulseAppShell(
             activeAddress = ""
             activeConversationTitle = ""
             activeSubscriptionId = null
+            newChatQuery = ""
             backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT)
         }
         onLaunchRequestConsumed()
@@ -114,6 +115,7 @@ fun PulseAppShell(
         if (!shouldHandleOpenNewChatRequest(openNewChatRequestKey, lastHandledNewChatRequestKey, accessState)) {
             return@LaunchedEffect
         }
+        newChatQuery = ""
         backStack = listOf(DESTINATION_INBOX, DESTINATION_NEW_CHAT)
         lastHandledNewChatRequestKey = openNewChatRequestKey
     }
