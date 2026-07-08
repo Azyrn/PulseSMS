@@ -220,7 +220,7 @@ fun PulseAppShell(
                             activeAddress = recipient.address
                             activeConversationTitle = displayNameFor(context, recipient.address)
                             activeSubscriptionId = subscriptionId
-                            conversationDraftSeed = pendingForwardDraft.orEmpty()
+                            pendingForwardDraft?.let { conversationDraftSeed = it }
                             pendingForwardDraft = null
                             onOpenConversation(recipient.address, null)
                             backStack = backStack + DESTINATION_CONVERSATION
