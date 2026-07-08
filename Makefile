@@ -17,7 +17,7 @@ endif
 
 # --- Variables ---
 GRADLE_OPTS := --configuration-cache
-GRADLE := _JAVA_OPTIONS="-Djava.net.preferIPv6Addresses=true" ./gradlew $(GRADLE_OPTS)
+GRADLE := ./gradlew $(GRADLE_OPTS)
 ADB := adb
 
 PACKAGE_NAME := com.skeler.pulse
