@@ -226,7 +226,7 @@ fun PulseAppShell(
                             pendingForwardDraft?.let { conversationDraftSeed = it }
                             pendingForwardDraft = null
                             onOpenConversation(recipient.address.normalizeAddressForDisplay(), null)
-                            backStack = backStack + DESTINATION_CONVERSATION
+                            backStack = listOf(DESTINATION_INBOX, DESTINATION_CONVERSATION)
                         },
                     )
                 }
