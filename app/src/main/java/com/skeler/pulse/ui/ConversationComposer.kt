@@ -18,6 +18,12 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.FallbackStrategy
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,6 +46,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -107,11 +114,16 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -135,6 +147,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -209,6 +222,7 @@ internal fun ConversationComposer(
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
     onVoiceRecorded: (Uri) -> Unit = {},
+    onVideoRecorded: (Uri) -> Unit = {},
     showAttachmentMenu: Boolean = false,
     onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -292,6 +306,34 @@ internal fun ConversationComposer(
     )
     val capsuleShape = ConversationCapsuleShape
     val context = LocalContext.current
+
+    var showVideoOverlay by remember { mutableStateOf(false) }
+    var pendingVideoStart by remember { mutableStateOf(false) }
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val cameraOk = grants[Manifest.permission.CAMERA] == true
+        val micOk = grants[Manifest.permission.RECORD_AUDIO] == true
+        if (cameraOk && micOk && pendingVideoStart) {
+            pendingVideoStart = false
+            showVideoOverlay = true
+        }
+        pendingVideoStart = false
+    }
+
+    fun startVideoRecordingWithPermission() {
+        val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (hasCamera && hasMic) {
+            showVideoOverlay = true
+        } else {
+            pendingVideoStart = true
+            videoPermissionLauncher.launch(
+                arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            )
+        }
+    }
+
     val hasCounter = characterCounter?.let { c ->
         c.segmentCount > 1 || c.remainingCharacters < 20
     } == true
@@ -542,22 +584,50 @@ internal fun ConversationComposer(
                             }
                         }
                     } else if (!isVoiceTabActive) {
-                        IconButton(
-                            onClick = {
-                                context.startService(
-                                    Intent(context, VoiceRecordingService::class.java).apply {
-                                        action = VoiceRecordingService.ACTION_START
-                                    }
-                                )
-                            },
-                            modifier = Modifier.size(ConversationComposerTokens.sendButtonSize),
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Mic,
-                                contentDescription = stringResource(R.string.voice_recording_start),
-                                modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
-                                tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(ConversationComposerTokens.sendButtonSize)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onTap = {
+                                                selectedAttachmentTab.value = AttachmentTab.CAMERA
+                                                onAttachmentMenuVisibilityChange(true)
+                                            },
+                                            onLongPress = { startVideoRecordingWithPermission() },
+                                        )
+                                    }
+                                    .clip(CircleShape)
+                                    .background(colors.surfaceContainerHigh.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CameraAlt,
+                                    contentDescription = stringResource(R.string.video_recording_hold_hint),
+                                    modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                                    tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    context.startService(
+                                        Intent(context, VoiceRecordingService::class.java).apply {
+                                            action = VoiceRecordingService.ACTION_START
+                                        }
+                                    )
+                                },
+                                modifier = Modifier.size(ConversationComposerTokens.sendButtonSize),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Mic,
+                                    contentDescription = stringResource(R.string.voice_recording_start),
+                                    modifier = Modifier.size(ConversationComposerTokens.sendIconSize),
+                                    tint = colors.onSurfaceVariant.copy(alpha = ConversationComposerTokens.INACTIVE_ALPHA),
+                                )
+                            }
                         }
                     }
                 }
@@ -1025,6 +1095,16 @@ internal fun ConversationComposer(
                 }
             }
         }
+    }
+
+    if (showVideoOverlay) {
+        VideoRecordingOverlay(
+            onVideoRecorded = { uri ->
+                showVideoOverlay = false
+                onVideoRecorded(uri)
+            },
+            onCancel = { showVideoOverlay = false },
+        )
     }
 }
 
@@ -1578,4 +1658,448 @@ private fun formatVoiceDuration(ms: Int): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "%d:%02d".format(min, sec)
+}
+
+private enum class VideoPhase { Recording, Preview }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoRecordingOverlay(
+    onVideoRecorded: (Uri) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var phase by remember { mutableStateOf(VideoPhase.Recording) }
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingStartTime by remember { mutableLongStateOf(0L) }
+    var elapsedTimeMs by remember { mutableLongStateOf(0L) }
+    var activeRecording by remember { mutableStateOf<androidx.camera.video.Recording?>(null) }
+    val videoFile = remember {
+        val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+        val videoDir = java.io.File(context.cacheDir, "video_messages")
+        videoDir.mkdirs()
+        java.io.File(videoDir, "video_$timeStamp.mp4")
+    }
+
+    val videoCapture = remember {
+        val recorder = Recorder.Builder()
+            .setQualitySelector(
+                QualitySelector.from(
+                    Quality.SD,
+                    FallbackStrategy.higherQualityOrLowerThan(Quality.SD),
+                ),
+            )
+            .build()
+        VideoCapture.withOutput(recorder)
+    }
+    val previewView = remember { PreviewView(context) }
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+
+    fun stopRecording() {
+        activeRecording?.stop()
+        activeRecording = null
+    }
+
+    fun deleteAndCancel() {
+        videoFile.delete()
+        onCancel()
+    }
+
+    LaunchedEffect(Unit) {
+        val cameraProvider = cameraProviderFuture.get()
+        val preview = Preview.Builder().build().also {
+            it.surfaceProvider = previewView.surfaceProvider
+        }
+        try {
+            cameraProvider.unbindAll()
+            cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                videoCapture,
+            )
+            val outputOptions = FileOutputOptions.Builder(videoFile).build()
+            val recording = videoCapture.output.prepareRecording(context, outputOptions)
+                .apply {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        withAudioEnabled()
+                    }
+                }
+                .start(ContextCompat.getMainExecutor(context)) { event ->
+                    when (event) {
+                        is androidx.camera.video.VideoRecordEvent.Start -> {
+                            isRecording = true
+                            recordingStartTime = System.currentTimeMillis()
+                        }
+                        is androidx.camera.video.VideoRecordEvent.Finalize -> {
+                            isRecording = false
+                            activeRecording = null
+                            if (!event.hasError() && videoFile.exists() && videoFile.length() > 0L) {
+                                phase = VideoPhase.Preview
+                            } else {
+                                deleteAndCancel()
+                            }
+                        }
+                    }
+                }
+            activeRecording = recording
+        } catch (e: Exception) {
+            Log.e("VideoRecordingOverlay", "Camera bind failed", e)
+            deleteAndCancel()
+        }
+    }
+
+    LaunchedEffect(isRecording) {
+        while (isRecording) {
+            elapsedTimeMs = System.currentTimeMillis() - recordingStartTime
+            if (elapsedTimeMs >= 30_000L) {
+                stopRecording()
+            }
+            delay(200L)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (phase != VideoPhase.Preview) {
+                stopRecording()
+            }
+            if (videoFile.exists() && phase != VideoPhase.Preview) {
+                videoFile.delete()
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            when (phase) {
+                VideoPhase.Recording -> {
+                    if (isRecording) stopRecording() else deleteAndCancel()
+                }
+                VideoPhase.Preview -> deleteAndCancel()
+            }
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        when (phase) {
+            VideoPhase.Recording -> {
+                RecordingPhase(
+                    previewView = previewView,
+                    isRecording = isRecording,
+                    elapsedTimeMs = elapsedTimeMs,
+                    onStopRecording = { stopRecording() },
+                    onCancel = ::deleteAndCancel,
+                )
+            }
+            VideoPhase.Preview -> {
+                PreviewPhase(
+                    videoFile = videoFile,
+                    onSend = {
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", videoFile)
+                        onVideoRecorded(uri)
+                    },
+                    onDelete = ::deleteAndCancel,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingPhase(
+    previewView: PreviewView,
+    isRecording: Boolean,
+    elapsedTimeMs: Long,
+    onStopRecording: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp, start = 16.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Cancel",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            if (isRecording) {
+                val secs = (elapsedTimeMs / 1000).toInt()
+                Text(
+                    text = "%d:%02d".format(secs / 60, secs % 60),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Spacer(Modifier.size(28.dp))
+        }
+
+        if (isRecording) {
+            val maxDurationMs = 30_000L
+            val progress = (elapsedTimeMs.toFloat() / maxDurationMs).coerceIn(0f, 1f)
+            val barColor = when {
+                progress < 0.6f -> Color(0xFF4CAF50)
+                progress < 0.85f -> Color(0xFFFFC107)
+                else -> Color(0xFFF44336)
+            }
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 44.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = barColor,
+                trackColor = Color.White.copy(alpha = 0.2f),
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isRecording) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                        .clickable { onStopRecording() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Stop,
+                        contentDescription = stringResource(R.string.video_recording_stop),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.3f))
+                        .border(3.dp, Color.White, CircleShape),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewPhase(
+    videoFile: java.io.File,
+    onSend: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var isFinished by remember { mutableStateOf(false) }
+    var durationMs by remember { mutableIntStateOf(0) }
+    var currentPositionMs by remember { mutableIntStateOf(0) }
+    var isSeeking by remember { mutableStateOf(false) }
+    val videoUri = remember(videoFile) {
+        FileProvider.getUriForFile(context, "${context.packageName}.mmsfileprovider", videoFile)
+    }
+
+    val progress = if (durationMs > 0) {
+        (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else 0f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        val videoView = remember {
+            android.widget.VideoView(context).apply {
+                setVideoURI(videoUri)
+                setOnPreparedListener { mp ->
+                    durationMs = mp.duration
+                    start()
+                    isPlaying = true
+                    isFinished = false
+                }
+                setOnCompletionListener {
+                    isPlaying = false
+                    isFinished = true
+                    currentPositionMs = durationMs
+                }
+            }
+        }
+
+        DisposableEffect(Unit) {
+            onDispose { videoView.stopPlayback() }
+        }
+
+        LaunchedEffect(Unit) {
+            while (isActive) {
+                if (videoView.isPlaying && !isSeeking) {
+                    currentPositionMs = videoView.currentPosition
+                }
+                delay(200L)
+            }
+        }
+
+        AndroidView(
+            factory = { videoView },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Center play / replay button
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable {
+                    if (isFinished) {
+                        videoView.seekTo(0)
+                        videoView.start()
+                        isPlaying = true
+                        isFinished = false
+                        currentPositionMs = 0
+                    } else if (isPlaying) {
+                        videoView.pause()
+                        isPlaying = false
+                    } else {
+                        videoView.start()
+                        isPlaying = true
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (isFinished) Icons.Rounded.PlayArrow else Icons.Rounded.PlayArrow,
+                        contentDescription = if (isFinished) "Replay" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            }
+        }
+
+        // Top bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp, start = 16.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.action_cancel),
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            val secs = (currentPositionMs / 1000).toInt()
+            val total = (durationMs / 1000).toInt()
+            Text(
+                text = "%d:%02d / %d:%02d".format(secs / 60, secs % 60, total / 60, total % 60),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.size(28.dp))
+        }
+
+        // Seekable progress bar
+        Slider(
+            value = progress,
+            onValueChange = { fraction ->
+                isSeeking = true
+                currentPositionMs = (fraction * durationMs).toInt()
+            },
+            onValueChangeFinished = {
+                videoView.seekTo(currentPositionMs)
+                if (isFinished) {
+                    videoView.start()
+                    isPlaying = true
+                    isFinished = false
+                }
+                isSeeking = false
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(top = 100.dp)
+                .padding(horizontal = 16.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color.White,
+                inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+            ),
+        )
+
+        // Bottom buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp, start = 32.dp, end = 32.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledTonalIconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = stringResource(R.string.action_cancel),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .border(3.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.48f), CircleShape)
+                    .clickable { onSend() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = stringResource(R.string.quick_compose_send_action),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+        }
+    }
 }

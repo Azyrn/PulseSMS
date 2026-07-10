@@ -11,6 +11,8 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
@@ -278,6 +280,20 @@ internal class SystemSmsSender(
         }
     }
 
+    suspend fun sendVideoMms(address: String, text: String, videoUri: Uri) = withContext(ioDispatcher) {
+        try {
+            val maxSizeKb = MmsPreferences(context).getMaxImageSizeKb()
+            val videoBytes = context.contentResolver.openInputStream(videoUri)?.use { it.readBytes() }
+                ?: throw RuntimeException("Cannot read video file")
+            if (videoBytes.isEmpty()) throw RuntimeException("Empty video recording")
+            val compressed = compressVideoForMms(videoBytes, maxSizeKb)
+            sendVideoMmsInternal(address, text, compressed)
+        } catch (e: Exception) {
+            Log.e("SystemSmsSender", "sendVideoMms failed", e)
+            throw e
+        }
+    }
+
     private suspend fun sendVoiceMmsInternal(address: String, text: String, audioBytes: ByteArray) {
         val threadId = Telephony.Threads.getOrCreateThreadId(context, address)
         val now = System.currentTimeMillis()
@@ -385,6 +401,173 @@ internal class SystemSmsSender(
         } finally {
             context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         }
+    }
+
+    private suspend fun sendVideoMmsInternal(address: String, text: String, videoBytes: ByteArray) {
+        val threadId = Telephony.Threads.getOrCreateThreadId(context, address)
+        val now = System.currentTimeMillis()
+
+        val parts = mutableListOf<MMSPart>()
+        if (text.isNotBlank()) {
+            parts.add(MMSPart().apply {
+                MimeType = "text/plain"
+                Name = "text.txt"
+                Data = text.toByteArray()
+            })
+        }
+        parts.add(MMSPart().apply {
+            MimeType = "video/mp4"
+            Name = "video_${now}.mp4"
+            Data = videoBytes
+        })
+
+        val myNumber = MyPhoneNumberProvider.detect(context)
+            ?: throw RuntimeException("Cannot detect own phone number. MMS requires a valid SIM.")
+        val messageInfo = Transaction.getBytes(
+            context,
+            false,
+            myNumber,
+            arrayOf(address),
+            parts.toTypedArray(),
+            text.take(40).ifBlank { null },
+        )
+        val pduBytes = messageInfo.bytes ?: throw RuntimeException("PDU generation failed — video may be too large")
+
+        val messageUri = insertVideoMmsRecord(threadId, address, text, videoBytes.size, pduBytes.size, now, myNumber, videoBytes)
+
+        withTimeout(15_000L) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                com.klinker.android.send_message.ApnUtils.initDefaultApns(context) { cont.resume(Unit) }
+            }
+        }
+
+        runCatching {
+            val sp = context.getSharedPreferences(context.packageName + "_preferences", Context.MODE_PRIVATE)
+            val spMmsc = sp.getString("mmsc_url", "")
+            val spProxy = sp.getString("mms_proxy", "")
+            val spPort = sp.getString("mms_port", "")
+            if (!spMmsc.isNullOrBlank() || !spProxy.isNullOrBlank()) {
+                MmsPreferences(context).setMmsProxy(spProxy, spPort, spMmsc)
+            }
+        }
+
+        val mmsPrefs = MmsPreferences(context)
+        var mmsc = mmsPrefs.getMmscUrl()
+        var mmsProxy = mmsPrefs.getMmsProxy()
+        var mmsPort = mmsPrefs.getMmsPort()
+
+        if (mmsc.isNullOrBlank()) {
+            Log.w("SystemSmsSender", "ApnUtils gave no MMSC, querying system APN provider")
+            val subId = try { android.telephony.SubscriptionManager.getDefaultSubscriptionId() } catch (_: Exception) { -1 }
+            if (subId >= 0) {
+                val apnUri = Telephony.Carriers.CONTENT_URI.buildUpon()
+                    .appendPath("subId").appendPath(subId.toString()).build()
+                val cursor = try {
+                    contentResolver.query(apnUri, null, "type LIKE '%mms%'", null, null)
+                } catch (_: Exception) { null }
+                cursor?.use { c ->
+                    while (c.moveToNext()) {
+                        val url = c.getString(c.getColumnIndexOrThrow("mmsc"))
+                        if (!url.isNullOrBlank()) {
+                            mmsc = url
+                            mmsProxy = c.getString(c.getColumnIndexOrThrow("mmsproxy"))
+                            mmsPort = c.getString(c.getColumnIndexOrThrow("mmsport"))
+                            runCatching { mmsPrefs.setMmsProxy(mmsProxy, mmsPort, mmsc) }
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mmsc.isNullOrBlank()) {
+            Log.e("SystemSmsSender", "No MMSC found, cannot send MMS")
+            throw RuntimeException("No MMSC configured")
+        }
+
+        try {
+            val body = sendPduToMmsc(pduBytes, mmsc, if (mmsProxy.isNullOrBlank()) null else mmsProxy, mmsPort?.toIntOrNull() ?: 80)
+            if (messageUri != null) {
+                val sendConf = if (body != null) PduParser(body).parse() as? SendConf else null
+                val responseStatus = sendConf?.responseStatus ?: 128
+                if (responseStatus != 128) {
+                    throw RuntimeException("MMS rejected by MMSC: responseStatus=$responseStatus")
+                }
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_SENT)
+                    put("st", 128)
+                    sendConf?.messageId?.let { put("m_id", String(it)) }
+                }, null, null)
+            }
+        } catch (e: Exception) {
+            if (messageUri != null) {
+                contentResolver.update(messageUri, ContentValues().apply {
+                    put("msg_box", Telephony.Mms.MESSAGE_BOX_FAILED)
+                    put("st", 129)
+                }, null, null)
+            }
+            throw e
+        } finally {
+            context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
+        }
+    }
+
+    private fun insertVideoMmsRecord(
+        threadId: Long,
+        address: String,
+        text: String,
+        videoSize: Int,
+        pduSize: Int,
+        now: Long,
+        myNumber: String,
+        videoBytes: ByteArray,
+    ): Uri? {
+        val mmsValues = ContentValues().apply {
+            put("thread_id", threadId)
+            put("date", now / 1000L)
+            put("msg_box", Telephony.Mms.MESSAGE_BOX_OUTBOX)
+            put("read", 1)
+            put("sub", text.take(40).ifBlank { null })
+            put("sub_cs", 106)
+            put("ct_t", "application/vnd.wap.multipart.related")
+            put("exp", pduSize)
+            put("m_cls", "personal")
+            put("m_type", 128)
+            put("v", 18)
+            put("pri", 129)
+            put("tr_id", "T${now.toString(16)}")
+        }
+        val mmsUri = contentResolver.insert(Telephony.Mms.CONTENT_URI, mmsValues) ?: return null
+        val mmsId = mmsUri.lastPathSegment ?: return null
+
+        val partUri = Uri.parse("content://mms/$mmsId/part")
+        val insertedPart = contentResolver.insert(partUri, ContentValues().apply {
+            put("mid", mmsId)
+            put("ct", "video/mp4")
+            put("cid", "<video_${now}>")
+            put("fn", "video_${now}.mp4")
+        })
+        if (insertedPart != null) {
+            val partId = insertedPart.lastPathSegment
+            contentResolver.openOutputStream(insertedPart)?.use { it.write(videoBytes) }
+            if (partId != null) {
+                val cacheFile = java.io.File(context.cacheDir, "mms_parts/$partId")
+                cacheFile.parentFile?.mkdirs()
+                cacheFile.writeBytes(videoBytes)
+            }
+        }
+
+        contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), ContentValues().apply {
+            put("address", myNumber)
+            put("charset", 106)
+            put("type", 137)
+        })
+        contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), ContentValues().apply {
+            put("address", address)
+            put("charset", 106)
+            put("type", 151)
+        })
+        return mmsUri
     }
 
     private suspend fun sendMmsInternal(address: String, text: String, imageUris: List<Uri>, maxImageSizeKb: Int) {
@@ -964,6 +1147,229 @@ internal class SystemSmsSender(
             )
         }
         return intents
+    }
+
+    private fun compressVideoForMms(videoBytes: ByteArray, maxSizeKb: Int): ByteArray {
+        val maxSizeBytes = if (maxSizeKb <= 0) -1 else maxSizeKb * 1024
+        if (maxSizeBytes <= 0 || videoBytes.size <= maxSizeBytes) {
+            Log.i("SystemSmsSender", "Video already within limit: ${videoBytes.size}B / ${maxSizeBytes}B")
+            return videoBytes
+        }
+
+        val tempDir = java.io.File(context.cacheDir, "video_compressed")
+        tempDir.mkdirs()
+        tempDir.listFiles()?.filter { it.extension == "mp4" }?.forEach { it.delete() }
+
+        val inputFile = java.io.File(tempDir, "input_video.mp4")
+        inputFile.writeBytes(videoBytes)
+
+        val bitrates = listOf(48_000, 32_000, 24_000)
+        for (targetBitrate in bitrates) {
+            val outFile = java.io.File(tempDir, "compressed_${targetBitrate}.mp4")
+            try {
+                if (transcodeVideo(inputFile.absolutePath, outFile.absolutePath, targetBitrate)) {
+                    val result = outFile.readBytes()
+                    if (result.size <= maxSizeBytes) {
+                        outFile.delete()
+                        inputFile.delete()
+                        Log.i("SystemSmsSender", "Video compressed: ${videoBytes.size} -> ${result.size}B (bitrate=$targetBitrate)")
+                        return result
+                    }
+                    outFile.delete()
+                }
+            } catch (e: Exception) {
+                Log.w("SystemSmsSender", "Video transcode failed at ${targetBitrate}bps: ${e.message}", e)
+            }
+        }
+
+        inputFile.delete()
+        Log.w("SystemSmsSender", "Video transcode failed all bitrates, returning original (${videoBytes.size}B)")
+        return videoBytes
+    }
+
+    private fun transcodeVideo(inputPath: String, outputPath: String, targetBitrate: Int): Boolean {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(inputPath)
+        } catch (e: Exception) {
+            extractor.release()
+            return false
+        }
+
+        var videoTrackIndex = -1
+        var videoFormat: MediaFormat? = null
+        for (i in 0 until extractor.trackCount) {
+            val fmt = extractor.getTrackFormat(i)
+            if (fmt.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                videoTrackIndex = i
+                videoFormat = fmt
+                break
+            }
+        }
+        if (videoTrackIndex == -1 || videoFormat == null) { extractor.release(); return false }
+
+        val mime = videoFormat.getString(MediaFormat.KEY_MIME) ?: return false.also { extractor.release() }
+        val srcWidth = videoFormat.getInteger(MediaFormat.KEY_WIDTH)
+        val srcHeight = videoFormat.getInteger(MediaFormat.KEY_HEIGHT)
+        val outWidth = if (srcWidth % 2 != 0) srcWidth + 1 else srcWidth
+        val outHeight = if (srcHeight % 2 != 0) srcHeight + 1 else srcHeight
+
+        Log.i("SystemSmsSender", "Transcode: ${srcWidth}x${srcHeight} -> ${outWidth}x${outHeight} @ ${targetBitrate}bps (buffer-to-buffer, same res)")
+
+        extractor.selectTrack(videoTrackIndex)
+
+        val encoderFormat = MediaFormat.createVideoFormat("video/avc", outWidth, outHeight).apply {
+            setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
+            setInteger(MediaFormat.KEY_FRAME_RATE, 15)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+        }
+        val encoder: MediaCodec
+        try {
+            encoder = MediaCodec.createEncoderByType("video/avc")
+        } catch (e: Exception) {
+            Log.w("SystemSmsSender", "Cannot create H.264 encoder: ${e.message}")
+            extractor.release()
+            return false
+        }
+        encoder.configure(encoderFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        encoder.start()
+
+        val decoder: MediaCodec
+        try {
+            decoder = MediaCodec.createDecoderByType(mime)
+        } catch (e: Exception) {
+            Log.w("SystemSmsSender", "Cannot create decoder for $mime: ${e.message}")
+            encoder.release()
+            extractor.release()
+            return false
+        }
+        decoder.configure(videoFormat, null, null, 0)
+        decoder.start()
+
+        val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        try {
+            val rotation = videoFormat.getInteger("rotation-degrees")
+            if (rotation != 0) muxer.setOrientationHint(rotation)
+        } catch (_: Exception) {}
+        var muxerStarted = false
+        var encoderTrackIndex = -1
+        var muxerTrackAdded = false
+
+        val bufferInfo = MediaCodec.BufferInfo()
+        var extractorDone = false
+        var decoderDone = false
+        var encoderDone = false
+        val timeoutUs = 10000L
+        var framesWritten = 0
+        var decoderFramesRendered = 0
+        var encoderEosQueued = false
+
+        while (!encoderDone) {
+            if (!extractorDone) {
+                val inputIndex = decoder.dequeueInputBuffer(timeoutUs)
+                if (inputIndex >= 0) {
+                    val inputBuffer = decoder.getInputBuffer(inputIndex) ?: continue
+                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                    if (sampleSize < 0) {
+                        decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        extractorDone = true
+                    } else {
+                        decoder.queueInputBuffer(inputIndex, 0, sampleSize, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+            }
+
+            if (!decoderDone) {
+                val decoderOutputIndex = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                when {
+                    decoderOutputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        Log.i("SystemSmsSender", "Decoder format: ${decoder.outputFormat}")
+                    }
+                    decoderOutputIndex >= 0 -> {
+                        val isEos = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        if (isEos) {
+                            decoder.releaseOutputBuffer(decoderOutputIndex, false)
+                            decoderDone = true
+                            Log.i("SystemSmsSender", "Decoder EOS: rendered=$decoderFramesRendered")
+                        } else if (bufferInfo.size > 0) {
+                            val decoderOutputBuf = decoder.getOutputBuffer(decoderOutputIndex)
+                            val encInputIndex = encoder.dequeueInputBuffer(timeoutUs)
+                            if (decoderOutputBuf != null && encInputIndex >= 0) {
+                                val encInputBuf = encoder.getInputBuffer(encInputIndex)
+                                if (encInputBuf != null) {
+                                    val dataToWrite = minOf(bufferInfo.size, encInputBuf.capacity())
+                                    decoderOutputBuf.position(bufferInfo.offset)
+                                    decoderOutputBuf.limit(bufferInfo.offset + dataToWrite)
+                                    encInputBuf.put(decoderOutputBuf)
+                                    encoder.queueInputBuffer(encInputIndex, 0, dataToWrite, bufferInfo.presentationTimeUs, 0)
+                                    decoderFramesRendered++
+                                }
+                            }
+                            decoder.releaseOutputBuffer(decoderOutputIndex, false)
+                        } else {
+                            decoder.releaseOutputBuffer(decoderOutputIndex, false)
+                        }
+                    }
+                }
+            }
+
+            val encoderOutputIndex = encoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+            when {
+                encoderOutputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    encoderTrackIndex = muxer.addTrack(encoder.outputFormat)
+                    Log.i("SystemSmsSender", "Encoder format: ${encoder.outputFormat}")
+                    if (!muxerStarted) {
+                        muxer.start()
+                        muxerStarted = true
+                        muxerTrackAdded = true
+                    }
+                }
+                encoderOutputIndex >= 0 -> {
+                    val encodedData = encoder.getOutputBuffer(encoderOutputIndex) ?: continue
+                    val isCodecConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    if (isCodecConfig) { bufferInfo.size = 0 }
+                    if (bufferInfo.size > 0 && muxerStarted) {
+                        encodedData.position(bufferInfo.offset)
+                        encodedData.limit(bufferInfo.offset + bufferInfo.size)
+                        muxer.writeSampleData(encoderTrackIndex, encodedData, bufferInfo)
+                        framesWritten++
+                    }
+                    encoder.releaseOutputBuffer(encoderOutputIndex, false)
+                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        Log.i("SystemSmsSender", "Encoder EOS: framesWritten=$framesWritten")
+                        encoderDone = true
+                    }
+                }
+                encoderOutputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                    if (decoderDone && !encoderEosQueued) {
+                        val encInputIndex = encoder.dequeueInputBuffer(timeoutUs)
+                        if (encInputIndex >= 0) {
+                            Log.i("SystemSmsSender", "Queuing encoder EOS (framesWritten=$framesWritten)")
+                            encoder.queueInputBuffer(encInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            encoderEosQueued = true
+                        }
+                    }
+                }
+            }
+        }
+
+        try { if (muxerStarted) muxer.stop() } catch (_: Exception) {}
+        muxer.release()
+        decoder.release()
+        encoder.release()
+        extractor.release()
+
+        val outputFile = java.io.File(outputPath)
+        val valid = muxerTrackAdded && framesWritten > 0 && outputFile.length() > 1024
+        if (!valid) {
+            Log.w("SystemSmsSender", "Transcode invalid: muxer=$muxerTrackAdded frames=$framesWritten size=${outputFile.length()}")
+            outputFile.delete()
+        } else {
+            Log.i("SystemSmsSender", "Transcode OK: $framesWritten frames, ${outputFile.length()}B @ ${targetBitrate}bps")
+        }
+        return valid
     }
 
     private companion object {

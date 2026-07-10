@@ -50,6 +50,14 @@
     <string name="voice_recording_channel_name">Enregistrement vocal</string>
     <string name="voice_recording_channel_description">Notification d\'enregistrement vocal en cours</string>
     <string name="voice_recording_notification_title">Enregistrement vocal en cours…</string>
+    <string name="video_recording_permission_required">Autorisations caméra et microphone requises pour enregistrer une vidéo</string>
+    <string name="video_recording_start">Démarrer l\'enregistrement</string>
+    <string name="video_recording_stop">Arrêter l\'enregistrement</string>
+    <string name="video_recording_cancel">Glissez vers le haut pour annuler</string>
+    <string name="video_recording_channel_name">Enregistrement vidéo</string>
+    <string name="video_recording_channel_description">Notification d\'enregistrement vidéo en cours</string>
+    <string name="video_recording_notification_title">Enregistrement vidéo en cours…</string>
+    <string name="video_recording_hold_hint">Maintenez pour enregistrer une vidéo</string>
     <string name="conversation_send_status_sending_title">Envoi en cours</string>
     <string name="conversation_send_status_sent_title">Message envoyé</string>
     <string name="conversation_send_status_failed_title">Échec d\'envoi</string>

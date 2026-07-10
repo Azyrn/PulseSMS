@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Bookmark
@@ -51,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -113,7 +115,8 @@ internal fun SmsThreadCard(
     val initials = remember(displayName) { displayName.toAvatarInitials() }
     val hasUnread = thread.unreadCount > 0
     val hasAudioMms = thread.lastMmsPartUri != null && thread.lastMmsContentType?.startsWith("audio/") == true
-    val hasImageMms = thread.lastMmsPartUri != null && !hasAudioMms
+    val hasVideoMms = thread.lastMmsPartUri != null && thread.lastMmsContentType?.startsWith("video/") == true
+    val hasImageMms = thread.lastMmsPartUri != null && !hasAudioMms && !hasVideoMms
     var shouldShowDeleteConfirmation by rememberSaveable(thread.threadId, thread.address) {
         mutableStateOf(false)
     }
@@ -317,6 +320,33 @@ internal fun SmsThreadCard(
                                     .clip(RoundedCornerShape(12.dp)),
                                 contentScale = ContentScale.Crop,
                             )
+                        } else if (hasVideoMms) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AsyncImage(
+                                    model = thread.lastMmsPartUri,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
                         } else {
                             Text(
                                 text = thread.snippet,

@@ -113,6 +113,7 @@ internal fun RealConversationScreen(
     onSubscriptionIdChange: (Int?) -> Unit,
     onSend: (String, List<Uri>) -> Unit,
     onSendVoice: (Uri) -> Unit = {},
+    onSendVideo: (Uri) -> Unit = {},
     onRetrySend: () -> Unit,
     onClearSendState: () -> Unit,
     onDraftConsumed: () -> Unit,
@@ -538,6 +539,11 @@ internal fun RealConversationScreen(
                         focusManager.clearFocus()
                         keyboardController?.hide()
                         onSendVoice(uri)
+                    },
+                    onVideoRecorded = { uri ->
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                        onSendVideo(uri)
                     },
                     showAttachmentMenu = showAttachmentMenu,
                     onAttachmentMenuVisibilityChange = { showAttachmentMenu = it },

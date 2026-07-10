@@ -317,6 +317,7 @@ internal fun ConversationBottomBar(
     onImagePickFromGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
     onVoiceRecorded: (Uri) -> Unit = {},
+    onVideoRecorded: (Uri) -> Unit = {},
     showAttachmentMenu: Boolean = false,
     onAttachmentMenuVisibilityChange: (Boolean) -> Unit = {},
     onScheduleClick: () -> Unit = {},
@@ -370,6 +371,7 @@ internal fun ConversationBottomBar(
                 onImagePickFromGallery = onImagePickFromGallery,
                 onTakePhoto = onTakePhoto,
                 onVoiceRecorded = onVoiceRecorded,
+                onVideoRecorded = onVideoRecorded,
                 showAttachmentMenu = showAttachmentMenu,
                 onAttachmentMenuVisibilityChange = onAttachmentMenuVisibilityChange,
             )

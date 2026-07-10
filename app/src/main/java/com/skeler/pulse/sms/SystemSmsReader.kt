@@ -783,6 +783,9 @@ class SystemSmsReader(
     suspend fun sendVoiceMms(address: String, text: String, audioUri: Uri) =
         smsSender.sendVoiceMms(address = address, text = text, audioUri = audioUri)
 
+    suspend fun sendVideoMms(address: String, text: String, videoUri: Uri) =
+        smsSender.sendVideoMms(address = address, text = text, videoUri = videoUri)
+
     fun countConversationMessages(address: String, threadId: Long?): Int {
         val normalized = address.normalizeAddressForDisplay()
         val criteria = messageReadCriteria(threadId, address)

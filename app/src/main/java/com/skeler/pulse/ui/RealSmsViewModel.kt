@@ -585,6 +585,28 @@ class RealSmsViewModel(
         }
     }
 
+    fun sendVideoMessage(address: String, videoUri: Uri) {
+        sendJob?.cancel()
+        val seq = ++sendSequence
+        _sendState.value = SendState.Sending("")
+        sendJob = viewModelScope.launch {
+            try {
+                smsReader.sendVideoMms(address, "", videoUri)
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Sent("")
+                }
+            } catch (_: CancellationException) {
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Idle
+                }
+            } catch (_: Exception) {
+                if (sendSequence == seq) {
+                    _sendState.value = SendState.Failed("")
+                }
+            }
+        }
+    }
+
     fun retrySend() {
         val request = lastSendRequest ?: return
         if (_sendState.value !is SendState.Failed) return
