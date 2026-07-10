@@ -1724,10 +1724,12 @@ private fun VideoRecordingOverlay(
             )
             camera = boundCamera
             boundCamera.cameraControl.setZoomRatio(zoomRatio)
-            boundCamera.cameraInfo.zoomState.observeForever { state ->
-                Log.i("VideoRecordingOverlay", "Zoom range: ${state.minZoomRatio}x — ${state.maxZoomRatio}x")
-                minZoom = state.minZoomRatio
-                maxZoom = state.maxZoomRatio
+            boundCamera.cameraInfo.zoomState.observe(lifecycleOwner) { state ->
+                if (state.minZoomRatio != minZoom || state.maxZoomRatio != maxZoom) {
+                    Log.i("VideoRecordingOverlay", "Zoom range: ${state.minZoomRatio}x — ${state.maxZoomRatio}x")
+                    minZoom = state.minZoomRatio
+                    maxZoom = state.maxZoomRatio
+                }
             }
         } catch (e: Exception) {
             Log.e("VideoRecordingOverlay", "Camera bind failed", e)
