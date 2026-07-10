@@ -7,13 +7,12 @@ import androidx.activity.ComponentActivity
 import com.skeler.pulse.MainActivity
 
 /**
- * Activity that handles `ACTION_SENDTO` with `sms:`, `smsto:`, `mms:`, `mmsto:` URI schemes.
+ * Activity that handles incoming intents to compose an SMS:
+ * - `ACTION_SENDTO` with `sms:`, `smsto:`, `mms:`, `mmsto:` URI schemes (default SMS handler)
+ * - `ACTION_SEND` with `text/plain` MIME type (share sheet from any app)
  *
- * This is required by Android to make the app eligible as the default SMS handler.
- * When another app wants to compose an SMS (e.g., tapping a phone number → "Send SMS"),
- * the system routes the intent here.
- *
- * Extracts the recipient number and optional body, then delegates to [MainActivity].
+ * Extracts the recipient number and body text, then delegates to [MainActivity].
+ * For share intents without a recipient, opens the New Chat screen with the shared text pre-filled.
  */
 class ComposeSmsActivity : ComponentActivity() {
 

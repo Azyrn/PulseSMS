@@ -310,7 +310,19 @@ class RealSmsViewModel(
                     scheduledMessages = scheduledMessages,
                 ) to hasUnreadInbound
             }.collectLatest { (conversationState, hasUnreadInbound) ->
-                _conversationState.value = conversationState
+                val currentMessages = _conversationState.value.messages
+                val overlayMessages = currentMessages.filter { it.id < 0 }
+                val mergedMessages = if (overlayMessages.isNotEmpty()) {
+                    val remainingOverlays = overlayMessages.filter { overlay ->
+                        conversationState.messages.none { real ->
+                            real.body == overlay.body && kotlin.math.abs(real.date - overlay.date) < 5000
+                        }
+                    }
+                    remainingOverlays + conversationState.messages
+                } else {
+                    conversationState.messages
+                }
+                _conversationState.value = conversationState.copy(messages = mergedMessages)
                 if (hasUnreadInbound) {
                     smsReader.setThreadUnreadState(threadId = threadId, address = address, unread = false)
                 }
@@ -447,6 +459,19 @@ class RealSmsViewModel(
                 }
                 if (sendSequence == seq) {
                     _sendState.value = SendState.Sent(trimmedBody)
+                    val sentMessage = SystemSms(
+                        id = -(System.currentTimeMillis()),
+                        isMms = imageUris.isNotEmpty(),
+                        address = address,
+                        body = trimmedBody,
+                        date = System.currentTimeMillis(),
+                        type = android.provider.Telephony.Sms.MESSAGE_TYPE_SENT,
+                        read = true,
+                        threadId = 0L,
+                    )
+                    _conversationState.update { state ->
+                        state.copy(messages = listOf(sentMessage) + state.messages)
+                    }
                 }
             } catch (_: CancellationException) {
                 if (sendSequence == seq) {
