@@ -1938,6 +1938,26 @@ private fun RecordingPhase(
                     )
                 }
             }
+            if (minZoom < 1.0f) {
+                val isUltraWide = zoomRatio < 1.0f
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = if (isUltraWide) 0.9f else 0.2f))
+                        .clickable {
+                            onZoomChange(if (isUltraWide) 1.0f else minZoom)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (isUltraWide) "%.1fx".format(minZoom) else "1x",
+                        color = if (isUltraWide) Color.Black else Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             IconButton(onClick = onFlipCamera) {
                 Icon(
                     imageVector = Icons.Rounded.FlipCameraAndroid,
