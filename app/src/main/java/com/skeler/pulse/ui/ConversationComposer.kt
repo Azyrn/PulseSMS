@@ -1684,6 +1684,7 @@ private fun VideoRecordingOverlay(
     var activeRecording by remember { mutableStateOf<androidx.camera.video.Recording?>(null) }
     var useFrontCamera by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    var ultraWideCameraId by remember { mutableStateOf<String?>(null) }
     var zoomRatio by remember { mutableFloatStateOf(1f) }
     var minZoom by remember { mutableFloatStateOf(1f) }
     var maxZoom by remember { mutableFloatStateOf(1f) }
@@ -1710,7 +1711,52 @@ private fun VideoRecordingOverlay(
 
     fun bindCamera() {
         val cameraProvider = cameraProviderFuture.get()
-        val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+
+        if (!useFrontCamera && ultraWideCameraId == null) {
+            try {
+                val cameraManager = context.getSystemService(android.content.Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                for (id in cameraManager.cameraIdList) {
+                    val chars = cameraManager.getCameraCharacteristics(id)
+                    val facing = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                    val focals = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    Log.i("VideoRecordingOverlay", "Camera2 id=$id facing=$facing focals=${focals?.joinToString()}")
+                }
+                val backCameraId = cameraProvider.getCameraInfo(CameraSelector.DEFAULT_BACK_CAMERA)?.let {
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(it).cameraId
+                }
+                Log.i("VideoRecordingOverlay", "DEFAULT_BACK_CAMERA cameraId=$backCameraId")
+
+                for (id in cameraManager.cameraIdList) {
+                    if (id == backCameraId) continue
+                    val chars = cameraManager.getCameraCharacteristics(id)
+                    val facing = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                    val focals = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    if (facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK
+                        && focals != null && focals.isNotEmpty() && focals[0] < 3.0f
+                    ) {
+                        ultraWideCameraId = id
+                        Log.i("VideoRecordingOverlay", "Ultra-wide found: id=$id focal=${focals[0]}")
+                        break
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VideoRecordingOverlay", "Camera2 enumeration failed", e)
+            }
+        }
+
+        val selector = if (useFrontCamera) {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else if (ultraWideCameraId != null && zoomRatio < 1.0f) {
+            CameraSelector.Builder()
+                .addCameraFilter { cameras ->
+                    cameras.filter { info ->
+                        androidx.camera.camera2.interop.Camera2CameraInfo.from(info).cameraId == ultraWideCameraId
+                    }
+                }
+                .build()
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        }
         val preview = Preview.Builder().build().also {
             it.surfaceProvider = previewView.surfaceProvider
         }
@@ -1837,6 +1883,11 @@ private fun VideoRecordingOverlay(
                     minZoom = minZoom,
                     maxZoom = maxZoom,
                     onZoomChange = { zoomRatio = it },
+                    hasUltraWide = ultraWideCameraId != null,
+                    onUltraWideToggle = {
+                        zoomRatio = if (zoomRatio < 1.0f) 1.0f else (ultraWideCameraId?.let { minZoom } ?: 1.0f)
+                        bindCamera()
+                    },
                     onFlipCamera = {
                         useFrontCamera = !useFrontCamera
                         bindCamera()
@@ -1885,6 +1936,8 @@ private fun RecordingPhase(
     minZoom: Float,
     maxZoom: Float,
     onZoomChange: (Float) -> Unit,
+    hasUltraWide: Boolean,
+    onUltraWideToggle: () -> Unit,
     onFlipCamera: () -> Unit,
     onStartRecording: () -> Unit,
     onPauseResume: () -> Unit,
@@ -1940,20 +1993,18 @@ private fun RecordingPhase(
                     )
                 }
             }
-            if (minZoom < 1.0f) {
+            if (hasUltraWide) {
                 val isUltraWide = zoomRatio < 1.0f
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color.White.copy(alpha = if (isUltraWide) 0.9f else 0.2f))
-                        .clickable {
-                            onZoomChange(if (isUltraWide) 1.0f else minZoom)
-                        }
+                        .clickable { onUltraWideToggle() }
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (isUltraWide) "%.1fx".format(minZoom) else "1x",
+                        text = if (isUltraWide) "0.6x" else "1x",
                         color = if (isUltraWide) Color.Black else Color.White,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
