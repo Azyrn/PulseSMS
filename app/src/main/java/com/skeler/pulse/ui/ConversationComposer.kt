@@ -1720,6 +1720,18 @@ private fun VideoRecordingOverlay(
                     val facing = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
                     val focals = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                     Log.i("VideoRecordingOverlay", "Camera2 id=$id facing=$facing focals=${focals?.joinToString()}")
+
+                    val requestKeys = chars.availableCaptureRequestKeys
+                    val resultKeys = chars.availableCaptureResultKeys
+                    val sessionKeys = chars.availableSessionKeys
+                    val vendorRequest = requestKeys.filter { it.name.contains("zte", true) || it.name.contains("mediatek", true) || it.name.contains("mtk", true) }
+                    val vendorResult = resultKeys.filter { it.name.contains("zte", true) || it.name.contains("mediatek", true) || it.name.contains("mtk", true) }
+                    val vendorSession = sessionKeys?.filter { it.name.contains("zte", true) || it.name.contains("mediatek", true) || it.name.contains("mtk", true) }
+                    Log.i("VideoRecordingOverlay", "Vendor request keys ($id): ${vendorRequest.joinToString { it.name }}")
+                    Log.i("VideoRecordingOverlay", "Vendor result keys ($id): ${vendorResult.joinToString { it.name }}")
+                    Log.i("VideoRecordingOverlay", "Vendor session keys ($id): ${vendorSession?.joinToString { it.name }}")
+                    Log.i("VideoRecordingOverlay", "All request keys ($id): ${requestKeys.joinToString { it.name }}")
+                    Log.i("VideoRecordingOverlay", "All result keys ($id): ${resultKeys.joinToString { it.name }}")
                 }
                 val backCameraId = cameraProvider.getCameraInfo(CameraSelector.DEFAULT_BACK_CAMERA)?.let {
                     androidx.camera.camera2.interop.Camera2CameraInfo.from(it).cameraId
