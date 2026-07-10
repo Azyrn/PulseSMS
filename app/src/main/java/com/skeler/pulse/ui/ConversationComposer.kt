@@ -13,9 +13,11 @@ import android.provider.Telephony
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ZoomState
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
@@ -137,6 +139,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -1660,7 +1663,7 @@ private fun formatVoiceDuration(ms: Int): String {
     return "%d:%02d".format(min, sec)
 }
 
-private enum class VideoPhase { Recording, Preview }
+private enum class VideoPhase { Ready, Recording, Preview }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1671,11 +1674,19 @@ private fun VideoRecordingOverlay(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var phase by remember { mutableStateOf(VideoPhase.Recording) }
+    var phase by remember { mutableStateOf(VideoPhase.Ready) }
     var isRecording by remember { mutableStateOf(false) }
+    var isPaused by remember { mutableStateOf(false) }
     var recordingStartTime by remember { mutableLongStateOf(0L) }
     var elapsedTimeMs by remember { mutableLongStateOf(0L) }
+    var pausedDurationMs by remember { mutableLongStateOf(0L) }
+    var pauseStartTime by remember { mutableLongStateOf(0L) }
     var activeRecording by remember { mutableStateOf<androidx.camera.video.Recording?>(null) }
+    var useFrontCamera by remember { mutableStateOf(false) }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var zoomRatio by remember { mutableFloatStateOf(1f) }
+    var minZoom by remember { mutableFloatStateOf(1f) }
+    var maxZoom by remember { mutableFloatStateOf(1f) }
     val videoFile = remember {
         val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
         val videoDir = java.io.File(context.cacheDir, "video_messages")
@@ -1697,6 +1708,64 @@ private fun VideoRecordingOverlay(
     val previewView = remember { PreviewView(context) }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
+    fun bindCamera() {
+        val cameraProvider = cameraProviderFuture.get()
+        val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+        val preview = Preview.Builder().build().also {
+            it.surfaceProvider = previewView.surfaceProvider
+        }
+        try {
+            cameraProvider.unbindAll()
+            val boundCamera = cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                selector,
+                preview,
+                videoCapture,
+            )
+            camera = boundCamera
+            boundCamera.cameraControl.setZoomRatio(zoomRatio)
+            boundCamera.cameraInfo.zoomState.observeForever { state ->
+                Log.i("VideoRecordingOverlay", "Zoom range: ${state.minZoomRatio}x — ${state.maxZoomRatio}x")
+                minZoom = state.minZoomRatio
+                maxZoom = state.maxZoomRatio
+            }
+        } catch (e: Exception) {
+            Log.e("VideoRecordingOverlay", "Camera bind failed", e)
+        }
+    }
+
+    fun startRecording() {
+        val outputOptions = FileOutputOptions.Builder(videoFile).build()
+        val recording = videoCapture.output.prepareRecording(context, outputOptions)
+            .apply {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    withAudioEnabled()
+                }
+            }
+            .start(ContextCompat.getMainExecutor(context)) { event ->
+                when (event) {
+                    is androidx.camera.video.VideoRecordEvent.Start -> {
+                        isRecording = true
+                        isPaused = false
+                        pausedDurationMs = 0L
+                        recordingStartTime = System.currentTimeMillis()
+                    }
+                    is androidx.camera.video.VideoRecordEvent.Finalize -> {
+                        isRecording = false
+                        isPaused = false
+                        activeRecording = null
+                        if (!event.hasError() && videoFile.exists() && videoFile.length() > 0L) {
+                            phase = VideoPhase.Preview
+                        } else {
+                            videoFile.delete()
+                            onCancel()
+                        }
+                    }
+                }
+            }
+        activeRecording = recording
+    }
+
     fun stopRecording() {
         activeRecording?.stop()
         activeRecording = null
@@ -1708,52 +1777,18 @@ private fun VideoRecordingOverlay(
     }
 
     LaunchedEffect(Unit) {
-        val cameraProvider = cameraProviderFuture.get()
-        val preview = Preview.Builder().build().also {
-            it.surfaceProvider = previewView.surfaceProvider
-        }
-        try {
-            cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                lifecycleOwner,
-                CameraSelector.DEFAULT_BACK_CAMERA,
-                preview,
-                videoCapture,
-            )
-            val outputOptions = FileOutputOptions.Builder(videoFile).build()
-            val recording = videoCapture.output.prepareRecording(context, outputOptions)
-                .apply {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                        withAudioEnabled()
-                    }
-                }
-                .start(ContextCompat.getMainExecutor(context)) { event ->
-                    when (event) {
-                        is androidx.camera.video.VideoRecordEvent.Start -> {
-                            isRecording = true
-                            recordingStartTime = System.currentTimeMillis()
-                        }
-                        is androidx.camera.video.VideoRecordEvent.Finalize -> {
-                            isRecording = false
-                            activeRecording = null
-                            if (!event.hasError() && videoFile.exists() && videoFile.length() > 0L) {
-                                phase = VideoPhase.Preview
-                            } else {
-                                deleteAndCancel()
-                            }
-                        }
-                    }
-                }
-            activeRecording = recording
-        } catch (e: Exception) {
-            Log.e("VideoRecordingOverlay", "Camera bind failed", e)
-            deleteAndCancel()
+        bindCamera()
+    }
+
+    LaunchedEffect(useFrontCamera) {
+        if (phase == VideoPhase.Ready) {
+            bindCamera()
         }
     }
 
-    LaunchedEffect(isRecording) {
-        while (isRecording) {
-            elapsedTimeMs = System.currentTimeMillis() - recordingStartTime
+    LaunchedEffect(isRecording, isPaused) {
+        while (isRecording && !isPaused) {
+            elapsedTimeMs = System.currentTimeMillis() - recordingStartTime - pausedDurationMs
             if (elapsedTimeMs >= 30_000L) {
                 stopRecording()
             }
@@ -1761,10 +1796,14 @@ private fun VideoRecordingOverlay(
         }
     }
 
+    LaunchedEffect(zoomRatio) {
+        camera?.cameraControl?.setZoomRatio(zoomRatio)
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             if (phase != VideoPhase.Preview) {
-                stopRecording()
+                activeRecording?.stop()
             }
             if (videoFile.exists() && phase != VideoPhase.Preview) {
                 videoFile.delete()
@@ -1775,6 +1814,7 @@ private fun VideoRecordingOverlay(
     Dialog(
         onDismissRequest = {
             when (phase) {
+                VideoPhase.Ready -> deleteAndCancel()
                 VideoPhase.Recording -> {
                     if (isRecording) stopRecording() else deleteAndCancel()
                 }
@@ -1784,11 +1824,36 @@ private fun VideoRecordingOverlay(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         when (phase) {
-            VideoPhase.Recording -> {
+            VideoPhase.Ready, VideoPhase.Recording -> {
                 RecordingPhase(
                     previewView = previewView,
+                    phase = phase,
                     isRecording = isRecording,
+                    isPaused = isPaused,
                     elapsedTimeMs = elapsedTimeMs,
+                    zoomRatio = zoomRatio,
+                    minZoom = minZoom,
+                    maxZoom = maxZoom,
+                    onZoomChange = { zoomRatio = it },
+                    onFlipCamera = {
+                        useFrontCamera = !useFrontCamera
+                        bindCamera()
+                    },
+                    onStartRecording = {
+                        startRecording()
+                        phase = VideoPhase.Recording
+                    },
+                    onPauseResume = {
+                        if (isPaused) {
+                            pausedDurationMs += System.currentTimeMillis() - pauseStartTime
+                            activeRecording?.resume()
+                            isPaused = false
+                        } else {
+                            pauseStartTime = System.currentTimeMillis()
+                            activeRecording?.pause()
+                            isPaused = true
+                        }
+                    },
                     onStopRecording = { stopRecording() },
                     onCancel = ::deleteAndCancel,
                 )
@@ -1810,11 +1875,22 @@ private fun VideoRecordingOverlay(
 @Composable
 private fun RecordingPhase(
     previewView: PreviewView,
+    phase: VideoPhase,
     isRecording: Boolean,
+    isPaused: Boolean,
     elapsedTimeMs: Long,
+    zoomRatio: Float,
+    minZoom: Float,
+    maxZoom: Float,
+    onZoomChange: (Float) -> Unit,
+    onFlipCamera: () -> Unit,
+    onStartRecording: () -> Unit,
+    onPauseResume: () -> Unit,
     onStopRecording: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val isPreparing = phase == VideoPhase.Ready
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1841,18 +1917,38 @@ private fun RecordingPhase(
                     modifier = Modifier.size(28.dp),
                 )
             }
-            if (isRecording) {
-                val secs = (elapsedTimeMs / 1000).toInt()
-                Text(
-                    text = "%d:%02d".format(secs / 60, secs % 60),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
+            if (!isPreparing) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (isPaused) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.error),
+                        )
+                    }
+                    val secs = (elapsedTimeMs / 1000).toInt()
+                    Text(
+                        text = "%d:%02d".format(secs / 60, secs % 60),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+            IconButton(onClick = onFlipCamera) {
+                Icon(
+                    imageVector = Icons.Rounded.FlipCameraAndroid,
+                    contentDescription = "Flip camera",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
                 )
             }
-            Spacer(Modifier.size(28.dp))
         }
 
-        if (isRecording) {
+        if (!isPreparing) {
             val maxDurationMs = 30_000L
             val progress = (elapsedTimeMs.toFloat() / maxDurationMs).coerceIn(0f, 1f)
             val barColor = when {
@@ -1873,6 +1969,35 @@ private fun RecordingPhase(
             )
         }
 
+        if (maxZoom > minZoom) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "%.1fx".format(zoomRatio),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Slider(
+                    value = zoomRatio,
+                    onValueChange = onZoomChange,
+                    valueRange = minZoom..maxZoom,
+                    modifier = Modifier
+                        .height(150.dp)
+                        .graphicsLayer { rotationZ = -90f }
+                        .width(150.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                    ),
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1881,7 +2006,38 @@ private fun RecordingPhase(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (isRecording) {
+            if (isPreparing) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                        .clickable { onStartRecording() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.video_recording_start),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onPauseResume,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f)),
+                ) {
+                    Icon(
+                        imageVector = if (isPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                        contentDescription = if (isPaused) "Resume" else "Pause",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
+                Spacer(Modifier.size(24.dp))
                 Box(
                     modifier = Modifier
                         .size(72.dp)
@@ -1897,14 +2053,6 @@ private fun RecordingPhase(
                         modifier = Modifier.size(36.dp),
                     )
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.3f))
-                        .border(3.dp, Color.White, CircleShape),
-                )
             }
         }
     }
