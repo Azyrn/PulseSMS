@@ -688,9 +688,7 @@ private fun VideoPlayerDialog(
                             keepScreenOn = true
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { exoPlayer.pause(); onDismiss() },
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 SerafinaProgressIndicator(modifier = Modifier.size(48.dp))
