@@ -1188,35 +1188,53 @@ internal class SystemSmsSender(
     }
 
     private fun transcodeVideo(inputPath: String, outputPath: String, targetBitrate: Int): Boolean {
-        val extractor = MediaExtractor()
+        val videoExtractor = MediaExtractor()
         try {
-            extractor.setDataSource(inputPath)
+            videoExtractor.setDataSource(inputPath)
         } catch (e: Exception) {
-            extractor.release()
+            videoExtractor.release()
             return false
         }
 
         var videoTrackIndex = -1
         var videoFormat: MediaFormat? = null
-        for (i in 0 until extractor.trackCount) {
-            val fmt = extractor.getTrackFormat(i)
-            if (fmt.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+        for (i in 0 until videoExtractor.trackCount) {
+            val fmt = videoExtractor.getTrackFormat(i)
+            val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
+            if (mime.startsWith("video/") && videoTrackIndex == -1) {
                 videoTrackIndex = i
                 videoFormat = fmt
-                break
             }
         }
-        if (videoTrackIndex == -1 || videoFormat == null) { extractor.release(); return false }
+        if (videoTrackIndex == -1 || videoFormat == null) { videoExtractor.release(); return false }
 
-        val mime = videoFormat.getString(MediaFormat.KEY_MIME) ?: return false.also { extractor.release() }
+        val mime = videoFormat.getString(MediaFormat.KEY_MIME) ?: return false.also { videoExtractor.release() }
         val srcWidth = videoFormat.getInteger(MediaFormat.KEY_WIDTH)
         val srcHeight = videoFormat.getInteger(MediaFormat.KEY_HEIGHT)
         val outWidth = if (srcWidth % 2 != 0) srcWidth + 1 else srcWidth
         val outHeight = if (srcHeight % 2 != 0) srcHeight + 1 else srcHeight
 
-        Log.i("SystemSmsSender", "Transcode: ${srcWidth}x${srcHeight} -> ${outWidth}x${outHeight} @ ${targetBitrate}bps (buffer-to-buffer, same res)")
+        var audioTrackIndex = -1
+        var audioFormat: MediaFormat? = null
+        for (i in 0 until videoExtractor.trackCount) {
+            val fmt = videoExtractor.getTrackFormat(i)
+            val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
+            if (mime.startsWith("audio/") && audioTrackIndex == -1) {
+                audioTrackIndex = i
+                audioFormat = fmt
+            }
+        }
 
-        extractor.selectTrack(videoTrackIndex)
+        val audioExtractor: MediaExtractor? = if (audioTrackIndex != -1) {
+            val ae = MediaExtractor()
+            ae.setDataSource(inputPath)
+            ae.selectTrack(audioTrackIndex)
+            ae
+        } else null
+
+        Log.i("SystemSmsSender", "Transcode: ${srcWidth}x${srcHeight} -> ${outWidth}x${outHeight} @ ${targetBitrate}bps audio=${audioFormat != null}")
+
+        videoExtractor.selectTrack(videoTrackIndex)
 
         val encoderFormat = MediaFormat.createVideoFormat("video/avc", outWidth, outHeight).apply {
             setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
@@ -1229,7 +1247,8 @@ internal class SystemSmsSender(
             encoder = MediaCodec.createEncoderByType("video/avc")
         } catch (e: Exception) {
             Log.w("SystemSmsSender", "Cannot create H.264 encoder: ${e.message}")
-            extractor.release()
+            videoExtractor.release()
+            audioExtractor?.release()
             return false
         }
         encoder.configure(encoderFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -1241,7 +1260,8 @@ internal class SystemSmsSender(
         } catch (e: Exception) {
             Log.w("SystemSmsSender", "Cannot create decoder for $mime: ${e.message}")
             encoder.release()
-            extractor.release()
+            videoExtractor.release()
+            audioExtractor?.release()
             return false
         }
         decoder.configure(videoFormat, null, null, 0)
@@ -1254,9 +1274,10 @@ internal class SystemSmsSender(
         } catch (_: Exception) {}
         var muxerStarted = false
         var encoderTrackIndex = -1
+        var audioMuxerTrackIndex = -1
         var muxerTrackAdded = false
 
-        val bufferInfo = MediaCodec.BufferInfo()
+        val videoBufInfo = MediaCodec.BufferInfo()
         var extractorDone = false
         var decoderDone = false
         var encoderDone = false
@@ -1264,46 +1285,67 @@ internal class SystemSmsSender(
         var framesWritten = 0
         var decoderFramesRendered = 0
         var encoderEosQueued = false
+        var audioFramesWritten = 0
+
+        val pendingAudio = mutableListOf<Pair<java.nio.ByteBuffer, MediaCodec.BufferInfo>>()
 
         while (!encoderDone) {
             if (!extractorDone) {
                 val inputIndex = decoder.dequeueInputBuffer(timeoutUs)
                 if (inputIndex >= 0) {
                     val inputBuffer = decoder.getInputBuffer(inputIndex) ?: continue
-                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                    val sampleSize = videoExtractor.readSampleData(inputBuffer, 0)
                     if (sampleSize < 0) {
                         decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                         extractorDone = true
                     } else {
-                        decoder.queueInputBuffer(inputIndex, 0, sampleSize, extractor.sampleTime, 0)
-                        extractor.advance()
+                        decoder.queueInputBuffer(inputIndex, 0, sampleSize, videoExtractor.sampleTime, 0)
+                        videoExtractor.advance()
                     }
                 }
             }
 
+            if (audioExtractor != null) {
+                while (true) {
+                    val sampleSize = audioExtractor.sampleSize
+                    if (sampleSize < 0) break
+                    val buf = java.nio.ByteBuffer.allocateDirect(sampleSize.toInt())
+                    audioExtractor.readSampleData(buf, 0)
+                    val bufInfo = MediaCodec.BufferInfo()
+                    bufInfo.set(0, sampleSize.toInt(), audioExtractor.sampleTime, 0)
+                    if (muxerStarted && audioMuxerTrackIndex >= 0) {
+                        muxer.writeSampleData(audioMuxerTrackIndex, buf, bufInfo)
+                    } else {
+                        pendingAudio.add(buf to bufInfo)
+                    }
+                    audioFramesWritten++
+                    audioExtractor.advance()
+                }
+            }
+
             if (!decoderDone) {
-                val decoderOutputIndex = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                val decoderOutputIndex = decoder.dequeueOutputBuffer(videoBufInfo, timeoutUs)
                 when {
                     decoderOutputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         Log.i("SystemSmsSender", "Decoder format: ${decoder.outputFormat}")
                     }
                     decoderOutputIndex >= 0 -> {
-                        val isEos = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        val isEos = (videoBufInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
                         if (isEos) {
                             decoder.releaseOutputBuffer(decoderOutputIndex, false)
                             decoderDone = true
                             Log.i("SystemSmsSender", "Decoder EOS: rendered=$decoderFramesRendered")
-                        } else if (bufferInfo.size > 0) {
+                        } else if (videoBufInfo.size > 0) {
                             val decoderOutputBuf = decoder.getOutputBuffer(decoderOutputIndex)
                             val encInputIndex = encoder.dequeueInputBuffer(timeoutUs)
                             if (decoderOutputBuf != null && encInputIndex >= 0) {
                                 val encInputBuf = encoder.getInputBuffer(encInputIndex)
                                 if (encInputBuf != null) {
-                                    val dataToWrite = minOf(bufferInfo.size, encInputBuf.capacity())
-                                    decoderOutputBuf.position(bufferInfo.offset)
-                                    decoderOutputBuf.limit(bufferInfo.offset + dataToWrite)
+                                    val dataToWrite = minOf(videoBufInfo.size, encInputBuf.capacity())
+                                    decoderOutputBuf.position(videoBufInfo.offset)
+                                    decoderOutputBuf.limit(videoBufInfo.offset + dataToWrite)
                                     encInputBuf.put(decoderOutputBuf)
-                                    encoder.queueInputBuffer(encInputIndex, 0, dataToWrite, bufferInfo.presentationTimeUs, 0)
+                                    encoder.queueInputBuffer(encInputIndex, 0, dataToWrite, videoBufInfo.presentationTimeUs, 0)
                                     decoderFramesRendered++
                                 }
                             }
@@ -1315,29 +1357,37 @@ internal class SystemSmsSender(
                 }
             }
 
-            val encoderOutputIndex = encoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+            val encoderOutputIndex = encoder.dequeueOutputBuffer(videoBufInfo, timeoutUs)
             when {
                 encoderOutputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     encoderTrackIndex = muxer.addTrack(encoder.outputFormat)
                     Log.i("SystemSmsSender", "Encoder format: ${encoder.outputFormat}")
+                    if (audioFormat != null && audioMuxerTrackIndex == -1) {
+                        audioMuxerTrackIndex = muxer.addTrack(audioFormat)
+                    }
                     if (!muxerStarted) {
                         muxer.start()
                         muxerStarted = true
                         muxerTrackAdded = true
+                        for ((buf, info) in pendingAudio) {
+                            muxer.writeSampleData(audioMuxerTrackIndex, buf, info)
+                        }
+                        pendingAudio.clear()
+                        Log.i("SystemSmsSender", "Flushed ${audioFramesWritten} pending audio samples")
                     }
                 }
                 encoderOutputIndex >= 0 -> {
                     val encodedData = encoder.getOutputBuffer(encoderOutputIndex) ?: continue
-                    val isCodecConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                    if (isCodecConfig) { bufferInfo.size = 0 }
-                    if (bufferInfo.size > 0 && muxerStarted) {
-                        encodedData.position(bufferInfo.offset)
-                        encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                        muxer.writeSampleData(encoderTrackIndex, encodedData, bufferInfo)
+                    val isCodecConfig = videoBufInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    if (isCodecConfig) { videoBufInfo.size = 0 }
+                    if (videoBufInfo.size > 0 && muxerStarted) {
+                        encodedData.position(videoBufInfo.offset)
+                        encodedData.limit(videoBufInfo.offset + videoBufInfo.size)
+                        muxer.writeSampleData(encoderTrackIndex, encodedData, videoBufInfo)
                         framesWritten++
                     }
                     encoder.releaseOutputBuffer(encoderOutputIndex, false)
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                    if (videoBufInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                         Log.i("SystemSmsSender", "Encoder EOS: framesWritten=$framesWritten")
                         encoderDone = true
                     }
@@ -1359,15 +1409,16 @@ internal class SystemSmsSender(
         muxer.release()
         decoder.release()
         encoder.release()
-        extractor.release()
+        videoExtractor.release()
+        audioExtractor?.release()
 
         val outputFile = java.io.File(outputPath)
         val valid = muxerTrackAdded && framesWritten > 0 && outputFile.length() > 1024
         if (!valid) {
-            Log.w("SystemSmsSender", "Transcode invalid: muxer=$muxerTrackAdded frames=$framesWritten size=${outputFile.length()}")
+            Log.w("SystemSmsSender", "Transcode invalid: muxer=$muxerTrackAdded frames=$framesWritten audio=$audioFramesWritten size=${outputFile.length()}")
             outputFile.delete()
         } else {
-            Log.i("SystemSmsSender", "Transcode OK: $framesWritten frames, ${outputFile.length()}B @ ${targetBitrate}bps")
+            Log.i("SystemSmsSender", "Transcode OK: $framesWritten video frames, $audioFramesWritten audio frames, ${outputFile.length()}B @ ${targetBitrate}bps")
         }
         return valid
     }
