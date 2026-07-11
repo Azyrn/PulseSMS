@@ -676,8 +676,7 @@ private fun VideoPlayerDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .clickable { exoPlayer.pause(); onDismiss() },
+                .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
             if (resolvedUri != null) {
@@ -689,7 +688,9 @@ private fun VideoPlayerDialog(
                             keepScreenOn = true
                         }
                     },
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { exoPlayer.pause(); onDismiss() },
                 )
             } else {
                 SerafinaProgressIndicator(modifier = Modifier.size(48.dp))
