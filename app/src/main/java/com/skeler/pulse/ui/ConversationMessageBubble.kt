@@ -90,7 +90,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -658,10 +659,11 @@ private fun VideoPlayerDialog(
 
     var playbackPosition by remember(uri) { mutableLongStateOf(0L) }
     var playbackDuration by remember(uri) { mutableLongStateOf(0L) }
+    var isSeeking by remember(uri) { mutableStateOf(false) }
 
     LaunchedEffect(resolvedUri, isPlaying) {
         while (true) {
-            if (resolvedUri != null) {
+            if (resolvedUri != null && !isSeeking) {
                 playbackPosition = exoPlayer.currentPosition.coerceAtLeast(0)
                 playbackDuration = exoPlayer.duration.coerceAtLeast(0)
             }
@@ -742,14 +744,25 @@ private fun VideoPlayerDialog(
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .zIndex(1f),
                 ) {
-                    LinearProgressIndicator(
-                        progress = { (playbackPosition.toFloat() / playbackDuration.toFloat()).coerceIn(0f, 1f) },
+                    Slider(
+                        value = playbackPosition.toFloat(),
+                        onValueChange = { pos ->
+                            isSeeking = true
+                            playbackPosition = pos.toLong()
+                        },
+                        onValueChangeFinished = {
+                            exoPlayer.seekTo(playbackPosition)
+                            isSeeking = false
+                        },
+                        valueRange = 0f..playbackDuration.toFloat().coerceAtLeast(1f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
+                            .height(24.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
