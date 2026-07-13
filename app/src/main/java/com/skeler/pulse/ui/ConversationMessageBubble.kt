@@ -90,6 +90,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -107,6 +109,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -145,8 +148,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import com.skeler.pulse.R
 import com.skeler.pulse.design.component.SerafinaAvatar
 import com.skeler.pulse.design.component.SerafinaProgressIndicator
@@ -161,6 +166,8 @@ import com.skeler.pulse.design.util.scrollToItemSmoothly
 import com.skeler.pulse.sms.OtpCodeExtractor
 import coil.compose.AsyncImage
 import com.skeler.pulse.sms.SystemSms
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Pause
 import kotlinx.coroutines.Dispatchers
@@ -295,17 +302,27 @@ internal fun ConversationMessageBubble(
                     Column {
                         val partUri = message.mmsPartUri
                         if (partUri != null) {
-                            if (message.mmsContentType?.startsWith("audio/") == true) {
-                                VoiceMessagePlayer(
-                                    uri = partUri,
-                                    isOutbound = isOutbound,
-                                )
-                            } else {
-                                ImageContent(
-                                    uris = message.mmsPartUris,
-                                    bubbleShape = bubbleShape,
-                                    onLongClickAction = onLongClickAction,
-                                )
+                            when {
+                                message.mmsContentType?.startsWith("audio/") == true -> {
+                                    VoiceMessagePlayer(
+                                        uri = partUri,
+                                        isOutbound = isOutbound,
+                                    )
+                                }
+                                message.mmsContentType?.startsWith("video/") == true -> {
+                                    VideoMessageBubble(
+                                        uri = partUri,
+                                        bubbleShape = bubbleShape,
+                                        onLongClickAction = onLongClickAction,
+                                    )
+                                }
+                                else -> {
+                                    ImageContent(
+                                        uris = message.mmsPartUris,
+                                        bubbleShape = bubbleShape,
+                                        onLongClickAction = onLongClickAction,
+                                    )
+                                }
                             }
                         }
                         if (messageText.isNotBlank()) {
@@ -483,6 +500,290 @@ internal fun String.toConversationMessageLinks(linkColor: Color, searchQuery: St
             }
         }
     }.toAnnotatedString()
+}
+
+@Composable
+private fun VideoMessageBubble(
+    uri: Uri,
+    bubbleShape: RoundedCornerShape,
+    onLongClickAction: (() -> Unit)?,
+) {
+    val context = LocalContext.current
+    var showDialog by remember { mutableStateOf(false) }
+    val thumbnail = remember(uri) {
+        try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, uri)
+            val frame = retriever.getFrameAtTime(0)
+            retriever.release()
+            frame
+        } catch (_: Exception) { null }
+    }
+
+    Box(
+        modifier = Modifier
+            .widthIn(max = 200.dp)
+            .aspectRatio(1f)
+            .clip(bubbleShape)
+            .combinedClickable(
+                onClick = { showDialog = true },
+                onLongClick = onLongClickAction,
+            ),
+    ) {
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail.asImageBitmap(),
+                contentDescription = stringResource(R.string.mms_body_placeholder),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            AsyncImage(
+                model = uri,
+                contentDescription = stringResource(R.string.mms_body_placeholder),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(48.dp)
+                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(32.dp),
+            )
+        }
+    }
+    if (showDialog) {
+        VideoPlayerDialog(uri = uri, onDismiss = { showDialog = false })
+    }
+}
+
+@Composable
+private fun VideoPlayerDialog(
+    uri: Uri,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var resolvedUri by remember(uri) { mutableStateOf<Uri?>(null) }
+    var loadError by remember(uri) { mutableStateOf(false) }
+
+    LaunchedEffect(uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                var found = false
+                val partId = uri.lastPathSegment
+                if (uri.toString().contains("content://mms/part/") && partId != null) {
+                    val cacheFile = java.io.File(context.cacheDir, "mms_parts/$partId")
+                    if (cacheFile.exists() && cacheFile.length() > 0L) {
+                        resolvedUri = Uri.fromFile(cacheFile)
+                        found = true
+                    }
+                }
+                if (!found) {
+                    context.contentResolver.openInputStream(uri)?.use { inp ->
+                        val tempFile = java.io.File(context.cacheDir, "video_play.mp4")
+                        tempFile.outputStream().use { out -> inp.copyTo(out) }
+                        if (tempFile.length() > 0L) {
+                            resolvedUri = Uri.fromFile(tempFile)
+                            found = true
+                        }
+                    }
+                }
+                if (!found) loadError = true
+            } catch (e: Exception) {
+                Log.e("VideoPlayerDialog", "Failed to resolve video URI: $uri", e)
+                loadError = true
+            }
+        }
+    }
+
+    var isPlaying by remember(uri) { mutableStateOf(true) }
+
+    var playbackEnded by remember(uri) { mutableStateOf(false) }
+
+    val exoPlayer = remember(uri) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    Log.e("VideoPlayerDialog", "ExoPlayer error: ${error.message}", error)
+                }
+                override fun onIsPlayingChanged(playing: Boolean) {
+                    isPlaying = playing
+                }
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == androidx.media3.common.Player.STATE_ENDED) {
+                        playbackEnded = true
+                    }
+                }
+            })
+        }
+    }
+
+    LaunchedEffect(resolvedUri) {
+        val vUri = resolvedUri ?: return@LaunchedEffect
+        try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, vUri)
+            val dur = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val w = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+            val h = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+            retriever.release()
+            Log.i("VideoPlayerDialog", "Video OK: duration=${dur}ms ${w}x${h} uri=$vUri")
+        } catch (e: Exception) {
+            Log.e("VideoPlayerDialog", "Video INVALID: uri=$vUri", e)
+        }
+        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(vUri))
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+    }
+
+    DisposableEffect(uri) {
+        onDispose { exoPlayer.release() }
+    }
+    BackHandler { exoPlayer.pause(); onDismiss() }
+
+    if (loadError) {
+        LaunchedEffect(Unit) {
+            android.widget.Toast.makeText(context, "Impossible de lire la vidéo", android.widget.Toast.LENGTH_SHORT).show()
+            onDismiss()
+        }
+        return
+    }
+
+    var playbackPosition by remember(uri) { mutableLongStateOf(0L) }
+    var playbackDuration by remember(uri) { mutableLongStateOf(0L) }
+    var isSeeking by remember(uri) { mutableStateOf(false) }
+
+    LaunchedEffect(resolvedUri, isPlaying) {
+        while (true) {
+            if (resolvedUri != null && !isSeeking) {
+                playbackPosition = exoPlayer.currentPosition.coerceAtLeast(0)
+                playbackDuration = exoPlayer.duration.coerceAtLeast(0)
+            }
+            delay(200L)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { exoPlayer.pause(); onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (resolvedUri != null) {
+                AndroidView(
+                    factory = {
+                        androidx.media3.ui.PlayerView(it).apply {
+                            player = exoPlayer
+                            useController = false
+                            keepScreenOn = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                SerafinaProgressIndicator(modifier = Modifier.size(48.dp))
+            }
+
+            IconButton(
+                onClick = { exoPlayer.pause(); onDismiss() },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .zIndex(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = null,
+                    tint = Color.White,
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    if (playbackEnded) {
+                        exoPlayer.seekTo(0)
+                        playbackEnded = false
+                    }
+                    exoPlayer.playWhenReady = !exoPlayer.isPlaying
+                    isPlaying = exoPlayer.isPlaying
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 52.dp)
+                    .size(56.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                    .zIndex(2f),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+
+            if (playbackDuration > 0) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .zIndex(1f),
+                ) {
+                    Slider(
+                        value = playbackPosition.toFloat(),
+                        onValueChange = { pos ->
+                            isSeeking = true
+                            playbackPosition = pos.toLong()
+                        },
+                        onValueChangeFinished = {
+                            exoPlayer.seekTo(playbackPosition)
+                            isSeeking = false
+                        },
+                        valueRange = 0f..playbackDuration.toFloat().coerceAtLeast(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = formatDuration(playbackPosition),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                        Text(
+                            text = formatDuration(playbackDuration),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1098,6 +1399,13 @@ private fun MessageLinkActionsRow(
             }
         }
     }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 private fun openInBrowser(context: android.content.Context, uri: String) {

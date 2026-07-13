@@ -49,7 +49,7 @@ class MmsPreferences(
         private val KEY_MMSC_URL = stringPreferencesKey("mmsc_url")
         private val KEY_MMS_PROXY = stringPreferencesKey("mms_proxy")
         private val KEY_MMS_PORT = stringPreferencesKey("mms_port")
-        const val DEFAULT_MAX_IMAGE_SIZE_KB = 500
+        const val DEFAULT_MAX_IMAGE_SIZE_KB = 700
         const val UNLIMITED = -1
     }
 }

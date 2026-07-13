@@ -582,7 +582,7 @@ internal fun SettingsScreen(
                 }
                 val mmsImageSizeKb by mmsPreferences.maxImageSizeKb.collectAsState(initial = MmsPreferences.DEFAULT_MAX_IMAGE_SIZE_KB)
                 val sizeOptions = remember {
-                    listOf(150, 300, 500, 750, 1000, MmsPreferences.UNLIMITED)
+                    listOf(150, 300, 500, 700, 750, 1000, MmsPreferences.UNLIMITED)
                 }
                 SettingsGroupCard {
                     SettingsChoiceRow(

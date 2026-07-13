@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission
@@ -143,6 +144,12 @@
             android:name=".sms.VoiceRecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Video recording — foreground service for background video capture -->
+        <service
+            android:name=".sms.VideoRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
 
         <!-- FileProvider — serves MMS PDU/images (internal only) -->
         <provider

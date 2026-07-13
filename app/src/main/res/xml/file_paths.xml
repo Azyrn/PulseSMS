@@ -3,4 +3,5 @@
     <cache-path name="mms_parts" path="mms_parts/" />
     <cache-path name="camera_photos" path="camera_photos/" />
     <cache-path name="voice_messages" path="voice_messages/" />
+    <cache-path name="video_messages" path="video_messages/" />
 </paths>

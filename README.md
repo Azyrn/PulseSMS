@@ -8,6 +8,7 @@ A fast and private SMS app for Android, built with Kotlin, that automatically co
 - **Private** — your messages stay on your device
 - **Clean UI** — minimal interface focused on what matters
 - **MMS Support** — send and receive photos with automatic downscaling
+- **Video Messages** — record up to 30s of video, auto-compressed for MMS delivery; tap to play received videos with ExoPlayer
 - **In‑app Camera** — take photos directly from the composer
 - **Gallery Picker** — native gallery with multi‑select (tap multiple photos, then confirm)
 - **MMS Image Viewer** — tap an MMS image to view it full‑screen; download button saves to your gallery and opens it automatically
@@ -27,6 +28,7 @@ A fast and private SMS app for Android, built with Kotlin, that automatically co
 - **Architecture:** Multi-module (`app`, `core`, `feature`) with MVVM
 - **UI Framework:** Jetpack Compose + Material 3
 - **Image Loading:** Coil
+- **Video Playback:** Media3 (ExoPlayer)
 - **State Management:** ViewModels, StateFlow, Compose state
 - **Persistence:** Room (SQLite), Android SMS/MMS ContentProvider
 - **DI:** Manual constructor injection
