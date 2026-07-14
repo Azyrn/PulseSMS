@@ -282,7 +282,7 @@ internal class SystemSmsSender(
 
     suspend fun sendVideoMms(address: String, text: String, videoUri: Uri) = withContext(ioDispatcher) {
         try {
-            val maxSizeKb = MmsPreferences(context).getMaxImageSizeKb()
+            val maxSizeKb = MmsPreferences(context).getMaxAudioSizeKb()
             val videoBytes = context.contentResolver.openInputStream(videoUri)?.use { it.readBytes() }
                 ?: throw RuntimeException("Cannot read video file")
             if (videoBytes.isEmpty()) throw RuntimeException("Empty video recording")
