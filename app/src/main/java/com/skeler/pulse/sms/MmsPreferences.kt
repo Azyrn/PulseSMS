@@ -26,6 +26,15 @@ class MmsPreferences(
         store.edit { prefs -> prefs[KEY_MAX_IMAGE_SIZE_KB] = value }
     }
 
+    val maxAudioSizeKb: Flow<Int> =
+        store.data.map { prefs -> prefs[KEY_MAX_AUDIO_SIZE_KB] ?: DEFAULT_MAX_AUDIO_SIZE_KB }
+
+    suspend fun getMaxAudioSizeKb(): Int = maxAudioSizeKb.first()
+
+    suspend fun setMaxAudioSizeKb(value: Int) {
+        store.edit { prefs -> prefs[KEY_MAX_AUDIO_SIZE_KB] = value }
+    }
+
     suspend fun getMmscUrl(): String? =
         store.data.map { prefs -> prefs[KEY_MMSC_URL] }.first()
 
@@ -46,10 +55,12 @@ class MmsPreferences(
     companion object {
         private val Context.dataStore by preferencesDataStore(name = "mms_prefs")
         private val KEY_MAX_IMAGE_SIZE_KB = intPreferencesKey("mms_max_image_size_kb")
+        private val KEY_MAX_AUDIO_SIZE_KB = intPreferencesKey("mms_max_audio_size_kb")
         private val KEY_MMSC_URL = stringPreferencesKey("mmsc_url")
         private val KEY_MMS_PROXY = stringPreferencesKey("mms_proxy")
         private val KEY_MMS_PORT = stringPreferencesKey("mms_port")
         const val DEFAULT_MAX_IMAGE_SIZE_KB = 700
+        const val DEFAULT_MAX_AUDIO_SIZE_KB = 700
         const val UNLIMITED = -1
     }
 }

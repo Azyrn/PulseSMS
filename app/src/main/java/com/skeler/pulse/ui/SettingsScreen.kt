@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.rounded.Archive
@@ -581,6 +582,7 @@ internal fun SettingsScreen(
                     MmsPreferences(context.applicationContext)
                 }
                 val mmsImageSizeKb by mmsPreferences.maxImageSizeKb.collectAsState(initial = MmsPreferences.DEFAULT_MAX_IMAGE_SIZE_KB)
+                val mmsAudioSizeKb by mmsPreferences.maxAudioSizeKb.collectAsState(initial = MmsPreferences.DEFAULT_MAX_AUDIO_SIZE_KB)
                 val sizeOptions = remember {
                     listOf(150, 300, 500, 700, 750, 1000, MmsPreferences.UNLIMITED)
                 }
@@ -602,6 +604,27 @@ internal fun SettingsScreen(
                             onSelect = { optionId ->
                                 coroutineScope.launch {
                                     mmsPreferences.setMaxImageSizeKb(optionId.toIntOrNull() ?: MmsPreferences.DEFAULT_MAX_IMAGE_SIZE_KB)
+                                }
+                            },
+                        )
+                    }
+                    SettingsChoiceRow(
+                        icon = Icons.Outlined.MusicNote,
+                        title = stringResource(R.string.settings_mms_audio_size),
+                        subtitle = mmsSizeLabel(context, mmsAudioSizeKb),
+                    ) {
+                        SettingsChoiceRail(
+                            options = sizeOptions.map { value ->
+                                SettingsChoiceOption(
+                                    id = value.toString(),
+                                    label = mmsSizeLabel(context, value),
+                                )
+                            },
+                            selectedId = mmsAudioSizeKb.toString(),
+                            reducedMotion = reducedMotion,
+                            onSelect = { optionId ->
+                                coroutineScope.launch {
+                                    mmsPreferences.setMaxAudioSizeKb(optionId.toIntOrNull() ?: MmsPreferences.DEFAULT_MAX_AUDIO_SIZE_KB)
                                 }
                             },
                         )

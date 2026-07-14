@@ -150,6 +150,7 @@ dependencies {
     implementation(libs.androidx.camera.video)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.ffmpeg.kit.full.gpl)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
