@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
@@ -31,26 +32,54 @@ class SmsNotificationActionReceiver : BroadcastReceiver() {
 
     private fun handleMarkRead(context: Context, messageId: Long, notificationId: Int, isMms: Boolean) {
         if (messageId < 0) return
-        val values = ContentValues().apply {
-            put(Telephony.Sms.READ, 1)
-            put(Telephony.Sms.SEEN, 1)
+
+        val threadId = resolveThreadId(context, messageId, isMms)
+        if (threadId != null && threadId > 0L) {
+            markThreadAsRead(context, threadId)
+        } else {
+            val values = ContentValues().apply {
+                put(Telephony.Sms.READ, 1)
+                put(Telephony.Sms.SEEN, 1)
+            }
+            context.contentResolver.update(
+                messageUri(isMms),
+                values,
+                "${Telephony.Sms._ID} = ?",
+                arrayOf(messageId.toString()),
+            )
         }
-        context.contentResolver.update(
-            messageUri(isMms),
-            values,
-            "${Telephony.Sms._ID} = ?",
-            arrayOf(messageId.toString()),
-        )
+
+        context.contentResolver.notifyChange(Telephony.Sms.CONTENT_URI, null)
+        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         NotificationManagerCompat.from(context).cancel(notificationId)
     }
 
     private fun handleDelete(context: Context, messageId: Long, notificationId: Int, isMms: Boolean) {
         if (messageId < 0) return
+
+        val threadId = resolveThreadId(context, messageId, isMms)
+
         context.contentResolver.delete(
             messageUri(isMms),
             "${Telephony.Sms._ID} = ?",
             arrayOf(messageId.toString()),
         )
+        if (isMms) {
+            deleteMmsPartCacheFile(context, messageId)
+        }
+
+        if (threadId != null && threadId > 0L) {
+            val remainingSms = countSmsInThread(context, threadId)
+            val remainingMms = countMmsInThread(context, threadId)
+            if (remainingSms == 0 && remainingMms == 0) {
+                deleteEmptyThread(context, threadId)
+            } else {
+                markThreadAsRead(context, threadId)
+            }
+        }
+
+        context.contentResolver.notifyChange(Telephony.Sms.CONTENT_URI, null)
+        context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         NotificationManagerCompat.from(context).cancel(notificationId)
     }
 
@@ -63,15 +92,22 @@ class SmsNotificationActionReceiver : BroadcastReceiver() {
         val address = intent.getStringExtra(EXTRA_SENDER_ADDRESS) ?: return
 
         if (messageId > 0) {
-            val readValues = ContentValues().apply {
-                put(Telephony.Sms.READ, 1)
-                put(Telephony.Sms.SEEN, 1)
+            val threadId = resolveThreadId(context, messageId, isMms)
+            if (threadId != null && threadId > 0L) {
+                markThreadAsRead(context, threadId)
+            } else {
+                val readValues = ContentValues().apply {
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.SEEN, 1)
+                }
+                context.contentResolver.update(
+                    messageUri(isMms), readValues,
+                    "${Telephony.Sms._ID} = ?",
+                    arrayOf(messageId.toString()),
+                )
             }
-            context.contentResolver.update(
-                messageUri(isMms), readValues,
-                "${Telephony.Sms._ID} = ?",
-                arrayOf(messageId.toString()),
-            )
+            context.contentResolver.notifyChange(Telephony.Sms.CONTENT_URI, null)
+            context.contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
         }
 
         val pendingResult = goAsync()
@@ -86,6 +122,102 @@ class SmsNotificationActionReceiver : BroadcastReceiver() {
         }
 
         NotificationManagerCompat.from(context).cancel(notificationId)
+    }
+
+    private fun resolveThreadId(context: Context, messageId: Long, isMms: Boolean): Long? {
+        val cursor = context.contentResolver.query(
+            messageUri(isMms),
+            arrayOf("thread_id"),
+            "${Telephony.Sms._ID} = ?",
+            arrayOf(messageId.toString()),
+            null,
+        )
+        return cursor?.use {
+            if (it.moveToFirst()) it.getLong(0) else null
+        }
+    }
+
+    private fun countSmsInThread(context: Context, threadId: Long): Int {
+        val cursor = context.contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms._ID),
+            "${Telephony.Sms.THREAD_ID} = ?",
+            arrayOf(threadId.toString()),
+            null,
+        )
+        return cursor?.use { it.count } ?: 0
+    }
+
+    private fun countMmsInThread(context: Context, threadId: Long): Int {
+        val cursor = try {
+            context.contentResolver.query(
+                Telephony.Mms.CONTENT_URI,
+                arrayOf("_id"),
+                "thread_id = ?",
+                arrayOf(threadId.toString()),
+                null,
+            )
+        } catch (e: SecurityException) {
+            null
+        }
+        return cursor?.use { it.count } ?: 0
+    }
+
+    private fun markThreadAsRead(context: Context, threadId: Long) {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
+        }
+        context.contentResolver.update(
+            Telephony.Sms.CONTENT_URI,
+            values,
+            "${Telephony.Sms.THREAD_ID} = ?",
+            arrayOf(threadId.toString()),
+        )
+        val mmsValues = ContentValues().apply {
+            put("read", 1)
+        }
+        context.contentResolver.update(
+            Telephony.Mms.CONTENT_URI,
+            mmsValues,
+            "thread_id = ?",
+            arrayOf(threadId.toString()),
+        )
+    }
+
+    private fun deleteEmptyThread(context: Context, threadId: Long) {
+        val mmsCursor = try {
+            context.contentResolver.query(
+                Telephony.Mms.CONTENT_URI,
+                arrayOf("_id"),
+                "thread_id = ?",
+                arrayOf(threadId.toString()),
+                null,
+            )
+        } catch (e: SecurityException) {
+            null
+        }
+        mmsCursor?.use { c ->
+            val idIdx = c.getColumnIndexOrThrow("_id")
+            while (c.moveToNext()) {
+                val mmsId = c.getLong(idIdx)
+                context.contentResolver.delete(
+                    Uri.withAppendedPath(Telephony.Mms.CONTENT_URI, mmsId.toString()),
+                    null, null,
+                )
+                deleteMmsPartCacheFile(context, mmsId)
+            }
+        }
+        context.contentResolver.delete(
+            Telephony.Sms.CONTENT_URI,
+            "${Telephony.Sms.THREAD_ID} = ?",
+            arrayOf(threadId.toString()),
+        )
+    }
+
+    private fun deleteMmsPartCacheFile(context: Context, mmsId: Long) {
+        val file = java.io.File(context.cacheDir, "mms_parts/$mmsId")
+        if (file.exists()) file.delete()
     }
 
     companion object {

@@ -287,6 +287,7 @@
     <string name="settings_mms">MMS</string>
     <string name="settings_mms_image_size">Max photo size</string>
     <string name="settings_mms_image_size_subtitle">Compress MMS photos to this maximum</string>
+    <string name="settings_mms_audio_size">Max audio/video size</string>
     <string name="settings_mms_size_kb">%d KB</string>
     <string name="settings_mms_size_mb">1 MB</string>
     <string name="settings_mms_size_unlimited">Unlimited</string>

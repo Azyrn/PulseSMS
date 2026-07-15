@@ -30,6 +30,7 @@ fragment = "1.8.9"
 klinkerSmsmms = "5.2.6"
 camerax = "1.5.0"
 media3 = "1.7.1"
+ffmpegKit = "2.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -81,6 +82,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 androidx-camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+ffmpeg-kit-full-gpl = { group = "com.antonkarpenko", name = "ffmpeg-kit-full-gpl", version.ref = "ffmpegKit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
