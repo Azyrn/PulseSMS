@@ -2,6 +2,7 @@ package com.skeler.pulse.ui
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -162,7 +163,8 @@ class RealSmsViewModel(
                 }
             } catch (exception: CancellationException) {
                 throw exception
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                Log.e(TAG, "Inbox observation failed", exception)
                 _inboxState.value = _inboxState.value.copy(
                     threads = emptyList(),
                     archivedThreads = emptyList(),
@@ -775,6 +777,10 @@ class RealSmsViewModel(
         conversationJob?.cancel()
         sendJob?.cancel()
         super.onCleared()
+    }
+
+    private companion object {
+        const val TAG = "RealSmsViewModel"
     }
 }
 

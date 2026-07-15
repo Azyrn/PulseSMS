@@ -13,7 +13,8 @@ import kotlinx.coroutines.runBlocking
  * Immutable snapshot of the current Serafina theme configuration.
  */
 data class SerafinaThemeState(
-    val dynamicColorEnabled: Boolean = true,
+    // Lavender Volt is the Pulse brand look; dynamic wallpaper color is opt-in.
+    val dynamicColorEnabled: Boolean = false,
     val selectedPalette: SerafinaPalette = SerafinaPalette.LavenderVolt,
     val themeMode: SerafinaThemeMode = SerafinaThemeMode.System,
     val blackThemeEnabled: Boolean = false,

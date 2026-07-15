@@ -1,6 +1,7 @@
 package com.skeler.pulse.sms
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.ContentObserver
@@ -477,11 +478,15 @@ class SystemSmsReader(
         return result
     }
 
-    fun markThreadAsRead(threadId: Long?, address: String) {
+    suspend fun markThreadAsRead(threadId: Long?, address: String) {
         setThreadUnreadState(threadId = threadId, address = address, unread = false)
     }
 
-    fun setThreadUnreadState(threadId: Long?, address: String, unread: Boolean) {
+    suspend fun setThreadUnreadState(
+        threadId: Long?,
+        address: String,
+        unread: Boolean,
+    ) = withContext(ioDispatcher) {
         val targetReadValue = if (unread) 1 else 0
         val targetIds = resolveSmsIds(
             threadId = threadId,
@@ -500,6 +505,7 @@ class SystemSmsReader(
         if (threadId != null && threadId > 0L) {
             val mmsValues = ContentValues().apply {
                 put("read", if (unread) 0 else 1)
+                put("seen", if (unread) 0 else 1)
             }
             contentResolver.update(
                 Telephony.Mms.CONTENT_URI,
@@ -510,7 +516,7 @@ class SystemSmsReader(
         }
     }
 
-    fun deleteThread(threadId: Long?, address: String) {
+    suspend fun deleteThread(threadId: Long?, address: String): Unit = withContext(ioDispatcher) {
         // Delete MMS first (before SMS observer fires) to avoid race where readThreads
         // sees MMS data after SMS is already gone
         if (threadId != null && threadId > 0L) {
@@ -538,6 +544,17 @@ class SystemSmsReader(
             val (selection, selectionArgs) = targetIds.toIdSelection(Telephony.Sms._ID)
             contentResolver.delete(Telephony.Sms.CONTENT_URI, selection, selectionArgs)
         }
+        if (threadId != null && threadId > 0L) {
+            // Remove the now-empty thread row so other SMS apps don't show a ghost conversation.
+            try {
+                contentResolver.delete(
+                    ContentUris.withAppendedId(Telephony.Threads.CONTENT_URI, threadId),
+                    null, null,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not delete thread row $threadId", e)
+            }
+        }
         // Force re-read by notifying both URIs (some ROMs don't notify on MMS delete)
         contentResolver.notifyChange(Telephony.Mms.CONTENT_URI, null)
     }
@@ -547,7 +564,7 @@ class SystemSmsReader(
         if (file.exists()) file.delete()
     }
 
-    fun deleteMessage(messageId: Long) {
+    suspend fun deleteMessage(messageId: Long): Unit = withContext(ioDispatcher) {
         contentResolver.delete(
             Telephony.Sms.CONTENT_URI,
             "${Telephony.Sms._ID} = ?",
@@ -555,8 +572,8 @@ class SystemSmsReader(
         )
     }
 
-    fun deleteMessages(messages: List<SystemSms>) {
-        if (messages.isEmpty()) return
+    suspend fun deleteMessages(messages: List<SystemSms>): Unit = withContext(ioDispatcher) {
+        if (messages.isEmpty()) return@withContext
         val smsIds = messages.filter { !it.isMms }.map { it.id }
         val mmsIds = messages.filter { it.isMms }.map { it.id }
         if (smsIds.isNotEmpty()) {
@@ -858,7 +875,8 @@ class SystemSmsReader(
             Telephony.Sms.READ,
             Telephony.Sms.THREAD_ID,
             Telephony.Sms.STATUS,
-            "priority",
+            // "priority" is deliberately absent: it is not a standard Telephony.Sms column
+            // and Samsung/One UI providers reject it with "no such column" (broken inbox).
             Telephony.Sms.DATE_SENT,
         )
     }

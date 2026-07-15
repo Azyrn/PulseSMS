@@ -9,7 +9,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -52,7 +51,6 @@ import androidx.compose.material.icons.rounded.MarkunreadMailbox
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsOff
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
@@ -60,6 +58,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -69,9 +68,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -94,7 +90,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -103,11 +98,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.skeler.pulse.InboxAccessState
@@ -158,12 +149,10 @@ internal fun RealInboxScreen(
 ) {
     var selectedFilter by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var isSearching by rememberSaveable { mutableStateOf(false) }
     var contextMenuThreadId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedThreadIds by rememberSaveable { mutableStateOf<Set<Long>>(emptySet()) }
     var showBatchDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
-    val searchFocusRequester = remember { FocusRequester() }
     val reducedMotion = rememberReducedMotionEnabled()
     val listFlingBehavior = rememberSmoothFlingBehavior(enabled = !reducedMotion)
     val colors = MaterialTheme.colorScheme
@@ -243,17 +232,6 @@ internal fun RealInboxScreen(
 
     if (isSelectionMode) {
         BackHandler { selectedThreadIds = emptySet() }
-    } else if (isSearching) {
-        BackHandler {
-            isSearching = false
-            searchQuery = ""
-        }
-    }
-
-    LaunchedEffect(isSearching) {
-        if (isSearching) {
-            searchFocusRequester.requestFocus()
-        }
     }
 
     Scaffold(
@@ -367,75 +345,16 @@ internal fun RealInboxScreen(
             } else {
                 TopAppBar(
                     title = {
-                        if (isSearching) {
-                            BasicTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(searchFocusRequester),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                keyboardOptions = KeyboardOptions(
-                                    imeAction = ImeAction.Search,
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onSearch = { /* keep filtering as user types */ },
-                                ),
-                                decorationBox = { innerTextField ->
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.CenterStart,
-                                    ) {
-                                        if (searchQuery.isEmpty()) {
-                                            Text(
-                                                text = stringResource(R.string.inbox_search_placeholder),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                },
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.inbox_title),
-                                style = MaterialTheme.typography.headlineMedium,
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                if (isSearching) {
-                                    isSearching = false
-                                    searchQuery = ""
-                                } else {
-                                    isSearching = true
-                                }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (isSearching) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Search,
-                                contentDescription = if (isSearching) stringResource(R.string.inbox_clear_search) else stringResource(R.string.inbox_search_placeholder),
-                                tint = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
+                        Text(
+                            text = stringResource(R.string.inbox_title),
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         scrolledContainerColor = MaterialTheme.colorScheme.surface,
                     ),
                     actions = {
-                        if (isSearching && searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.inbox_clear_search), tint = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
                         IconButton(onClick = onOpenArchivedChats) {
                             Icon(Icons.Rounded.Archive, contentDescription = stringResource(R.string.settings_archived_chats), tint = MaterialTheme.colorScheme.onSurface)
                         }
@@ -448,7 +367,7 @@ internal fun RealInboxScreen(
         },
         floatingActionButton = {
             if (!isSelectionMode) {
-                FloatingActionButton(
+                ExtendedFloatingActionButton(
                     modifier = Modifier.semantics {
                         role = Role.Button
                         contentDescription = context.getString(R.string.inbox_new_chat)
@@ -456,17 +375,26 @@ internal fun RealInboxScreen(
                     onClick = onOpenNewChat,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = NewChatFabDefaultElevation,
                         pressedElevation = NewChatFabPressedElevation,
+                        focusedElevation = NewChatFabDefaultElevation,
+                        hoveredElevation = NewChatFabPressedElevation,
                     ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AddComment,
-                        contentDescription = null,
-                    )
-                }
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Rounded.AddComment,
+                            contentDescription = null,
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(R.string.inbox_new_chat),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    },
+                )
             }
         },
     ) { innerPadding ->
@@ -491,35 +419,73 @@ internal fun RealInboxScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-            item(key = "filter_chips") {
-                Row(
+            item(key = "inbox_search") {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(0.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    InboxFilter.entries.forEachIndexed { index, filter ->
-                        if (index > 0) {
-                            Text(
-                                text = "·",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                                modifier = Modifier.padding(horizontal = 2.dp),
-                            )
+                        .heightIn(min = 52.dp)
+                        .padding(bottom = 6.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(34.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.inbox_clear_search),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
+                    },
+                    placeholder = {
                         Text(
-                            text = stringResource(filter.labelResId),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (selectedFilter == index) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selectedFilter == index) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier
-                                .clickable { selectedFilter = index }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            text = stringResource(R.string.inbox_search_placeholder),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    shape = RoundedCornerShape(18.dp),
+                )
+            }
+            item(key = "filter_chips") {
+                LazyRow(
+                    state = filterState,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .elasticOverscroll(
+                            enabled = !reducedMotion,
+                            state = filterState,
+                            orientation = Orientation.Horizontal,
+                        ),
+                ) {
+                    items(
+                        count = InboxFilter.entries.size,
+                        key = { index -> "inbox_filter_${InboxFilter.entries[index].name}" },
+                        contentType = { "inbox_filter_chip" },
+                    ) { index ->
+                        val filter = InboxFilter.entries[index]
+                        val animatedModifier = motionAnimateItemModifier(reducedMotion)
+                            .then(rememberEntranceModifier(filter.name, reducedMotion))
+                        FilterChip(
+                            modifier = animatedModifier,
+                            selected = selectedFilter == index,
+                            onClick = { selectedFilter = index },
+                            label = { Text(stringResource(filter.labelResId)) },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
                         )
                     }
                 }

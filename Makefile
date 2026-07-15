@@ -46,7 +46,8 @@ help:
 	@printf "  $(GREEN)clean-cache$(NC)  - Supprime UNIQUEMENT le Configuration Cache\n"
 	@printf "  $(GREEN)build$(NC)        - Compile l'APK debug (avec cache)\n"
 	@printf "  $(GREEN)build-release$(NC) - Compile l'APK release (avec cache)\n"
-	@printf "  $(GREEN)install$(NC)      - Installe l'APK (avec -r -d pour downgrade/debug)\n"
+	@printf "  $(GREEN)install$(NC)      - Compile + installe le split ABI adapte (via Gradle)\n"
+	@printf "  $(GREEN)install-apk$(NC)  - Installe l'APK universel via adb (fallback)\n"
 	@printf "  $(GREEN)reinstall$(NC)    - Desinstalle puis installe (propre)\n"
 	@printf "  $(GREEN)run$(NC)          - Lance l'application\n"
 	@printf "  $(GREEN)stop$(NC)         - Force l'arret de l'application\n"
@@ -121,13 +122,22 @@ build-release:
 	@printf "$(YELLOW)Compilation release (Configuration Cache active)...$(NC)\n"
 	$(GRADLE) assembleRelease
 
-# --- Installation (avec gestion des erreurs) ---
+# --- Installation via Gradle : compile + installe le split ABI adapte a l'appareil.
+# --- Impossible d'installer un APK obsolete (Gradle installe ce qu'il vient de compiler).
 .PHONY: install
-install: check-adb build
-	@printf "$(YELLOW)Installation de l'APK (debug)...$(NC)\n"
-	@if $(ADB) shell pm list packages | grep -q $(PACKAGE_NAME); then \
-		printf "$(CYAN)App deja installee, tentative de mise a jour...$(NC)\n"; \
-	fi
+install: check-adb
+	@printf "$(YELLOW)Compilation + installation (split ABI, via Gradle)...$(NC)\n"
+	@$(GRADLE) :app:installDebug || { \
+		printf "$(RED)Echec de l'installation.$(NC)\n"; \
+		printf "   -> Essayez : $(BOLD)make reinstall$(NC) (desinstalle puis reinstalle)\n"; \
+		printf "   -> Ou : $(BOLD)make install-apk$(NC) (APK universel via adb)\n"; \
+		exit 1; \
+	}
+
+# --- Installation manuelle de l'APK universel (fallback si installDebug echoue) ---
+.PHONY: install-apk
+install-apk: check-adb build
+	@printf "$(YELLOW)Installation de l'APK universel (debug)...$(NC)\n"
 	@$(ADB) install -r -t -d $(APK_DEBUG_PATH) || { \
 		printf "$(RED)Echec de l'installation.$(NC)\n"; \
 		printf "   -> Essayez : $(BOLD)make reinstall$(NC) (desinstalle puis reinstalle)\n"; \

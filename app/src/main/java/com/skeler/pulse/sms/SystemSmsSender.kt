@@ -1177,9 +1177,7 @@ internal class SystemSmsSender(
                         return result
                     }
                     if (bestResult == null || result.size < bestResult.size) {
-                        bestResult?.let { f -> java.io.File(tempDir, "best.3gp").delete() }
                         bestResult = result
-                        java.io.File(tempDir, "best.3gp").writeBytes(result)
                     }
                     outFile.delete()
                 }
@@ -1190,7 +1188,6 @@ internal class SystemSmsSender(
 
         inputFile.delete()
         if (bestResult != null) {
-            java.io.File(tempDir, "best.3gp").delete()
             Log.w("SystemSmsSender", "Video not within limit but returning best compressed: ${bestResult.size}B (original: ${videoBytes.size}B)")
             return bestResult
         }

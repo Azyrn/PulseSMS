@@ -125,7 +125,7 @@ class ThemePreferences(private val context: Context) {
         val themeModeName = prefs[KEY_THEME_MODE] ?: SerafinaThemeMode.System.name
 
         return SerafinaThemeState(
-            dynamicColorEnabled = prefs[KEY_DYNAMIC_COLOR] ?: true,
+            dynamicColorEnabled = prefs[KEY_DYNAMIC_COLOR] ?: false,
             selectedPalette = SerafinaPalette.entries.firstOrNull { it.name == paletteName }
                 ?: SerafinaPalette.LavenderVolt,
             themeMode = SerafinaThemeMode.entries.firstOrNull { it.name == themeModeName }

@@ -111,7 +111,10 @@ internal fun SmsThreadCard(
         photoUri = uri
     }
     val formattedAddress = remember(thread.address) { formatAddressForDisplay(thread.address) }
-    val showAddress = displayName != formattedAddress
+    // Only show the address line when it adds information beyond the title
+    // (e.g. a contact name); "ATTIJARI" over "attijari" is pure noise.
+    val showAddress = !displayName.equals(formattedAddress, ignoreCase = true) &&
+        !thread.address.equals(displayName, ignoreCase = true)
     val initials = remember(displayName) { displayName.toAvatarInitials() }
     val hasUnread = thread.unreadCount > 0
     val hasAudioMms = thread.lastMmsPartUri != null && thread.lastMmsContentType?.startsWith("audio/") == true
