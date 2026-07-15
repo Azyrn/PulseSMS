@@ -2,9 +2,7 @@ package com.skeler.pulse.ui
 
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.res.Resources
 import androidx.fragment.app.FragmentActivity
-import com.skeler.pulse.R
 import com.skeler.pulse.security.auth.BiometricAvailability
 import com.skeler.pulse.sms.SystemSms
 import java.time.Instant
@@ -18,12 +16,12 @@ internal fun Instant.toInboxTimestamp(): String = when {
     else -> INBOX_DATE_FORMATTER.format(atZone(ZoneId.systemDefault()))
 }
 
-internal fun BiometricAvailability.lockScreenMessage(resources: Resources): String = when (this) {
-    BiometricAvailability.Available -> resources.getString(R.string.biometric_tap_to_auth)
-    BiometricAvailability.NoHardware -> resources.getString(R.string.biometric_no_hardware)
-    BiometricAvailability.HardwareUnavailable -> resources.getString(R.string.biometric_hw_unavailable)
-    BiometricAvailability.NoneEnrolled -> resources.getString(R.string.biometric_none_enrolled)
-    BiometricAvailability.SecurityUpdateRequired -> resources.getString(R.string.biometric_security_update)
+internal fun BiometricAvailability.lockScreenMessage(): String = when (this) {
+    BiometricAvailability.Available -> "Tap to authenticate"
+    BiometricAvailability.NoHardware -> "Strong biometric hardware is not available on this device."
+    BiometricAvailability.HardwareUnavailable -> "Strong biometric hardware is temporarily unavailable."
+    BiometricAvailability.NoneEnrolled -> "Enroll a strong biometric before using biometric login."
+    BiometricAvailability.SecurityUpdateRequired -> "Install the required biometric sensor security update."
 }
 
 internal tailrec fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
@@ -56,84 +54,41 @@ internal sealed interface ConversationTimelineItem {
         override val key: String = "conversation_message_${message.id}"
         override val contentType: String = "conversation_message"
     }
-
-    data class ReactionCard(
-        val emoji: String,
-        val referencedText: String,
-        override val key: String,
-    ) : ConversationTimelineItem {
-        override val contentType: String = "conversation_reaction_card"
-    }
 }
 
-data class UnmatchedReaction(
-    val emoji: String,
-    val referencedText: String,
-    val date: Long,
-) {
-    val key: String get() = "conversation_reaction_$date"
-}
+internal fun List<SystemSms>.toConversationTimeline(): List<ConversationTimelineItem> {
+    if (isEmpty()) return emptyList()
 
-internal fun buildConversationTimeline(
-    messages: List<SystemSms>,
-    unmatchedReactions: List<UnmatchedReaction>,
-    unreadMessagesFormatter: (Int) -> String,
-    todayLabel: String,
-    yesterdayLabel: String,
-): List<ConversationTimelineItem> {
-    if (messages.isEmpty() && unmatchedReactions.isEmpty()) return emptyList()
-
-    val items = ArrayList<ConversationTimelineItem>(messages.size + unmatchedReactions.size + 4)
+    val items = ArrayList<ConversationTimelineItem>(size + 4)
     var lastDate: LocalDate? = null
-    val unreadMessages = messages.count { it.isInbound && !it.read }
-    val firstUnreadMessageId = messages.firstOrNull { it.isInbound && !it.read }?.id
+    val unreadMessages = count { it.isInbound && !it.read }
+    val firstUnreadMessageId = firstOrNull { it.isInbound && !it.read }?.id
 
-    val allEntries = buildList<Pair<Long, Any>> {
-        messages.forEach { add(Pair(it.date, it)) }
-        unmatchedReactions.forEach { add(Pair(it.date, it)) }
-        sortBy { it.first }
-    }
-
-    for (entry in allEntries) {
-        val entryDate = java.time.Instant.ofEpochMilli(entry.first)
-            .atZone(ZoneId.systemDefault()).toLocalDate()
-        if (entryDate != lastDate) {
+    for (message in this) {
+        val localDate = message.timestamp.atZone(ZoneId.systemDefault()).toLocalDate()
+        if (localDate != lastDate) {
             items += ConversationTimelineItem.DayDivider(
-                key = "conversation_day_${entryDate}",
-                label = entryDate.toConversationDayLabel(todayLabel, yesterdayLabel),
+                key = "conversation_day_${localDate}",
+                label = localDate.toConversationDayLabel(),
             )
-            lastDate = entryDate
+            lastDate = localDate
         }
-        when (val data = entry.second) {
-            is SystemSms -> {
-                if (data.id == firstUnreadMessageId) {
-                    items += ConversationTimelineItem.UnreadDivider(
-                        key = "conversation_unread_${data.id}",
-                        label = unreadMessagesFormatter(unreadMessages),
-                    )
-                }
-                items += ConversationTimelineItem.Message(data)
-            }
-            is UnmatchedReaction -> {
-                items += ConversationTimelineItem.ReactionCard(
-                    emoji = data.emoji,
-                    referencedText = data.referencedText,
-                    key = data.key,
-                )
-            }
+        if (message.id == firstUnreadMessageId) {
+            items += ConversationTimelineItem.UnreadDivider(
+                key = "conversation_unread_${message.id}",
+                label = if (unreadMessages == 1) "1 unread message"
+                else "$unreadMessages unread messages",
+            )
         }
+        items += ConversationTimelineItem.Message(message)
     }
 
     return items
 }
 
-internal fun LocalDate.toConversationDayLabel(
-    todayLabel: String,
-    yesterdayLabel: String,
-    today: LocalDate = LocalDate.now(),
-): String = when (this) {
-    today -> todayLabel
-    today.minusDays(1) -> yesterdayLabel
+internal fun LocalDate.toConversationDayLabel(today: LocalDate = LocalDate.now()): String = when (this) {
+    today -> "Today"
+    today.minusDays(1) -> "Yesterday"
     else -> CONVERSATION_DAY_FORMATTER.format(this)
 }
 
@@ -153,23 +108,19 @@ internal fun String.isDirectAddressCandidate(): Boolean {
     return any(Char::isDigit) || contains('@') || any { it == '+' }
 }
 
-internal fun String.toConversationCategoryLabel(
-    businessLabel: String,
-    personalLabel: String,
-): String =
-    if (any(Char::isLetter)) businessLabel else personalLabel
+internal fun String.toConversationCategoryLabel(): String =
+    if (any(Char::isLetter)) "Business SMS" else "Personal SMS"
 
 internal fun String.toConversationMetaLabel(
-    categoryLabel: String,
-    messagesLabel: String,
-    unreadLabel: String?,
-    keptLabel: String?,
+    totalMessages: Int,
+    unreadCount: Int,
+    importantCount: Int,
 ): String {
     val parts = buildList {
-        add(categoryLabel)
-        add(messagesLabel)
-        if (unreadLabel != null) add(unreadLabel)
-        if (keptLabel != null) add(keptLabel)
+        add(toConversationCategoryLabel())
+        add("$totalMessages messages")
+        if (unreadCount > 0) add("$unreadCount unread")
+        if (importantCount > 0) add("$importantCount kept")
     }
     return parts.joinToString(" · ")
 }

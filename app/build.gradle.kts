@@ -50,7 +50,7 @@ android {
         minSdk = 24
         targetSdk = 37
         versionCode = 10300
-        versionName = "2.3.5"
+        versionName = "1.3.0"
         buildConfigField("String", "PULSE_SYNC_ENVIRONMENT", quoted(pulseSyncEnvironment))
         buildConfigField("String", "PULSE_SYNC_DEV_BASE_URL", quoted(pulseSyncDevBaseUrl))
         buildConfigField("String", "PULSE_SYNC_STAGING_BASE_URL", quoted(pulseSyncStagingBaseUrl))
@@ -137,20 +137,6 @@ dependencies {
     implementation(project(":feature:sync"))
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
-    implementation(libs.klinker.android.smsmms)
-    implementation(libs.coil.compose)
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
-    implementation("androidx.work:work-runtime-ktx:2.11.2")
-    implementation(libs.androidx.camera.core)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.view)
-    implementation(libs.androidx.camera.video)
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.ffmpeg.kit.full.gpl)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

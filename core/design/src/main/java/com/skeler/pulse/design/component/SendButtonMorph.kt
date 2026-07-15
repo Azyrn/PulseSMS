@@ -28,7 +28,6 @@ import androidx.graphics.shapes.circle
 import androidx.graphics.shapes.star
 import androidx.graphics.shapes.toPath
 import com.skeler.pulse.design.theme.LocalReduceMotion
-import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 
 /**
@@ -109,7 +108,7 @@ fun SendButtonMorph(
         }
         if (isSuccess && stageIndex == 1) {
             // Sending → Success
-            delay(300.milliseconds)
+            delay(300)
             stageIndex = 2
             progress.snapTo(0f)
             progress.animateTo(
@@ -121,7 +120,7 @@ fun SendButtonMorph(
                 },
             )
             // Success → Idle
-            delay(600.milliseconds)
+            delay(600)
             stageIndex = 0
             progress.snapTo(0f)
             progress.animateTo(

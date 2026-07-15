@@ -13,14 +13,14 @@ import kotlinx.coroutines.runBlocking
  * Immutable snapshot of the current Serafina theme configuration.
  */
 data class SerafinaThemeState(
-    val dynamicColorEnabled: Boolean = true,
+    // Lavender Volt is the Pulse brand look; dynamic wallpaper color is opt-in.
+    val dynamicColorEnabled: Boolean = false,
     val selectedPalette: SerafinaPalette = SerafinaPalette.LavenderVolt,
     val themeMode: SerafinaThemeMode = SerafinaThemeMode.System,
     val blackThemeEnabled: Boolean = false,
     val reduceMotion: Boolean = false,
     val fingerprintEnabled: Boolean = false,
     val password: String = "",
-    val selectedLocale: String = "system",
 )
 
 /**
@@ -99,18 +99,6 @@ class SerafinaThemeViewModel(application: Application) : AndroidViewModel(applic
     fun clearPassword() {
         viewModelScope.launch {
             prefs.setPassword("")
-        }
-    }
-
-    fun setSelectedLocale(locale: String) {
-        viewModelScope.launch {
-            prefs.setSelectedLocale(locale)
-        }
-    }
-
-    fun setSelectedLocaleAndRecreate(locale: String) {
-        runBlocking {
-            prefs.setSelectedLocale(locale)
         }
     }
 }

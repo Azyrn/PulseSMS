@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <!--
-    Cleartext traffic is required for MMS: carrier MMSC URLs are HTTP (not HTTPS)
-    and the MMS proxy uses unencrypted HTTP CONNECT. Without this flag,
-    HttpURLConnection would throw on android 9+ for these plaintext connections.
-    -->
-    <base-config cleartextTrafficPermitted="true" />
-</network-security-config>

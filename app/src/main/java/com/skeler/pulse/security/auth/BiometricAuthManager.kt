@@ -9,7 +9,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import com.skeler.pulse.R
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -130,7 +129,7 @@ fun showBiometricPrompt(
     val promptInfo = BiometricPrompt.PromptInfo.Builder()
         .setTitle(title)
         .setSubtitle(subtitle)
-        .setNegativeButtonText(activity.getString(R.string.action_cancel))
+        .setNegativeButtonText("Cancel")
         .setAllowedAuthenticators(BIOMETRIC_PROMPT_AUTHENTICATORS)
         .build()
 

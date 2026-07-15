@@ -31,10 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.skeler.pulse.R
 import com.skeler.pulse.contact.toBlockedSenderDisplayLabel
 import com.skeler.pulse.design.util.elasticOverscroll
 import com.skeler.pulse.design.util.motionAnimateItemModifier
@@ -59,7 +57,7 @@ internal fun BlockedNumbersScreen(
     Scaffold(
         topBar = {
             SettingsTopBar(
-                title = stringResource(R.string.blocked_numbers_title),
+                title = "Blocked numbers",
                 onBack = onBack,
             )
         },
@@ -81,17 +79,17 @@ internal fun BlockedNumbersScreen(
             if (sortedAddresses.isEmpty()) {
                 item(key = "blocked_empty") {
                     InboxStateCard(
-                        title = stringResource(R.string.blocked_empty_title),
-                        body = stringResource(R.string.blocked_empty_body),
-                        statusLabel = stringResource(R.string.blocked_empty_status),
-                        actionLabel = stringResource(R.string.blocked_back_to_settings),
+                        title = "No blocked numbers",
+                        body = "Blocked senders will appear here.",
+                        statusLabel = "None blocked",
+                        actionLabel = "Back to settings",
                         icon = Icons.Rounded.Block,
                         onAction = onBack,
                     )
                 }
             } else {
                 item(key = "blocked_header") {
-                    SettingsSectionHeader(stringResource(R.string.blocked_count, sortedAddresses.size))
+                    SettingsSectionHeader("${sortedAddresses.size} blocked")
                 }
                 items(
                     items = sortedAddresses,
@@ -181,7 +179,7 @@ private fun BlockedNumberRow(
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             ) {
-                Text(stringResource(R.string.blocked_unblock))
+                Text("Unblock")
             }
         }
     }

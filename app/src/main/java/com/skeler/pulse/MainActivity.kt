@@ -33,14 +33,11 @@ import com.skeler.pulse.contact.displayNameFor
 import com.skeler.pulse.design.theme.SerafinaAppTheme
 import com.skeler.pulse.design.theme.SerafinaThemeMode
 import com.skeler.pulse.design.theme.SerafinaThemeViewModel
-import com.skeler.pulse.design.theme.ThemePreferences
 import com.skeler.pulse.ui.PulseAppShell
 import com.skeler.pulse.ui.RealSmsViewModel
-import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class MainActivity : FragmentActivity() {
 
@@ -73,22 +70,6 @@ class MainActivity : FragmentActivity() {
         ) {
             openNewChatRequestKeyState.intValue += 1
         }
-    }
-
-    override fun attachBaseContext(newBase: Context) {
-        val prefs = ThemePreferences(newBase.applicationContext)
-        val locale = runBlocking {
-            runCatching { prefs.currentLocale() }.getOrDefault("system")
-        }
-        val context = if (locale != "system") {
-            @Suppress("DEPRECATION")
-            val config = Configuration(newBase.resources.configuration)
-            config.setLocale(Locale.forLanguageTag(locale))
-            newBase.createConfigurationContext(config)
-        } else {
-            newBase
-        }
-        super.attachBaseContext(context)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,8 +147,8 @@ class MainActivity : FragmentActivity() {
                     onOpenConversation = { address, threadId ->
                         realSmsViewModel.openConversation(address, threadId)
                     },
-                    onSendMessage = { address, body, imageUris, subscriptionId ->
-                        realSmsViewModel.sendMessage(address, body, imageUris, subscriptionId)
+                    onSendMessage = { address, body, subscriptionId ->
+                        realSmsViewModel.sendMessage(address, body, subscriptionId)
                     },
                     themeViewModel = themeViewModel,
                     onRequestDefaultSms = { requestDefaultSmsApp() },

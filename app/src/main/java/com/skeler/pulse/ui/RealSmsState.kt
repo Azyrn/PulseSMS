@@ -2,7 +2,6 @@ package com.skeler.pulse.ui
 
 import com.skeler.pulse.contact.matchesBlockedSenderKey
 import com.skeler.pulse.contact.toBlockedSenderKeyOrNull
-import com.skeler.pulse.sms.ScheduledMessageEntity
 import com.skeler.pulse.sms.SmsThread
 import com.skeler.pulse.sms.SystemSms
 
@@ -47,15 +46,11 @@ data class RealInboxState(
     val pinnedThreadIds: Set<Long> = emptySet(),
     val archivedThreadIds: Set<Long> = emptySet(),
     val blockedAddresses: Set<String> = emptySet(),
-    val mutedAddresses: Set<String> = emptySet(),
-    val threadEmojis: Map<Long, String> = emptyMap(),
     val loading: Boolean = true,
     val showLoadingCard: Boolean = false,
     val permissionDenied: Boolean = false,
     val isDefaultSmsApp: Boolean = true,
     val errorMessage: String? = null,
-    val drafts: Map<String, String> = emptyMap(),
-    val scheduledAddresses: Set<String> = emptySet(),
 )
 
 internal data class ReadConversationTarget(
@@ -68,15 +63,7 @@ data class RealConversationState(
     val messages: List<SystemSms> = emptyList(),
     val loading: Boolean = true,
     val importantMessageIds: Set<Long> = emptySet(),
-    val messageReactions: Map<Long, String> = emptyMap(),
-    val unmatchedReactions: List<UnmatchedReaction> = emptyList(),
     val isReplyable: Boolean = true,
-    val hasMoreMessages: Boolean = false,
-    val loadingMore: Boolean = false,
-    val totalMessageCount: Int = 0,
-    val searchQuery: String = "",
-    val draft: String = "",
-    val scheduledMessages: List<ScheduledMessageEntity> = emptyList(),
 )
 
 sealed interface SendState {

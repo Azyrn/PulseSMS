@@ -1,4 +1,7 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+
 package com.skeler.pulse.ui
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.provider.Telephony
@@ -132,78 +135,3 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.Instant
-
-
-@Composable
-internal fun ConversationOverviewCard(
-    title: String,
-    address: String,
-    messageCount: Int,
-    unreadCount: Int,
-    importantCount: Int,
-    latestTimestamp: Instant?,
-    avatarColors: ConversationAvatarColors,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = ConversationVisualTokens.overviewShape,
-        color = Color.Transparent,
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.88f),
-                        0.64f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f),
-                        1f to MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
-                    )
-                )
-                .border(
-                    width = ConversationVisualTokens.bubbleOutlineWidth,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
-                    shape = ConversationVisualTokens.overviewShape,
-                )
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SerafinaAvatar(
-                imageUrl = null,
-                initials = title.toAvatarInitials(),
-                size = 52.dp,
-                containerColor = avatarColors.containerColor,
-                contentColor = avatarColors.contentColor,
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = address.toConversationMetaLabel(
-                        totalMessages = messageCount.coerceAtLeast(0),
-                        unreadCount = unreadCount,
-                        importantCount = importantCount,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            latestTimestamp?.let { timestamp ->
-                Text(
-                    text = timestamp.toInboxTimestamp(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}

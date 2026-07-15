@@ -1,7 +1,6 @@
 package com.skeler.pulse.sms
 
 import android.database.Cursor
-import android.net.Uri
 import android.provider.Telephony
 import com.skeler.pulse.contact.normalizeAddressForDisplay
 
@@ -73,9 +72,6 @@ internal class SmsCursorColumns(cursor: Cursor) {
     val type: Int = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
     val read: Int = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
     val threadId: Int = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
-    val status: Int = cursor.getColumnIndexOrThrow(Telephony.Sms.STATUS)
-    val priority: Int = cursor.getColumnIndex("priority")
-    val dateSent: Int = cursor.getColumnIndex("date_sent")
 }
 
 internal fun Cursor.toSystemSms(columns: SmsCursorColumns): SystemSms = SystemSms(
@@ -86,9 +82,6 @@ internal fun Cursor.toSystemSms(columns: SmsCursorColumns): SystemSms = SystemSm
     type = getInt(columns.type),
     read = getInt(columns.read) == 1,
     threadId = getLong(columns.threadId),
-    status = getInt(columns.status),
-    priority = columns.priority.takeIf { it >= 0 }?.let { getInt(it) },
-    dateSent = columns.dateSent.takeIf { it >= 0 }?.let { getLong(it) },
 )
 
 internal fun SystemSms.resolvedThreadId(): Long =
@@ -97,10 +90,8 @@ internal fun SystemSms.resolvedThreadId(): Long =
 internal class MutableThreadAccumulator(
     val threadId: Long,
     val address: String,
-    var snippet: String,
-    var date: Long,
+    val snippet: String,
+    val date: Long,
     var messageCount: Int = 0,
     var unreadCount: Int = 0,
-    var lastMmsPartUri: Uri? = null,
-    var lastMmsContentType: String? = null,
 )

@@ -135,11 +135,11 @@ import java.time.Instant
 
 
 internal val ConversationPillShape = RoundedCornerShape(999.dp)
-internal val ConversationCapsuleShape = RoundedCornerShape(16.dp)
 internal const val ConversationHeaderContentType = "conversation_header"
 internal const val ConversationLoadingContentType = "conversation_loading"
 internal const val ConversationEmptyContentType = "conversation_empty"
-internal const val ConversationLoadMoreContentType = "conversation_load_more"
+internal const val ConversationTimelineStartLazyListIndex = 1
+
 internal object ConversationVisualTokens {
     val timelineHorizontalPadding = 16.dp
     val timelineVerticalPadding = 12.dp
@@ -149,17 +149,17 @@ internal object ConversationVisualTokens {
     val bubbleOutlineWidth = 1.dp
     val composerScrimStartY = 0.36f
     val backdropSurfaceStop = 0.32f
-    const val TOP_BAR_SURFACE_ALPHA = 0.88f
-    const val ACTIVE_BUBBLE_OUTLINE_ALPHA = 0.46f
-    const val PRESSED_BUBBLE_OUTLINE_ALPHA = 0.30f
-    const val UNREAD_BUBBLE_OUTLINE_ALPHA = 0.42f
-    const val FAILED_BUBBLE_OUTLINE_ALPHA = 0.52f
-    const val RESTING_OUTBOUND_OUTLINE_ALPHA = 0.18f
-    const val RESTING_INBOUND_OUTLINE_ALPHA = 0.28f
-    const val INBOUND_BUBBLE_ALPHA = 0.82f
-    const val UNREAD_BUBBLE_ALPHA = 0.76f
-    const val FAILED_BUBBLE_ALPHA = 0.78f
-    const val OUTBOUND_BUBBLE_ALPHA = 0.90f
+    const val topBarSurfaceAlpha = 0.88f
+    const val activeBubbleOutlineAlpha = 0.46f
+    const val pressedBubbleOutlineAlpha = 0.30f
+    const val unreadBubbleOutlineAlpha = 0.42f
+    const val failedBubbleOutlineAlpha = 0.52f
+    const val restingOutboundOutlineAlpha = 0.18f
+    const val restingInboundOutlineAlpha = 0.28f
+    const val inboundBubbleAlpha = 0.82f
+    const val unreadBubbleAlpha = 0.76f
+    const val failedBubbleAlpha = 0.78f
+    const val outboundBubbleAlpha = 0.90f
 }
 
 internal object ConversationComposerTokens {
@@ -178,18 +178,16 @@ internal object ConversationComposerTokens {
     val simBadgeHorizontalPadding = 10.dp
     val simBadgeContentSpacing = 5.dp
     val simIconSize = 14.dp
-    val attachmentButtonSize = 36.dp
-    val attachmentIconSize = 20.dp
     val sendButtonSize = 52.dp
     val sendIconSize = 23.dp
     val sendIconHorizontalOffset = (-1).dp
     val borderWidth = 1.dp
-    const val SURFACE_ALPHA = 0.84f
-    const val INACTIVE_ALPHA = 0.54f
-    const val DISABLED_SEND_ICON_ALPHA = 0.38f
-    const val PLACEHOLDER_ALPHA = 0.52f
-    const val FOCUSED_CAPSULE_ACCENT_ALPHA = 0.26f
-    const val RESTING_CAPSULE_ACCENT_ALPHA = 0.14f
+    const val surfaceAlpha = 0.84f
+    const val inactiveAlpha = 0.54f
+    const val disabledSendIconAlpha = 0.38f
+    const val placeholderAlpha = 0.52f
+    const val focusedCapsuleAccentAlpha = 0.26f
+    const val restingCapsuleAccentAlpha = 0.14f
 }
 
 internal fun <T> conversationPressAnimationSpec(reducedMotion: Boolean): FiniteAnimationSpec<T> =
@@ -218,7 +216,7 @@ internal fun conversationBackdropBrush(): Brush {
 internal fun conversationTopBarBrush(): Brush {
     val colors = MaterialTheme.colorScheme
     return Brush.verticalGradient(
-        0f to colors.surface.copy(alpha = ConversationVisualTokens.TOP_BAR_SURFACE_ALPHA),
+        0f to colors.surface.copy(alpha = ConversationVisualTokens.topBarSurfaceAlpha),
         1f to colors.surface.copy(alpha = 0.68f),
     )
 }
@@ -258,14 +256,14 @@ internal fun conversationComposerScrimBrush(): Brush {
 internal fun conversationComposerCapsuleBrush(isFocused: Boolean): Brush {
     val colors = MaterialTheme.colorScheme
     val accentAlpha = if (isFocused) {
-        ConversationComposerTokens.FOCUSED_CAPSULE_ACCENT_ALPHA
+        ConversationComposerTokens.focusedCapsuleAccentAlpha
     } else {
-        ConversationComposerTokens.RESTING_CAPSULE_ACCENT_ALPHA
+        ConversationComposerTokens.restingCapsuleAccentAlpha
     }
     return Brush.horizontalGradient(
-        0f to colors.surfaceContainerHighest.copy(alpha = ConversationComposerTokens.SURFACE_ALPHA),
+        0f to colors.surfaceContainerHighest.copy(alpha = ConversationComposerTokens.surfaceAlpha),
         0.62f to colors.primaryContainer.copy(alpha = accentAlpha),
-        1f to colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.SURFACE_ALPHA),
+        1f to colors.surfaceContainerHigh.copy(alpha = ConversationComposerTokens.surfaceAlpha),
     )
 }
 
@@ -275,19 +273,19 @@ internal fun conversationBubbleContainerColor(
     isUnread: Boolean,
     hasFailedDelivery: Boolean,
 ): Color = when {
-    hasFailedDelivery -> colors.errorContainer.copy(alpha = ConversationVisualTokens.FAILED_BUBBLE_ALPHA)
-    isOutbound -> colors.primaryContainer.copy(alpha = ConversationVisualTokens.OUTBOUND_BUBBLE_ALPHA)
-    isUnread -> colors.tertiaryContainer.copy(alpha = ConversationVisualTokens.UNREAD_BUBBLE_ALPHA)
-    else -> colors.surfaceContainerLow.copy(alpha = ConversationVisualTokens.INBOUND_BUBBLE_ALPHA)
+    hasFailedDelivery -> colors.errorContainer.copy(alpha = ConversationVisualTokens.failedBubbleAlpha)
+    isOutbound -> colors.primaryContainer.copy(alpha = ConversationVisualTokens.outboundBubbleAlpha)
+    isUnread -> colors.tertiaryContainer.copy(alpha = ConversationVisualTokens.unreadBubbleAlpha)
+    else -> colors.surfaceContainerLow.copy(alpha = ConversationVisualTokens.inboundBubbleAlpha)
 }
 
 internal fun conversationRestingBubbleOutlineColor(
     colors: ColorScheme,
     isOutbound: Boolean,
 ): Color = if (isOutbound) {
-    colors.primary.copy(alpha = ConversationVisualTokens.RESTING_OUTBOUND_OUTLINE_ALPHA)
+    colors.primary.copy(alpha = ConversationVisualTokens.restingOutboundOutlineAlpha)
 } else {
-    colors.outlineVariant.copy(alpha = ConversationVisualTokens.RESTING_INBOUND_OUTLINE_ALPHA)
+    colors.outlineVariant.copy(alpha = ConversationVisualTokens.restingInboundOutlineAlpha)
 }
 
 internal data class ConversationAvatarColors(
@@ -299,15 +297,6 @@ internal fun shouldShowMessageBlockAction(isOutbound: Boolean): Boolean = !isOut
 
 internal fun SystemSms.hasFailedDelivery(): Boolean = type == Telephony.Sms.MESSAGE_TYPE_FAILED
 
-internal fun SystemSms.isSentAndDelivered(): Boolean =
-    type == Telephony.Sms.MESSAGE_TYPE_SENT && status == Telephony.Sms.STATUS_COMPLETE
-
-internal fun SystemSms.isDeliveryFailed(): Boolean =
-    type == Telephony.Sms.MESSAGE_TYPE_SENT && status == Telephony.Sms.STATUS_FAILED
-
-internal fun SystemSms.isSentPending(): Boolean =
-    type == Telephony.Sms.MESSAGE_TYPE_SENT && status == Telephony.Sms.STATUS_PENDING
-
 internal fun draftAfterSendState(currentDraft: String, sendState: SendState): String = when (sendState) {
     is SendState.Sent -> ""
     is SendState.Failed -> currentDraft.ifBlank { sendState.body }
@@ -316,5 +305,5 @@ internal fun draftAfterSendState(currentDraft: String, sendState: SendState): St
 
 internal fun shouldConfirmDiscardDraft(draft: String): Boolean = draft.isNotBlank()
 
-internal fun conversationTimelineLazyListIndex(timelineIndex: Int, hasLoadMoreItem: Boolean = false): Int =
-    timelineIndex + 1 + if (hasLoadMoreItem) 1 else 0
+internal fun conversationTimelineLazyListIndex(timelineIndex: Int): Int =
+    timelineIndex + ConversationTimelineStartLazyListIndex
