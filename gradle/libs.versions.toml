@@ -1,36 +1,41 @@
 [versions]
-agp = "9.2.1"
-coreKtx = "1.18.0"
+# IMPORTANT NOTE: AGP pinned to 9.1.0 — the max fully-supported by Kotlin 2.4.x (KGP compat table:
+# AGP 8.5.2–9.1.0). Newer AGP (9.3.0) builds but sits outside Kotlin 2.4's tested matrix.
+agp = "9.1.0"
+coreKtx = "1.19.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
-lifecycleRuntimeKtx = "2.10.0"
+lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-kotlin = "2.3.21"
-composeBom = "2026.05.01"
+kotlin = "2.4.10"
+composeBom = "2026.06.01"
 coroutines = "1.11.0"
 room = "2.8.4"
-ksp = "2.3.6"
-immutableCollections = "0.4.0"
+# IMPORTANT NOTE: KSP 2.3.10 is the newest published build — no 2.4.x exists yet. It runs against
+# Kotlin 2.4.10 in language-version-2.3 compatibility mode (Hilt + Room codegen verified). Bump to
+# a 2.4.x KSP once released so KSP tracks the Kotlin compiler again.
+ksp = "2.3.10"
+immutableCollections = "0.5.1"
 work = "2.11.2"
 desugarJdkLibs = "2.1.5"
 # ── Serafina Design System additions ──
 material3Adaptive = "1.2.0"
 navigation = "2.9.8"
-hilt = "2.59.2"
-androidxHilt = "1.3.0"
+hilt = "2.60.1"
+androidxHilt = "1.4.0"
 datastorePreferences = "1.2.1"
-lifecycleViewModelCompose = "2.10.0"
-animationGraphics = "1.11.2"
+lifecycleViewModelCompose = "2.11.0"
+animationGraphics = "1.11.4"
 graphicsShapes = "1.1.0"
-materialKolor = "4.1.1"
+materialKolor = "5.0.0"
 coilCompose = "2.7.0"
-biometric = "1.2.0-alpha05"
+biometric = "1.4.0-alpha07"
 fragment = "1.8.9"
 klinkerSmsmms = "5.2.6"
-camerax = "1.5.0"
-media3 = "1.7.1"
-ffmpegKit = "2.2.0"
+camerax = "1.6.1"
+media3 = "1.10.1"
+ffmpegKit = "2.2.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
